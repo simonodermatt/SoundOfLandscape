@@ -2,36 +2,38 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <title>Panorama Synthesizer</title>
-    <!-- 1. Leaflet CSS (WICHTIG für die Anzeige der Karte) -->
+    <title>Panorama Synthesizer Karte</title>
+    <!-- CSS für die Karte -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
         body { font-family: sans-serif; margin: 0; padding: 0; }
-        /* Ohne diese Zeile bleibt die Karte unsichtbar! */
         #map { height: 100vh; width: 100vw; }
         .popup-content { text-align: center; }
         button { margin-top: 10px; padding: 8px 16px; cursor: pointer; background: #333; color: white; border: none; border-radius: 4px;}
+        button:hover { background: #555; }
     </style>
 </head>
 <body>
 
-<!-- 2. Der Container, in den Leaflet die Karte zeichnet -->
+<!-- Der Bereich, in dem die Karte gezeichnet wird -->
 <div id="map"></div>
 
-<!-- 3. Leaflet JavaScript -->
+<!-- JavaScript für die Karte -->
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
-<!-- 4. Unser Synthesizer-Code -->
+<!-- Dein eigenes Synthesizer-Skript -->
 <script>
-    // Karte zentrieren (Schweiz)
+    // 1. Karte initialisieren (Zentriert auf die Schweiz)
     const map = L.map('map').setView([46.8182, 8.2275], 8);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap'
     }).addTo(map);
 
+    // 2. Audio Context und Tonleiter (Lydisch) vorbereiten
     let audioCtx;
     const tonleiter = [130.81, 146.83, 164.81, 185.00, 196.00, 220.00, 246.94, 261.63, 293.66, 329.63, 369.99, 392.00, 440.00, 493.88, 523.25];
 
+    // 3. Hilfsfunktion: Gipfel in der Kurve finden
     function findeGipfel(kurve, anzahlPeaks) {
         let gefundenePeaks = [];
         for (let i = 1; i < kurve.length - 1; i++) {
@@ -43,40 +45,46 @@
         return gefundenePeaks.slice(0, anzahlPeaks);
     }
 
-    // ACHTUNG: Hier muss der exakte Name deiner JSON-Datei stehen!
-    const jsonDateiname = 'daten/IMG_2828_array.json'; 
+    // 4. Marker auf die Karte setzen
     const marker = L.marker([46.5595, 7.9666]).addTo(map);
     
+    // Popup mit genau deinem Button und Dateinamen
     marker.bindPopup(`
         <div class="popup-content">
-            <h3>Berg Panorama</h3>
-            <button onclick="playPanorama('${jsonDateiname}')">🎵 Echtzeit-Akkord abspielen</button>
+            <h3>Panorama Sound</h3>
+            <button onclick="playPanorama('daten/IMG_2828_array.json')">🎵 Echtzeit-Akkord abspielen</button>
         </div>
     `);
 
-async function playPanorama(dateiPfad) {
-        // 1. Synthesizer initialisieren (falls noch nicht passiert)
+    // 5. Die Synthesizer-Logik mit Anti-Blockier-Trick
+    async function playPanorama(dateiPfad) {
+        
+        // A. Synthesizer initialisieren und explizit aufwecken (gegen Browser-Blockaden)
         if (!audioCtx) { 
             audioCtx = new (window.AudioContext || window.webkitAudioContext)(); 
         }
-        // 2. WICHTIG: Den Synthesizer explizit aufwecken!
         if (audioCtx.state === 'suspended') {
             await audioCtx.resume();
         }
 
         try {
-            console.log("Lade Daten von:", dateiPfad);
+            console.log("Versuche Daten zu laden von:", dateiPfad);
+            
+            // B. Daten laden
             const response = await fetch(dateiPfad);
             if (!response.ok) {
-                throw new Error(`Datei nicht gefunden! Status: ${response.status}`);
+                throw new Error(`Datei nicht gefunden! HTTP-Status: ${response.status}`);
             }
             const daten = await response.json();
             const kurve = daten.kurve_y;
 
+            // C. Die höchsten Gipfel berechnen
             const topGipfel = findeGipfel(kurve, 4);
-            console.log("Gefundene Gipfel:", topGipfel);
+            console.log("Gefundene Gipfel-Höhen (0-100):", topGipfel);
 
+            // D. Höhen in Frequenzen umwandeln und abspielen
             topGipfel.forEach(hoehe => {
+                // Welcher Tonleiter-Index passt zur Höhe?
                 const index = Math.floor((hoehe / 100) * (tonleiter.length - 1));
                 const freq = tonleiter[index];
 
@@ -86,6 +94,7 @@ async function playPanorama(dateiPfad) {
                 oscillator.type = 'triangle';
                 oscillator.frequency.value = freq;
 
+                // Sanftes Ein- und Ausblenden des Tons
                 gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
                 gainNode.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 1.5); 
                 gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 4.5);   
@@ -98,8 +107,9 @@ async function playPanorama(dateiPfad) {
             });
 
         } catch (error) {
-            console.error("Fehler beim Laden der JSON-Datei:", error);
-            alert("Fehler beim Laden! Hast du den lokalen Server gestartet und stimmt der Dateipfad?");
+            console.error("HILFE, ein Fehler beim Laden:", error);
+            // Diese kleine Box poppt auf, falls die Datei auf GitHub nicht gefunden wird!
+            alert("Fehler: " + error.message); 
         }
     }
 </script>
