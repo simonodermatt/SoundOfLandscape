@@ -51,20 +51,27 @@
 // 4. Marker auf die Karte setzen
     const marker = L.marker([46.5595, 7.9666]).addTo(map);
     
-    // Wir definieren die Dateinamen für JSON und Bild
     const basisName = 'IMG_2828';
     const jsonPfad = `daten/${basisName}_array.json`;
     const bildPfad = `daten/${basisName}_linie.jpg`;
 
-    // Popup mit Bild und Button
+    // Popup mit Bild, Slider und Button
     marker.bindPopup(`
         <div class="popup-content">
             <h3>Panorama Kontur</h3>
             <img src="${bildPfad}" alt="Bergsilhouette" class="popup-img" />
             <br>
+            
+            <!-- NEU: Der Schieberegler für die Anzahl der Töne -->
+            <div style="margin: 10px 0; text-align: left;">
+                <label for="peakSlider" style="font-size: 14px;">Anzahl Töne: <b id="peakWert">4</b></label><br>
+                <input type="range" id="peakSlider" min="1" max="10" value="4" style="width: 100%;" 
+                       oninput="document.getElementById('peakWert').innerText = this.value">
+            </div>
+
             <button onclick="playPanorama('${jsonPfad}')">🎵 Akkord abspielen</button>
         </div>
-    `, { maxWidth: 320 }); // Macht das Popup breit genug für das Bild
+    `, { maxWidth: 320 });
     
 
     // 5. Die Synthesizer-Logik mit Anti-Blockier-Trick
@@ -89,9 +96,9 @@
             const daten = await response.json();
             const kurve = daten.kurve_y;
 
-            // C. Die höchsten Gipfel berechnen
-            const topGipfel = findeGipfel(kurve, 4);
-            console.log("Gefundene Gipfel-Höhen (0-100):", topGipfel);
+           // C. Den Wert vom Regler ablesen und die Gipfel berechnen
+            const anzahlGewuenscht = parseInt(document.getElementById('peakSlider').value);
+            const topGipfel = findeGipfel(kurve, anzahlGewuenscht);
 
             // D. Höhen in Frequenzen umwandeln und abspielen
             topGipfel.forEach(hoehe => {
