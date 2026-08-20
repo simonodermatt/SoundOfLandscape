@@ -47,6 +47,19 @@
         gefundenePeaks.sort((a, b) => b - a);
         return gefundenePeaks.slice(0, anzahlPeaks);
     }
+// NEU: Hilfsfunktion für die Täler
+    function findeTaeler(kurve, anzahl) {
+        let gefundeneTaeler = [];
+        for (let i = 1; i < kurve.length - 1; i++) {
+            // Ein Tal ist tiefer oder gleich wie links, und tiefer als rechts
+            if (kurve[i] <= kurve[i - 1] && kurve[i] < kurve[i + 1]) {
+                gefundeneTaeler.push(kurve[i]);
+            }
+        }
+        // Nach Höhe sortieren, aber dieses Mal die TIEFSTEN zuerst (aufsteigend)
+        gefundeneTaeler.sort((a, b) => a - b);
+        return gefundeneTaeler.slice(0, anzahl);
+    }
 
 // 4. Marker auf die Karte setzen
     const marker = L.marker([46.5595, 7.9666]).addTo(map);
@@ -55,18 +68,20 @@
     const jsonPfad = `daten/${basisName}_array.json`;
     const bildPfad = `daten/${basisName}_linie.jpg`;
 
-    // Popup mit Bild, Slider und Button
+// Popup mit Bild, ZWEI Slidern und Button
     marker.bindPopup(`
         <div class="popup-content">
             <h3>Panorama Kontur</h3>
             <img src="${bildPfad}" alt="Bergsilhouette" class="popup-img" />
-            <br>
             
-            <!-- NEU: Der Schieberegler für die Anzahl der Töne -->
             <div style="margin: 10px 0; text-align: left;">
-                <label for="peakSlider" style="font-size: 14px;">Anzahl Töne: <b id="peakWert">4</b></label><br>
-                <input type="range" id="peakSlider" min="1" max="10" value="4" style="width: 100%;" 
+                <label style="font-size: 14px;">Gipfel (Melodie): <b id="peakWert">4</b></label><br>
+                <input type="range" id="peakSlider" min="0" max="10" value="4" style="width: 100%;" 
                        oninput="document.getElementById('peakWert').innerText = this.value">
+                
+                <label style="font-size: 14px; margin-top:5px; display:block;">Täler (Bass): <b id="talWert">2</b></label>
+                <input type="range" id="talSlider" min="0" max="10" value="2" style="width: 100%;" 
+                       oninput="document.getElementById('talWert').innerText = this.value">
             </div>
 
             <button onclick="playPanorama('${jsonPfad}')">🎵 Akkord abspielen</button>
@@ -96,12 +111,19 @@
             const daten = await response.json();
             const kurve = daten.kurve_y;
 
-           // C. Den Wert vom Regler ablesen und die Gipfel berechnen
-            const anzahlGewuenscht = parseInt(document.getElementById('peakSlider').value);
-            const topGipfel = findeGipfel(kurve, anzahlGewuenscht);
+// C. Regler ablesen und beide Punktarten berechnen
+            const anzahlGipfel = parseInt(document.getElementById('peakSlider').value);
+            const anzahlTaeler = parseInt(document.getElementById('talSlider').value);
+            
+            const topGipfel = findeGipfel(kurve, anzahlGipfel);
+            const tiefeTaeler = findeTaeler(kurve, anzahlTaeler);
+            
+            // Beide Arrays (Gipfel und Täler) zu einer gemeinsamen Liste zusammenfügen
+            const allePunkte = topGipfel.concat(tiefeTaeler);
+            console.log("Alle zu spielenden Höhen:", allePunkte);
 
             // D. Höhen in Frequenzen umwandeln und abspielen
-            topGipfel.forEach(hoehe => {
+            allePunkte.forEach(hoehe => {
                 // Welcher Tonleiter-Index passt zur Höhe?
                 const index = Math.floor((hoehe / 100) * (tonleiter.length - 1));
                 const freq = tonleiter[index];
