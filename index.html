@@ -5,12 +5,15 @@
     <title>Panorama Synthesizer Karte</title>
     <!-- CSS für die Karte -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-<style>
+    <style>
         body { font-family: sans-serif; margin: 0; padding: 0; }
         #map { height: 100vh; width: 100vw; }
         .popup-content { text-align: center; }
-        /* NEU: Damit das Bild schön in die Sprechblase passt */
-        .popup-img { width: 100%; max-width: 300px; border-radius: 4px; margin-bottom: 10px; }
+        /* Damit das Bild schön in die Sprechblase passt */
+        .popup-img { width: 100%; border-radius: 4px; display: block; }
+        /* Container für Bild und die Canvas-Zeichenfläche darüber */
+        .bild-container { position: relative; width: 100%; margin-bottom: 10px; }
+        #punktOverlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
         button { margin-top: 10px; padding: 8px 16px; cursor: pointer; background: #333; color: white; border: none; border-radius: 4px;}
         button:hover { background: #555; }
     </style>
@@ -23,9 +26,8 @@
 <!-- JavaScript für die Karte -->
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
-<!-- Dein eigenes Synthesizer-Skript -->
 <script>
-    // 1. Karte initialisieren (Zentriert auf die Schweiz)
+    // 1. Karte initialisieren
     const map = L.map('map').setView([46.8182, 8.2275], 8);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap'
@@ -35,48 +37,47 @@
     let audioCtx;
     const tonleiter = [130.81, 146.83, 164.81, 185.00, 196.00, 220.00, 246.94, 261.63, 293.66, 329.63, 369.99, 392.00, 440.00, 493.88, 523.25];
 
-// 3. Hilfsfunktion: Gipfel in der Kurve finden
+    // 3. Hilfsfunktionen: Gipfel und Täler inkl. X-Koordinate finden
     function findeGipfel(kurve, anzahlPeaks) {
         let gefundenePeaks = [];
         for (let i = 1; i < kurve.length - 1; i++) {
-            // HIER IST DIE ÄNDERUNG: >= statt > beim ersten Vergleich
+            // Plateau-tolerant für breite Bergkuppen
             if (kurve[i] >= kurve[i - 1] && kurve[i] > kurve[i + 1]) {
-                gefundenePeaks.push(kurve[i]);
+                gefundenePeaks.push({ x: i, hoehe: kurve[i] }); 
             }
         }
-        gefundenePeaks.sort((a, b) => b - a);
+        gefundenePeaks.sort((a, b) => b.hoehe - a.hoehe);
         return gefundenePeaks.slice(0, anzahlPeaks);
     }
-// NEU: Hilfsfunktion für die Täler
+
     function findeTaeler(kurve, anzahl) {
         let gefundeneTaeler = [];
         for (let i = 1; i < kurve.length - 1; i++) {
-            // Ein Tal ist tiefer oder gleich wie links, und tiefer als rechts
+            // Plateau-tolerant für breite Täler
             if (kurve[i] <= kurve[i - 1] && kurve[i] < kurve[i + 1]) {
-                gefundeneTaeler.push(kurve[i]);
+                gefundeneTaeler.push({ x: i, hoehe: kurve[i] });
             }
         }
-        // Nach Höhe sortieren, aber dieses Mal die TIEFSTEN zuerst (aufsteigend)
-        gefundeneTaeler.sort((a, b) => a - b);
+        gefundeneTaeler.sort((a, b) => a.hoehe - b.hoehe);
         return gefundeneTaeler.slice(0, anzahl);
     }
 
-// 4. Marker auf die Karte setzen
+    // 4. Marker auf die Karte setzen
     const marker = L.marker([46.5595, 7.9666]).addTo(map);
     
+    // Dateinamen definieren
     const basisName = 'IMG_2828';
     const jsonPfad = `daten/${basisName}_array.json`;
     const bildPfad = `daten/${basisName}_linie.jpg`;
 
-// Popup mit Bild, Canvas-Overlay, Slidern und Button
+    // Popup mit Bild, Canvas, Slidern und Button zusammenbauen
     marker.bindPopup(`
         <div class="popup-content">
             <h3>Panorama Kontur</h3>
             
-            <!-- NEU: Container für Bild und die darüberliegende Zeichenfläche -->
-            <div style="position: relative; width: 100%; margin-bottom: 10px;">
-                <img src="${bildPfad}" alt="Bergsilhouette" class="popup-img" style="width: 100%; display: block;" />
-                <canvas id="punktOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></canvas>
+            <div class="bild-container">
+                <img src="${bildPfad}" alt="Bergsilhouette" class="popup-img" />
+                <canvas id="punktOverlay"></canvas>
             </div>
             
             <div style="margin: 10px 0; text-align: left;">
@@ -92,12 +93,11 @@
             <button onclick="playPanorama('${jsonPfad}')">🎵 Akkord abspielen</button>
         </div>
     `, { maxWidth: 320 });
-    
 
-    // 5. Die Synthesizer-Logik mit Anti-Blockier-Trick
+    // 5. Die Hauptfunktion: Synthesizer und Grafik zeichnen
     async function playPanorama(dateiPfad) {
         
-        // A. Synthesizer initialisieren und explizit aufwecken (gegen Browser-Blockaden)
+        // A. Synthesizer initialisieren und aufwecken
         if (!audioCtx) { 
             audioCtx = new (window.AudioContext || window.webkitAudioContext)(); 
         }
@@ -106,8 +106,6 @@
         }
 
         try {
-            console.log("Versuche Daten zu laden von:", dateiPfad);
-            
             // B. Daten laden
             const response = await fetch(dateiPfad);
             if (!response.ok) {
@@ -116,7 +114,7 @@
             const daten = await response.json();
             const kurve = daten.kurve_y;
 
-/ C. Regler ablesen und beide Punktarten berechnen
+            // C. Regler ablesen und beide Punktarten berechnen
             const anzahlGipfel = parseInt(document.getElementById('peakSlider').value);
             const anzahlTaeler = parseInt(document.getElementById('talSlider').value);
             
@@ -127,24 +125,26 @@
             // --- NEU: DIE GRAFISCHE DARSTELLUNG ---
             const canvas = document.getElementById('punktOverlay');
             const ctx = canvas.getContext('2d');
-            // Die interne Auflösung des Canvas exakt auf dein Bild anpassen
+            
+            // Die interne Auflösung des Canvas exakt auf dein Original-Bild anpassen
             canvas.width = daten.bild_breite; 
             canvas.height = daten.bild_hoehe;
             
-            ctx.clearRect(0, 0, canvas.width, canvas.height); // Alte Striche löschen
+            // Alte Striche löschen
+            ctx.clearRect(0, 0, canvas.width, canvas.height); 
 
-            // Gipfel zeichnen (Gelbe Linien)
-            ctx.strokeStyle = 'rgba(255, 215, 0, 0.7)'; // Goldgelb, leicht transparent
+            // Gipfel zeichnen (Goldgelbe Linien)
+            ctx.strokeStyle = 'rgba(255, 215, 0, 0.8)';
             ctx.lineWidth = 4;
             topGipfel.forEach(punkt => {
                 ctx.beginPath();
-                ctx.moveTo(punkt.x, 0); // Oben anfangen
-                ctx.lineTo(punkt.x, canvas.height); // Bis unten durchziehen
+                ctx.moveTo(punkt.x, 0); 
+                ctx.lineTo(punkt.x, canvas.height); 
                 ctx.stroke();
             });
 
             // Täler zeichnen (Hellblaue Linien)
-            ctx.strokeStyle = 'rgba(0, 191, 255, 0.7)'; // Cyan
+            ctx.strokeStyle = 'rgba(0, 191, 255, 0.8)';
             tiefeTaeler.forEach(punkt => {
                 ctx.beginPath();
                 ctx.moveTo(punkt.x, 0);
@@ -153,9 +153,9 @@
             });
 
             // D. Höhen in Frequenzen umwandeln und abspielen
-            allePunkte.forEach(hoehe => {
+            allePunkte.forEach(punkt => {
                 // Welcher Tonleiter-Index passt zur Höhe?
-                const index = Math.floor((hoehe / 100) * (tonleiter.length - 1));
+                const index = Math.floor((punkt.hoehe / 100) * (tonleiter.length - 1));
                 const freq = tonleiter[index];
 
                 const oscillator = audioCtx.createOscillator();
@@ -177,8 +177,7 @@
             });
 
         } catch (error) {
-            console.error("HILFE, ein Fehler beim Laden:", error);
-            // Diese kleine Box poppt auf, falls die Datei auf GitHub nicht gefunden wird!
+            console.error("Fehler beim Laden:", error);
             alert("Fehler: " + error.message); 
         }
     }
