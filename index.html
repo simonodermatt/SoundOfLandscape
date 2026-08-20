@@ -33,11 +33,12 @@
     let audioCtx;
     const tonleiter = [130.81, 146.83, 164.81, 185.00, 196.00, 220.00, 246.94, 261.63, 293.66, 329.63, 369.99, 392.00, 440.00, 493.88, 523.25];
 
-    // 3. Hilfsfunktion: Gipfel in der Kurve finden
+// 3. Hilfsfunktion: Gipfel in der Kurve finden
     function findeGipfel(kurve, anzahlPeaks) {
         let gefundenePeaks = [];
         for (let i = 1; i < kurve.length - 1; i++) {
-            if (kurve[i] > kurve[i - 1] && kurve[i] > kurve[i + 1]) {
+            // HIER IST DIE ÄNDERUNG: >= statt > beim ersten Vergleich
+            if (kurve[i] >= kurve[i - 1] && kurve[i] > kurve[i + 1]) {
                 gefundenePeaks.push(kurve[i]);
             }
         }
