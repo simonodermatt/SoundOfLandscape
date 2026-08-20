@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Panorama Synthesizer</title>
+    <!-- 1. Leaflet CSS (WICHTIG für die Anzeige der Karte) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        body { font-family: sans-serif; margin: 0; padding: 0; }
+        /* Ohne diese Zeile bleibt die Karte unsichtbar! */
+        #map { height: 100vh; width: 100vw; }
+        .popup-content { text-align: center; }
+        button { margin-top: 10px; padding: 8px 16px; cursor: pointer; background: #333; color: white; border: none; border-radius: 4px;}
+    </style>
+</head>
+<body>
+
+<!-- 2. Der Container, in den Leaflet die Karte zeichnet -->
+<div id="map"></div>
+
+<!-- 3. Leaflet JavaScript -->
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<!-- 4. Unser Synthesizer-Code -->
+<script>
+    // Karte zentrieren (Schweiz)
+    const map = L.map('map').setView([46.8182, 8.2275], 8);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    let audioCtx;
+    const tonleiter = [130.81, 146.83, 164.81, 185.00, 196.00, 220.00, 246.94, 261.63, 293.66, 329.63, 369.99, 392.00, 440.00, 493.88, 523.25];
+
+    function findeGipfel(kurve, anzahlPeaks) {
+        let gefundenePeaks = [];
+        for (let i = 1; i < kurve.length - 1; i++) {
+            if (kurve[i] > kurve[i - 1] && kurve[i] > kurve[i + 1]) {
+                gefundenePeaks.push(kurve[i]);
+            }
+        }
+        gefundenePeaks.sort((a, b) => b - a);
+        return gefundenePeaks.slice(0, anzahlPeaks);
+    }
+
+    // ACHTUNG: Hier muss der exakte Name deiner JSON-Datei stehen!
+    const jsonDateiname = 'daten/mein_berg_array.json'; 
+    const marker = L.marker([46.5595, 7.9666]).addTo(map);
+    
+    marker.bindPopup(`
+        <div class="popup-content">
+            <h3>Berg Panorama</h3>
+            <button onclick="playPanorama('${jsonDateiname}')">🎵 Echtzeit-Akkord abspielen</button>
+        </div>
+    `);
+
+    async function playPanorama(dateiPfad) {
+        if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+
+        try {
+            console.log("Versuche Datei zu laden:", dateiPfad);
+            const response = await fetch(dateiPfad);
+            if (!response.ok) {
+                throw new Error(`HTTP Fehler! Status: ${response.status}`);
+            }
+            const daten = await response.json();
+            const kurve = daten.kurve_y;
+
+            const topGipfel = findeGipfel(kurve, 4);
+
+            topGipfel.forEach(hoehe => {
+                const index = Math.floor((hoehe / 100) * (tonleiter.length - 1));
+                const freq = tonleiter[index];
+
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+
+                oscillator.type = 'triangle';
+                oscillator.frequency.value = freq;
+
+                gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 1.5); 
+                gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 4.5);   
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 5);
+            });
+
+        } catch (error) {
+            console.error("Fehler beim Laden der JSON-Datei:", error);
+            alert("Fehler beim Laden! Hast du den lokalen Server gestartet und stimmt der Dateipfad?");
+        }
+    }
+</script>
+
+</body>
+</html>
