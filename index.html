@@ -5,10 +5,12 @@
     <title>Panorama Synthesizer Karte</title>
     <!-- CSS für die Karte -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-    <style>
+<style>
         body { font-family: sans-serif; margin: 0; padding: 0; }
         #map { height: 100vh; width: 100vw; }
         .popup-content { text-align: center; }
+        /* NEU: Damit das Bild schön in die Sprechblase passt */
+        .popup-img { width: 100%; max-width: 300px; border-radius: 4px; margin-bottom: 10px; }
         button { margin-top: 10px; padding: 8px 16px; cursor: pointer; background: #333; color: white; border: none; border-radius: 4px;}
         button:hover { background: #555; }
     </style>
@@ -46,16 +48,24 @@
         return gefundenePeaks.slice(0, anzahlPeaks);
     }
 
-    // 4. Marker auf die Karte setzen
+// 4. Marker auf die Karte setzen
     const marker = L.marker([46.5595, 7.9666]).addTo(map);
     
-    // Popup mit genau deinem Button und Dateinamen
+    // Wir definieren die Dateinamen für JSON und Bild
+    const basisName = 'IMG_2828';
+    const jsonPfad = `daten/${basisName}_array.json`;
+    const bildPfad = `daten/${basisName}_linie.jpg`;
+
+    // Popup mit Bild und Button
     marker.bindPopup(`
         <div class="popup-content">
-            <h3>Panorama Sound</h3>
-            <button onclick="playPanorama('daten/IMG_2828_array.json')">🎵 Echtzeit-Akkord abspielen</button>
+            <h3>Panorama Kontur</h3>
+            <img src="${bildPfad}" alt="Bergsilhouette" class="popup-img" />
+            <br>
+            <button onclick="playPanorama('${jsonPfad}')">🎵 Akkord abspielen</button>
         </div>
-    `);
+    `, { maxWidth: 320 }); // Macht das Popup breit genug für das Bild
+    
 
     // 5. Die Synthesizer-Logik mit Anti-Blockier-Trick
     async function playPanorama(dateiPfad) {
