@@ -54,19 +54,27 @@
         </div>
     `);
 
-    async function playPanorama(dateiPfad) {
-        if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+async function playPanorama(dateiPfad) {
+        // 1. Synthesizer initialisieren (falls noch nicht passiert)
+        if (!audioCtx) { 
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)(); 
+        }
+        // 2. WICHTIG: Den Synthesizer explizit aufwecken!
+        if (audioCtx.state === 'suspended') {
+            await audioCtx.resume();
+        }
 
         try {
-            console.log("Versuche Datei zu laden:", dateiPfad);
+            console.log("Lade Daten von:", dateiPfad);
             const response = await fetch(dateiPfad);
             if (!response.ok) {
-                throw new Error(`HTTP Fehler! Status: ${response.status}`);
+                throw new Error(`Datei nicht gefunden! Status: ${response.status}`);
             }
             const daten = await response.json();
             const kurve = daten.kurve_y;
 
             const topGipfel = findeGipfel(kurve, 4);
+            console.log("Gefundene Gipfel:", topGipfel);
 
             topGipfel.forEach(hoehe => {
                 const index = Math.floor((hoehe / 100) * (tonleiter.length - 1));
