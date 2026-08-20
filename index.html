@@ -68,11 +68,16 @@
     const jsonPfad = `daten/${basisName}_array.json`;
     const bildPfad = `daten/${basisName}_linie.jpg`;
 
-// Popup mit Bild, ZWEI Slidern und Button
+// Popup mit Bild, Canvas-Overlay, Slidern und Button
     marker.bindPopup(`
         <div class="popup-content">
             <h3>Panorama Kontur</h3>
-            <img src="${bildPfad}" alt="Bergsilhouette" class="popup-img" />
+            
+            <!-- NEU: Container für Bild und die darüberliegende Zeichenfläche -->
+            <div style="position: relative; width: 100%; margin-bottom: 10px;">
+                <img src="${bildPfad}" alt="Bergsilhouette" class="popup-img" style="width: 100%; display: block;" />
+                <canvas id="punktOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></canvas>
+            </div>
             
             <div style="margin: 10px 0; text-align: left;">
                 <label style="font-size: 14px;">Gipfel (Melodie): <b id="peakWert">4</b></label><br>
@@ -111,16 +116,41 @@
             const daten = await response.json();
             const kurve = daten.kurve_y;
 
-// C. Regler ablesen und beide Punktarten berechnen
+/ C. Regler ablesen und beide Punktarten berechnen
             const anzahlGipfel = parseInt(document.getElementById('peakSlider').value);
             const anzahlTaeler = parseInt(document.getElementById('talSlider').value);
             
             const topGipfel = findeGipfel(kurve, anzahlGipfel);
             const tiefeTaeler = findeTaeler(kurve, anzahlTaeler);
-            
-            // Beide Arrays (Gipfel und Täler) zu einer gemeinsamen Liste zusammenfügen
             const allePunkte = topGipfel.concat(tiefeTaeler);
-            console.log("Alle zu spielenden Höhen:", allePunkte);
+
+            // --- NEU: DIE GRAFISCHE DARSTELLUNG ---
+            const canvas = document.getElementById('punktOverlay');
+            const ctx = canvas.getContext('2d');
+            // Die interne Auflösung des Canvas exakt auf dein Bild anpassen
+            canvas.width = daten.bild_breite; 
+            canvas.height = daten.bild_hoehe;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Alte Striche löschen
+
+            // Gipfel zeichnen (Gelbe Linien)
+            ctx.strokeStyle = 'rgba(255, 215, 0, 0.7)'; // Goldgelb, leicht transparent
+            ctx.lineWidth = 4;
+            topGipfel.forEach(punkt => {
+                ctx.beginPath();
+                ctx.moveTo(punkt.x, 0); // Oben anfangen
+                ctx.lineTo(punkt.x, canvas.height); // Bis unten durchziehen
+                ctx.stroke();
+            });
+
+            // Täler zeichnen (Hellblaue Linien)
+            ctx.strokeStyle = 'rgba(0, 191, 255, 0.7)'; // Cyan
+            tiefeTaeler.forEach(punkt => {
+                ctx.beginPath();
+                ctx.moveTo(punkt.x, 0);
+                ctx.lineTo(punkt.x, canvas.height);
+                ctx.stroke();
+            });
 
             // D. Höhen in Frequenzen umwandeln und abspielen
             allePunkte.forEach(hoehe => {
