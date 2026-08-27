@@ -3,45 +3,150 @@
 <head>
     <meta charset="UTF-8">
     <title>Panorama Synthesizer Karte</title>
+    
+    <!-- Das maßgeschneiderte Vektor-Favicon (Gipfel & Tal auf dunklem Grund) -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%232c3e50'/><path d='M15,75 L35,30 L55,55 L75,20 L85,60' fill='none' stroke='%23FFD700' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/><circle cx='55' cy='55' r='8' fill='%2300BFFF'/></svg>">
+
     <!-- CSS für die Karte -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
         body { font-family: sans-serif; margin: 0; padding: 0; }
-        #map { height: 100vh; width: 100vw; }
+        #map { height: 100vh; width: 100vw; position: relative; }
+        
+        #ui-menu {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 12px 15px;
+            border-radius: 6px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            font-size: 14px;
+            border: 1px solid #ddd;
+        }
+        
+        #ui-menu select {
+            width: 100%;
+            padding: 6px;
+            margin-top: 4px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            font-size: 14px;
+        }
+        
+        #ui-menu select:last-child { margin-bottom: 0; }
+
         .popup-content { text-align: center; }
-        /* Damit das Bild schön in die Sprechblase passt */
         .popup-img { width: 100%; border-radius: 4px; display: block; }
-        /* Container für Bild und die Canvas-Zeichenfläche darüber */
         .bild-container { position: relative; width: 100%; margin-bottom: 10px; }
         #punktOverlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
-        button { margin-top: 10px; padding: 8px 16px; cursor: pointer; background: #333; color: white; border: none; border-radius: 4px;}
-        button:hover { background: #555; }
+        
+        button.play-btn { 
+            margin-top: 10px; padding: 10px 16px; cursor: pointer; 
+            background: #2c3e50; color: white; border: none; 
+            border-radius: 4px; font-weight: bold; width: 100%;
+        }
+        button.play-btn:hover { background: #1a252f; }
     </style>
 </head>
 <body>
 
-<!-- Der Bereich, in dem die Karte gezeichnet wird -->
+<div id="ui-menu">
+    <label id="lbl-lang">🗣️ Sprache / Language:</label>
+    <select id="langSelect" onchange="changeLanguage(this.value)">
+        <option value="de">Deutsch</option>
+        <option value="en">English</option>
+    </select>
+
+    <label id="lbl-view" for="kartenAnsicht"><b>🌍 Ausschnitt:</b></label>
+    <select id="kartenAnsicht" onchange="wechsleAnsicht(this.value)">
+        <option id="opt-ch" value="schweiz">Schweiz</option>
+        <option id="opt-eu" value="europa">Europa</option>
+        <option id="opt-world" value="welt">Welt</option>
+    </select>
+</div>
+
 <div id="map"></div>
 
-<!-- JavaScript für die Karte -->
+<!-- Lade zuerst Leaflet (die Karte) -->
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
+<!-- Lade unsere ausgelagerten Sprachen aus der lang.js -->
+<script src="lang.js"></script>
+
 <script>
-    // 1. Karte initialisieren
+    // 1. Globale Variablen
+    window.currentPeaks = 4;
+    window.currentValleys = 2;
+    let currentLang = 'de';
+
+    // 2. Karte initialisieren
     const map = L.map('map').setView([46.8182, 8.2275], 8);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap'
     }).addTo(map);
 
-    // 2. Audio Context und Tonleiter (Lydisch) vorbereiten
+    function wechsleAnsicht(ansicht) {
+        if (ansicht === 'schweiz') map.flyTo([46.8182, 8.2275], 8);
+        else if (ansicht === 'europa') map.flyTo([51.0, 10.0], 4);
+        else if (ansicht === 'welt') map.flyTo([20.0, 0.0], 2);
+    }
+
+    // 3. Sprach-Steuerung
+    function changeLanguage(lang) {
+        currentLang = lang;
+        
+        document.getElementById('lbl-view').innerHTML = `<b>${text[lang].ausschnitt}</b>`;
+        document.getElementById('opt-ch').innerText = text[lang].schweiz;
+        document.getElementById('opt-eu').innerText = text[lang].europa;
+        document.getElementById('opt-world').innerText = text[lang].welt;
+        
+        marker.setPopupContent(getPopupHTML());
+    }
+
+    // 4. Pop-up dynamisch bauen
+    const basisName = 'IMG_2828';
+    const jsonPfad = `daten/${basisName}_array.json`;
+    const bildPfad = `daten/${basisName}_linie.jpg`;
+    
+    const marker = L.marker([46.5595, 7.9666]).addTo(map);
+
+    function getPopupHTML() {
+        return `
+            <div class="popup-content">
+                <h3 style="margin-top:0;">${text[currentLang].kontur}</h3>
+                
+                <div class="bild-container">
+                    <img src="${bildPfad}" alt="Bergsilhouette" class="popup-img" />
+                    <canvas id="punktOverlay"></canvas>
+                </div>
+                
+                <div style="margin: 10px 0; text-align: left;">
+                    <label style="font-size: 14px;">${text[currentLang].gipfel} <b id="peakWert">${window.currentPeaks}</b></label><br>
+                    <input type="range" id="peakSlider" min="0" max="10" value="${window.currentPeaks}" style="width: 100%;" 
+                           oninput="document.getElementById('peakWert').innerText = this.value; window.currentPeaks = this.value;">
+                    
+                    <label style="font-size: 14px; margin-top:5px; display:block;">${text[currentLang].taeler} <b id="talWert">${window.currentValleys}</b></label>
+                    <input type="range" id="talSlider" min="0" max="10" value="${window.currentValleys}" style="width: 100%;" 
+                           oninput="document.getElementById('talWert').innerText = this.value; window.currentValleys = this.value;">
+                </div>
+
+                <button class="play-btn" onclick="playPanorama('${jsonPfad}')">${text[currentLang].play}</button>
+            </div>
+        `;
+    }
+    
+    marker.bindPopup(getPopupHTML(), { maxWidth: 320 });
+
+    // 5. Synthesizer & Logik
     let audioCtx;
     const tonleiter = [130.81, 146.83, 164.81, 185.00, 196.00, 220.00, 246.94, 261.63, 293.66, 329.63, 369.99, 392.00, 440.00, 493.88, 523.25];
 
-    // 3. Hilfsfunktionen: Gipfel und Täler inkl. X-Koordinate finden
     function findeGipfel(kurve, anzahlPeaks) {
         let gefundenePeaks = [];
         for (let i = 1; i < kurve.length - 1; i++) {
-            // Plateau-tolerant für breite Bergkuppen
             if (kurve[i] >= kurve[i - 1] && kurve[i] > kurve[i + 1]) {
                 gefundenePeaks.push({ x: i, hoehe: kurve[i] }); 
             }
@@ -53,7 +158,6 @@
     function findeTaeler(kurve, anzahl) {
         let gefundeneTaeler = [];
         for (let i = 1; i < kurve.length - 1; i++) {
-            // Plateau-tolerant für breite Täler
             if (kurve[i] <= kurve[i - 1] && kurve[i] < kurve[i + 1]) {
                 gefundeneTaeler.push({ x: i, hoehe: kurve[i] });
             }
@@ -62,99 +166,50 @@
         return gefundeneTaeler.slice(0, anzahl);
     }
 
-    // 4. Marker auf die Karte setzen
-    const marker = L.marker([46.5595, 7.9666]).addTo(map);
-    
-    // Dateinamen definieren
-    const basisName = 'IMG_2828';
-    const jsonPfad = `daten/${basisName}_array.json`;
-    const bildPfad = `daten/${basisName}_linie.jpg`;
-
-    // Popup mit Bild, Canvas, Slidern und Button zusammenbauen
-    marker.bindPopup(`
-        <div class="popup-content">
-            <h3>Panorama Kontur</h3>
-            
-            <div class="bild-container">
-                <img src="${bildPfad}" alt="Bergsilhouette" class="popup-img" />
-                <canvas id="punktOverlay"></canvas>
-            </div>
-            
-            <div style="margin: 10px 0; text-align: left;">
-                <label style="font-size: 14px;">Gipfel (Melodie): <b id="peakWert">4</b></label><br>
-                <input type="range" id="peakSlider" min="0" max="10" value="4" style="width: 100%;" 
-                       oninput="document.getElementById('peakWert').innerText = this.value">
-                
-                <label style="font-size: 14px; margin-top:5px; display:block;">Täler (Bass): <b id="talWert">2</b></label>
-                <input type="range" id="talSlider" min="0" max="10" value="2" style="width: 100%;" 
-                       oninput="document.getElementById('talWert').innerText = this.value">
-            </div>
-
-            <button onclick="playPanorama('${jsonPfad}')">🎵 Akkord abspielen</button>
-        </div>
-    `, { maxWidth: 320 });
-
-    // 5. Die Hauptfunktion: Synthesizer und Grafik zeichnen
     async function playPanorama(dateiPfad) {
-        
-        // A. Synthesizer initialisieren und aufwecken
-        if (!audioCtx) { 
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)(); 
-        }
-        if (audioCtx.state === 'suspended') {
-            await audioCtx.resume();
-        }
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); 
+        if (audioCtx.state === 'suspended') await audioCtx.resume();
 
         try {
-            // B. Daten laden
             const response = await fetch(dateiPfad);
-            if (!response.ok) {
-                throw new Error(`Datei nicht gefunden! HTTP-Status: ${response.status}`);
-            }
+            if (!response.ok) throw new Error(`Datei nicht gefunden! HTTP-Status: ${response.status}`);
+            
             const daten = await response.json();
             const kurve = daten.kurve_y;
 
-            // C. Regler ablesen und beide Punktarten berechnen
-            const anzahlGipfel = parseInt(document.getElementById('peakSlider').value);
-            const anzahlTaeler = parseInt(document.getElementById('talSlider').value);
+            const anzahlGipfel = parseInt(window.currentPeaks);
+            const anzahlTaeler = parseInt(window.currentValleys);
             
             const topGipfel = findeGipfel(kurve, anzahlGipfel);
             const tiefeTaeler = findeTaeler(kurve, anzahlTaeler);
             const allePunkte = topGipfel.concat(tiefeTaeler);
 
-            // --- NEU: DIE GRAFISCHE DARSTELLUNG ---
             const canvas = document.getElementById('punktOverlay');
-            const ctx = canvas.getContext('2d');
-            
-            // Die interne Auflösung des Canvas exakt auf dein Original-Bild anpassen
-            canvas.width = daten.bild_breite; 
-            canvas.height = daten.bild_hoehe;
-            
-            // Alte Striche löschen
-            ctx.clearRect(0, 0, canvas.width, canvas.height); 
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                canvas.width = daten.bild_breite; 
+                canvas.height = daten.bild_hoehe;
+                ctx.clearRect(0, 0, canvas.width, canvas.height); 
 
-            // Gipfel zeichnen (Goldgelbe Linien)
-            ctx.strokeStyle = 'rgba(255, 215, 0, 0.8)';
-            ctx.lineWidth = 4;
-            topGipfel.forEach(punkt => {
-                ctx.beginPath();
-                ctx.moveTo(punkt.x, 0); 
-                ctx.lineTo(punkt.x, canvas.height); 
-                ctx.stroke();
-            });
+                ctx.strokeStyle = 'rgba(255, 215, 0, 0.8)';
+                ctx.lineWidth = 4;
+                topGipfel.forEach(punkt => {
+                    ctx.beginPath();
+                    ctx.moveTo(punkt.x, 0); 
+                    ctx.lineTo(punkt.x, canvas.height); 
+                    ctx.stroke();
+                });
 
-            // Täler zeichnen (Hellblaue Linien)
-            ctx.strokeStyle = 'rgba(0, 191, 255, 0.8)';
-            tiefeTaeler.forEach(punkt => {
-                ctx.beginPath();
-                ctx.moveTo(punkt.x, 0);
-                ctx.lineTo(punkt.x, canvas.height);
-                ctx.stroke();
-            });
+                ctx.strokeStyle = 'rgba(0, 191, 255, 0.8)';
+                tiefeTaeler.forEach(punkt => {
+                    ctx.beginPath();
+                    ctx.moveTo(punkt.x, 0);
+                    ctx.lineTo(punkt.x, canvas.height);
+                    ctx.stroke();
+                });
+            }
 
-            // D. Höhen in Frequenzen umwandeln und abspielen
             allePunkte.forEach(punkt => {
-                // Welcher Tonleiter-Index passt zur Höhe?
                 const index = Math.floor((punkt.hoehe / 100) * (tonleiter.length - 1));
                 const freq = tonleiter[index];
 
@@ -164,7 +219,6 @@
                 oscillator.type = 'triangle';
                 oscillator.frequency.value = freq;
 
-                // Sanftes Ein- und Ausblenden des Tons
                 gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
                 gainNode.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 1.5); 
                 gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 4.5);   
