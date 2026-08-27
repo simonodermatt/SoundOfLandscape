@@ -4,10 +4,8 @@
     <meta charset="UTF-8">
     <title>Panorama Synthesizer Karte</title>
     
-    <!-- Das maßgeschneiderte Vektor-Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%232c3e50'/><path d='M15,75 L35,30 L55,55 L75,20 L85,60' fill='none' stroke='%23FFD700' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/><circle cx='55' cy='55' r='8' fill='%2300BFFF'/></svg>">
 
-    <!-- CSS für die Karte -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
         body { font-family: sans-serif; margin: 0; padding: 0; }
@@ -87,15 +85,14 @@
 
 <div id="map"></div>
 
-<!-- Lade Leaflet & Sprachen -->
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="lang.js"></script>
 
 <script>
-    // Globale Parameter inklusive Mindestabstand
     window.currentPeaks = 4;
     window.currentValleys = 2;
     window.currentSpacing = 35;
+    window.currentMode = 'chord';
     window.currentScale = 'lydian';
     window.currentWave = 'triangle';
     window.currentVolume = 0.2;
@@ -157,6 +154,13 @@
                     <input type="range" id="spaceSlider" min="10" max="100" step="5" value="${window.currentSpacing}" 
                            oninput="document.getElementById('spaceWert').innerText = this.value; window.currentSpacing = parseInt(this.value);">
 
+                    <label>${text[currentLang].modus}</label>
+                    <select id="modeSelect" onchange="window.currentMode = this.value;">
+                        <option value="chord" ${window.currentMode === 'chord' ? 'selected' : ''}>${text[currentLang].mod_gleich}</option>
+                        <option value="lr" ${window.currentMode === 'lr' ? 'selected' : ''}>${text[currentLang].mod_lr}</option>
+                        <option value="rl" ${window.currentMode === 'rl' ? 'selected' : ''}>${text[currentLang].mod_rl}</option>
+                    </select>
+
                     <label>${text[currentLang].tonart}</label>
                     <select id="scaleSelect" onchange="window.currentScale = this.value;">
                         <option value="lydian" ${window.currentScale === 'lydian' ? 'selected' : ''}>Lydisch (Träumend)</option>
@@ -190,7 +194,6 @@
 
     let audioCtx;
 
-    // Gipfel-Suche mit dynamischem Abstand aus der GUI
     function findeGipfel(kurve, anzahlPeaks, mindestAbstand) {
         let gefundenePeaks = [];
         for (let i = 1; i < kurve.length - 1; i++) {
@@ -214,12 +217,9 @@
             }
             if (gefiltertePeaks.length >= anzahlPeaks) break;
         }
-
-        gefiltertePeaks.sort((a, b) => a.x - b.x);
         return gefiltertePeaks;
     }
 
-    // Tal-Suche mit dynamischem Abstand aus der GUI
     function findeTaeler(kurve, anzahl, mindestAbstand) {
         let gefundeneTaeler = [];
         for (let i = 1; i < kurve.length - 1; i++) {
@@ -243,8 +243,6 @@
             }
             if (gefilterteTaeler.length >= anzahl) break;
         }
-
-        gefilterteTaeler.sort((a, b) => a.x - b.x);
         return gefilterteTaeler;
     }
 
@@ -259,10 +257,10 @@
             const daten = await response.json();
             const kurve = daten.kurve_y;
 
-            // GUI-Werte auslesen (inklusive dem neuen Abstand)
             const anzahlGipfel = parseInt(window.currentPeaks);
             const anzahlTaeler = parseInt(window.currentValleys);
             const mindestAbstand = parseInt(window.currentSpacing);
+            const playMode = window.currentMode;
             const activeScaleName = window.currentScale;
             const waveType = window.currentWave;
             const maxVol = parseFloat(window.currentVolume);
@@ -272,7 +270,14 @@
 
             const topGipfel = findeGipfel(kurve, anzahlGipfel, mindestAbstand);
             const tiefeTaeler = findeTaeler(kurve, anzahlTaeler, mindestAbstand);
-            const allePunkte = topGipfel.concat(tiefeTaeler);
+            let allePunkte = topGipfel.concat(tiefeTaeler);
+
+            // WICHTIG: Sortierung je nach gewähltem Wiedergabe-Modus
+            if (playMode === 'lr') {
+                allePunkte.sort((a, b) => a.x - b.x); // Von links nach rechts
+            } else if (playMode === 'rl') {
+                allePunkte.sort((a, b) => b.x - a.x); // Von rechts nach links
+            }
 
             const canvas = document.getElementById('punktOverlay');
             if (canvas) {
@@ -299,7 +304,8 @@
                 });
             }
 
-            allePunkte.forEach(punkt => {
+            // Töne abspielen (mit zeitlichem Versatz im Sequencer-Modus)
+            allePunkte.forEach((punkt, indexPosition) => {
                 const index = Math.floor((punkt.hoehe / 100) * (aktuelleTonleiter.length - 1));
                 const freq = aktuelleTonleiter[index];
 
@@ -309,17 +315,21 @@
                 oscillator.type = waveType;
                 oscillator.frequency.value = freq;
 
-                const attackTime = 1.5;
+                // Wenn Modus "Akkord", starten alle gleichzeitig (0). 
+                // Wenn Modus "lr" oder "rl", startet jeder Ton nacheinander mit 0.25 Sekunden Abstand!
+                const startDelay = (playMode === 'chord') ? 0 : (indexPosition * 0.25);
 
-                gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-                gainNode.gain.linearRampToValueAtTime(maxVol, audioCtx.currentTime + attackTime); 
-                gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + totalDuration);   
+                const attackTime = 1.0;
+
+                gainNode.gain.setValueAtTime(0, audioCtx.currentTime + startDelay);
+                gainNode.gain.linearRampToValueAtTime(maxVol, audioCtx.currentTime + startDelay + attackTime); 
+                gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + startDelay + totalDuration);   
 
                 oscillator.connect(gainNode);
                 gainNode.connect(audioCtx.destination);
                 
-                oscillator.start();
-                oscillator.stop(audioCtx.currentTime + totalDuration + 0.1);
+                oscillator.start(audioCtx.currentTime + startDelay);
+                oscillator.stop(audioCtx.currentTime + startDelay + totalDuration + 0.1);
             });
 
         } catch (error) {
