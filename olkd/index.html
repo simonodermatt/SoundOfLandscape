@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <title>Panorama Synthesizer Karte</title>
+    
+    <!-- Das maßgeschneiderte Vektor-Favicon (Gipfel & Tal auf dunklem Grund) -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%232c3e50'/><path d='M15,75 L35,30 L55,55 L75,20 L85,60' fill='none' stroke='%23FFD700' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/><circle cx='55' cy='55' r='8' fill='%2300BFFF'/></svg>">
+
     <!-- CSS für die Karte -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
@@ -69,17 +73,16 @@
 <!-- Lade zuerst Leaflet (die Karte) -->
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
-<!-- NEU: Lade unsere ausgelagerten Sprachen! -->
+<!-- Lade unsere ausgelagerten Sprachen aus der lang.js -->
 <script src="lang.js"></script>
 
-<!-- Dein Haupt-Skript -->
 <script>
-    // 1. GLOBALE VARIABLEN (Der 'text' Block ist jetzt in lang.js!)
+    // 1. Globale Variablen
     window.currentPeaks = 4;
     window.currentValleys = 2;
     let currentLang = 'de';
 
-    // 2. KARTE INITIALISIEREN
+    // 2. Karte initialisieren
     const map = L.map('map').setView([46.8182, 8.2275], 8);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap'
@@ -91,7 +94,7 @@
         else if (ansicht === 'welt') map.flyTo([20.0, 0.0], 2);
     }
 
-    // 3. SPRACH-STEUERUNG
+    // 3. Sprach-Steuerung
     function changeLanguage(lang) {
         currentLang = lang;
         
@@ -103,7 +106,7 @@
         marker.setPopupContent(getPopupHTML());
     }
 
-    // 4. POP-UP DYNAMISCH BAUEN
+    // 4. Pop-up dynamisch bauen
     const basisName = 'IMG_2828';
     const jsonPfad = `daten/${basisName}_array.json`;
     const bildPfad = `daten/${basisName}_linie.jpg`;
@@ -137,7 +140,7 @@
     
     marker.bindPopup(getPopupHTML(), { maxWidth: 320 });
 
-    // 5. SYNTHESIZER & LOGIK
+    // 5. Synthesizer & Logik
     let audioCtx;
     const tonleiter = [130.81, 146.83, 164.81, 185.00, 196.00, 220.00, 246.94, 261.63, 293.66, 329.63, 369.99, 392.00, 440.00, 493.88, 523.25];
 
