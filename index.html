@@ -92,20 +92,20 @@
 <script src="lang.js"></script>
 
 <script>
-    // Globale Parameter inklusive Tonart
+    // Globale Parameter inklusive Mindestabstand
     window.currentPeaks = 4;
     window.currentValleys = 2;
+    window.currentSpacing = 35;
     window.currentScale = 'lydian';
     window.currentWave = 'triangle';
     window.currentVolume = 0.2;
     window.currentDuration = 5;
     let currentLang = 'de';
 
-    // Verschiedene Tonleitern (Frequenzen in Hz)
     const skalenBibliothek = {
-        lydian: [130.81, 146.83, 164.81, 185.00, 196.00, 220.00, 246.94, 261.63, 293.66, 329.63, 369.99, 392.00, 440.00, 493.88, 523.25], // Träumend / Schwebend
-        minor: [130.81, 146.83, 155.56, 174.61, 196.00, 207.65, 233.08, 261.63, 293.66, 311.13, 349.23, 392.00, 415.30, 466.16, 523.25], // Melancholisch / Düster
-        pentatonic: [130.81, 146.83, 164.81, 196.00, 220.00, 261.63, 293.66, 329.63, 392.00, 440.00, 523.25] // Harmonie pur / Asiatisch
+        lydian: [130.81, 146.83, 164.81, 185.00, 196.00, 220.00, 246.94, 261.63, 293.66, 329.63, 369.99, 392.00, 440.00, 493.88, 523.25],
+        minor: [130.81, 146.83, 155.56, 174.61, 196.00, 207.65, 233.08, 261.63, 293.66, 311.13, 349.23, 392.00, 415.30, 466.16, 523.25],
+        pentatonic: [130.81, 146.83, 164.81, 196.00, 220.00, 261.63, 293.66, 329.63, 392.00, 440.00, 523.25]
     };
 
     const map = L.map('map').setView([46.8182, 8.2275], 8);
@@ -153,6 +153,10 @@
                     <input type="range" id="talSlider" min="0" max="10" value="${window.currentValleys}" 
                            oninput="document.getElementById('talWert').innerText = this.value; window.currentValleys = this.value;">
 
+                    <label>${text[currentLang].abstand} <b id="spaceWert">${window.currentSpacing}</b>px</label>
+                    <input type="range" id="spaceSlider" min="10" max="100" step="5" value="${window.currentSpacing}" 
+                           oninput="document.getElementById('spaceWert').innerText = this.value; window.currentSpacing = parseInt(this.value);">
+
                     <label>${text[currentLang].tonart}</label>
                     <select id="scaleSelect" onchange="window.currentScale = this.value;">
                         <option value="lydian" ${window.currentScale === 'lydian' ? 'selected' : ''}>Lydisch (Träumend)</option>
@@ -186,7 +190,8 @@
 
     let audioCtx;
 
-    function findeGipfel(kurve, anzahlPeaks) {
+    // Gipfel-Suche mit dynamischem Abstand aus der GUI
+    function findeGipfel(kurve, anzahlPeaks, mindestAbstand) {
         let gefundenePeaks = [];
         for (let i = 1; i < kurve.length - 1; i++) {
             if (kurve[i] >= kurve[i - 1] && kurve[i] > kurve[i + 1]) {
@@ -194,10 +199,28 @@
             }
         }
         gefundenePeaks.sort((a, b) => b.hoehe - a.hoehe);
-        return gefundenePeaks.slice(0, anzahlPeaks);
+
+        let gefiltertePeaks = [];
+        for (let gipfel of gefundenePeaks) {
+            let zuNahe = false;
+            for (let bestaetigt of gefiltertePeaks) {
+                if (Math.abs(gipfel.x - bestaetigt.x) < mindestAbstand) {
+                    zuNahe = true;
+                    break;
+                }
+            }
+            if (!zuNahe) {
+                gefiltertePeaks.push(gipfel);
+            }
+            if (gefiltertePeaks.length >= anzahlPeaks) break;
+        }
+
+        gefiltertePeaks.sort((a, b) => a.x - b.x);
+        return gefiltertePeaks;
     }
 
-    function findeTaeler(kurve, anzahl) {
+    // Tal-Suche mit dynamischem Abstand aus der GUI
+    function findeTaeler(kurve, anzahl, mindestAbstand) {
         let gefundeneTaeler = [];
         for (let i = 1; i < kurve.length - 1; i++) {
             if (kurve[i] <= kurve[i - 1] && kurve[i] < kurve[i + 1]) {
@@ -205,7 +228,24 @@
             }
         }
         gefundeneTaeler.sort((a, b) => a.hoehe - b.hoehe);
-        return gefundeneTaeler.slice(0, anzahl);
+
+        let gefilterteTaeler = [];
+        for (let tal of gefundeneTaeler) {
+            let zuNahe = false;
+            for (let bestaetigt of gefilterteTaeler) {
+                if (Math.abs(tal.x - bestaetigt.x) < mindestAbstand) {
+                    zuNahe = true;
+                    break;
+                }
+            }
+            if (!zuNahe) {
+                gefilterteTaeler.push(tal);
+            }
+            if (gefilterteTaeler.length >= anzahl) break;
+        }
+
+        gefilterteTaeler.sort((a, b) => a.x - b.x);
+        return gefilterteTaeler;
     }
 
     async function playPanorama(dateiPfad) {
@@ -219,19 +259,19 @@
             const daten = await response.json();
             const kurve = daten.kurve_y;
 
-            // GUI-Werte auslesen
+            // GUI-Werte auslesen (inklusive dem neuen Abstand)
             const anzahlGipfel = parseInt(window.currentPeaks);
             const anzahlTaeler = parseInt(window.currentValleys);
+            const mindestAbstand = parseInt(window.currentSpacing);
             const activeScaleName = window.currentScale;
             const waveType = window.currentWave;
             const maxVol = parseFloat(window.currentVolume);
             const totalDuration = parseInt(window.currentDuration);
             
-            // Die aktuell gewählte Tonleiter laden
             const aktuelleTonleiter = skalenBibliothek[activeScaleName];
 
-            const topGipfel = findeGipfel(kurve, anzahlGipfel);
-            const tiefeTaeler = findeTaeler(kurve, anzahlTaeler);
+            const topGipfel = findeGipfel(kurve, anzahlGipfel, mindestAbstand);
+            const tiefeTaeler = findeTaeler(kurve, anzahlTaeler, mindestAbstand);
             const allePunkte = topGipfel.concat(tiefeTaeler);
 
             const canvas = document.getElementById('punktOverlay');
@@ -259,7 +299,6 @@
                 });
             }
 
-            // Töne basierend auf der gewählten Skala abspielen
             allePunkte.forEach(punkt => {
                 const index = Math.floor((punkt.hoehe / 100) * (aktuelleTonleiter.length - 1));
                 const freq = aktuelleTonleiter[index];
@@ -271,7 +310,6 @@
                 oscillator.frequency.value = freq;
 
                 const attackTime = 1.5;
-                const releaseTime = totalDuration - 0.5;
 
                 gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
                 gainNode.gain.linearRampToValueAtTime(maxVol, audioCtx.currentTime + attackTime); 
@@ -285,7 +323,7 @@
             });
 
         } catch (error) {
-            console.error("HILFE, ein Fehler beim Laden:", error);
+            console.error("Fehler beim Laden:", error);
             alert("Fehler: " + error.message); 
         }
     }
