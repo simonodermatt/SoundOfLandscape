@@ -13,7 +13,6 @@
         body { font-family: sans-serif; margin: 0; padding: 0; }
         #map { height: 100vh; width: 100vw; position: relative; }
         
-        /* Kompakteres Menü oben rechts */
         #ui-menu {
             position: absolute;
             top: 10px;
@@ -45,6 +44,19 @@
         .bild-container { position: relative; width: 100%; margin-bottom: 10px; }
         #punktOverlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
         
+        /* Kleinere Regler-Anpassungen fürs Pop-up */
+        .popup-content select, .popup-content input[type="range"] {
+            width: 100%;
+            margin-top: 2px;
+            margin-bottom: 6px;
+        }
+        .popup-content label {
+            display: block;
+            text-align: left;
+            font-size: 12px;
+            margin-top: 4px;
+        }
+
         button.play-btn { 
             margin-top: 10px; padding: 10px 16px; cursor: pointer; 
             background: #2c3e50; color: white; border: none; 
@@ -76,15 +88,17 @@
 
 <div id="map"></div>
 
-<!-- Lade Leaflet -->
+<!-- Lade Leaflet & Sprachen -->
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-
-<!-- Lade die Sprachen -->
 <script src="lang.js"></script>
 
 <script>
+    // Globale Parameter für die GUI
     window.currentPeaks = 4;
     window.currentValleys = 2;
+    window.currentWave = 'triangle';
+    window.currentVolume = 0.2;
+    window.currentDuration = 5;
     let currentLang = 'de';
 
     const map = L.map('map').setView([46.8182, 8.2275], 8);
@@ -116,21 +130,37 @@
     function getPopupHTML() {
         return `
             <div class="popup-content">
-                <h3 style="margin-top:0;">${text[currentLang].kontur}</h3>
+                <h3 style="margin-top:0; margin-bottom:8px;">${text[currentLang].kontur}</h3>
                 
                 <div class="bild-container">
                     <img src="${bildPfad}" alt="Bergsilhouette" class="popup-img" />
                     <canvas id="punktOverlay"></canvas>
                 </div>
                 
-                <div style="margin: 10px 0; text-align: left;">
-                    <label style="font-size: 14px;">${text[currentLang].gipfel} <b id="peakWert">${window.currentPeaks}</b></label><br>
-                    <input type="range" id="peakSlider" min="0" max="10" value="${window.currentPeaks}" style="width: 100%;" 
+                <div style="text-align: left;">
+                    <label>${text[currentLang].gipfel} <b id="peakWert">${window.currentPeaks}</b></label>
+                    <input type="range" id="peakSlider" min="0" max="10" value="${window.currentPeaks}" 
                            oninput="document.getElementById('peakWert').innerText = this.value; window.currentPeaks = this.value;">
                     
-                    <label style="font-size: 14px; margin-top:5px; display:block;">${text[currentLang].taeler} <b id="talWert">${window.currentValleys}</b></label>
-                    <input type="range" id="talSlider" min="0" max="10" value="${window.currentValleys}" style="width: 100%;" 
+                    <label>${text[currentLang].taeler} <b id="talWert">${window.currentValleys}</b></label>
+                    <input type="range" id="talSlider" min="0" max="10" value="${window.currentValleys}" 
                            oninput="document.getElementById('talWert').innerText = this.value; window.currentValleys = this.value;">
+
+                    <label>${text[currentLang].wellenform}</label>
+                    <select id="waveSelect" onchange="window.currentWave = this.value;">
+                        <option value="triangle" ${window.currentWave === 'triangle' ? 'selected' : ''}>Triangle (Weich)</option>
+                        <option value="sine" ${window.currentWave === 'sine' ? 'selected' : ''}>Sine (Rein)</option>
+                        <option value="sawtooth" ${window.currentWave === 'sawtooth' ? 'selected' : ''}>Sawtooth (Scharf)</option>
+                        <option value="square" ${window.currentWave === 'square' ? 'selected' : ''}>Square (Retro)</option>
+                    </select>
+
+                    <label>${text[currentLang].lautstaerke} <b id="volWert">${Math.round(window.currentVolume * 100)}</b>%</label>
+                    <input type="range" id="volSlider" min="0.05" max="0.5" step="0.05" value="${window.currentVolume}" 
+                           oninput="document.getElementById('volWert').innerText = Math.round(this.value * 100); window.currentVolume = parseFloat(this.value);">
+
+                    <label>${text[currentLang].dauer} <b id="durWert">${window.currentDuration}</b>s</label>
+                    <input type="range" id="durSlider" min="2" max="10" value="${window.currentDuration}" 
+                           oninput="document.getElementById('durWert').innerText = this.value; window.currentDuration = parseInt(this.value);">
                 </div>
 
                 <button class="play-btn" onclick="playPanorama('${jsonPfad}')">${text[currentLang].play}</button>
@@ -138,7 +168,7 @@
         `;
     }
     
-    marker.bindPopup(getPopupHTML(), { maxWidth: 320 });
+    marker.bindPopup(getPopupHTML(), { maxWidth: 300 });
 
     let audioCtx;
     const tonleiter = [130.81, 146.83, 164.81, 185.00, 196.00, 220.00, 246.94, 261.63, 293.66, 329.63, 369.99, 392.00, 440.00, 493.88, 523.25];
@@ -176,8 +206,12 @@
             const daten = await response.json();
             const kurve = daten.kurve_y;
 
+            // GUI-Werte auslesen
             const anzahlGipfel = parseInt(window.currentPeaks);
             const anzahlTaeler = parseInt(window.currentValleys);
+            const waveType = window.currentWave;
+            const maxVol = parseFloat(window.currentVolume);
+            const totalDuration = parseInt(window.currentDuration);
             
             const topGipfel = findeGipfel(kurve, anzahlGipfel);
             const tiefeTaeler = findeTaeler(kurve, anzahlTaeler);
@@ -208,6 +242,7 @@
                 });
             }
 
+            // Synthesizer-Parameter dynamisch anwenden
             allePunkte.forEach(punkt => {
                 const index = Math.floor((punkt.hoehe / 100) * (tonleiter.length - 1));
                 const freq = tonleiter[index];
@@ -215,18 +250,22 @@
                 const oscillator = audioCtx.createOscillator();
                 const gainNode = audioCtx.createGain();
 
-                oscillator.type = 'triangle';
+                oscillator.type = waveType; // Nutzt die Wellenform aus der GUI
                 oscillator.frequency.value = freq;
 
+                // Dynamische Hüllkurve basierend auf der GUI-Dauer und Lautstärke
+                const attackTime = 1.5;
+                const releaseTime = totalDuration - 0.5;
+
                 gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-                gainNode.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 1.5); 
-                gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 4.5);   
+                gainNode.gain.linearRampToValueAtTime(maxVol, audioCtx.currentTime + attackTime); 
+                gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + totalDuration);   
 
                 oscillator.connect(gainNode);
                 gainNode.connect(audioCtx.destination);
                 
                 oscillator.start();
-                oscillator.stop(audioCtx.currentTime + 5);
+                oscillator.stop(audioCtx.currentTime + totalDuration + 0.1);
             });
 
         } catch (error) {

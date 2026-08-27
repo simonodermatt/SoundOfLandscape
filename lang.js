@@ -8,6 +8,9 @@ const text = {
         kontur: "Panorama Kontur",
         gipfel: "Gipfel (Melodie):",
         taeler: "Täler (Bass):",
+        wellenform: "Wellenform (Klang):",
+        lautstaerke: "Lautstärke:",
+        dauer: "Dauer (Sekunden):",
         play: "🎵 Akkord abspielen"
     },
     fr: {
@@ -18,6 +21,9 @@ const text = {
         kontur: "Contour du Panorama",
         gipfel: "Sommets (Médodie) :",
         taeler: "Vallées (Basses) :",
+        wellenform: "Forme d'onde :",
+        lautstaerke: "Volume :",
+        dauer: "Durée (secondes) :",
         play: "🎵 Jouer l'accord"
     },
     it: {
@@ -28,6 +34,9 @@ const text = {
         kontur: "Contorno Panoramico",
         gipfel: "Cime (Melodia):",
         taeler: "Valli (Bassi):",
+        wellenform: "Forma d'onda:",
+        lautstaerke: "Volume:",
+        dauer: "Durata (secondi):",
         play: "🎵 Suona accordo"
     },
     en: {
@@ -38,6 +47,9 @@ const text = {
         kontur: "Panorama Contour",
         gipfel: "Peaks (Melody):",
         taeler: "Valleys (Bass):",
+        wellenform: "Waveform (Timbre):",
+        lautstaerke: "Volume:",
+        dauer: "Duration (seconds):",
         play: "🎵 Play Chord"
     },
     uk: {
@@ -48,6 +60,9 @@ const text = {
         kontur: "Контур панорами",
         gipfel: "Вершини (Мелодія):",
         taeler: "Долини (Бас):",
+        wellenform: "Форма хвилі:",
+        lautstaerke: "Гучність:",
+        dauer: "Тривалість (сек):",
         play: "🎵 Зіграти акорд"
     },
     ru: {
@@ -58,6 +73,9 @@ const text = {
         kontur: "Контур панорамы",
         gipfel: "Пики (Мелодия):",
         taeler: "Долины (Бас):",
+        wellenform: "Форма волны:",
+        lautstaerke: "Громкость:",
+        dauer: "Длительность (сек):",
         play: "🎵 Сыграть аккорд"
     }
 };

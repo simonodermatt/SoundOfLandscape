@@ -3,36 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <title>Panorama Synthesizer Karte</title>
+    
+    <!-- Das maßgeschneiderte Vektor-Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%232c3e50'/><path d='M15,75 L35,30 L55,55 L75,20 L85,60' fill='none' stroke='%23FFD700' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/><circle cx='55' cy='55' r='8' fill='%2300BFFF'/></svg>">
+
     <!-- CSS für die Karte -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
         body { font-family: sans-serif; margin: 0; padding: 0; }
         #map { height: 100vh; width: 100vw; position: relative; }
         
+        /* Kompakteres Menü oben rechts */
         #ui-menu {
             position: absolute;
             top: 10px;
             right: 10px;
             z-index: 1000;
             background: rgba(255, 255, 255, 0.95);
-            padding: 12px 15px;
-            border-radius: 6px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-            font-size: 14px;
+            padding: 8px 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+            font-size: 13px;
             border: 1px solid #ddd;
         }
         
         #ui-menu select {
             width: 100%;
-            padding: 6px;
-            margin-top: 4px;
-            margin-bottom: 10px;
-            border-radius: 4px;
+            padding: 4px;
+            margin-top: 2px;
+            margin-bottom: 6px;
+            border-radius: 3px;
             border: 1px solid #ccc;
-            font-size: 14px;
+            font-size: 13px;
         }
         
         #ui-menu select:last-child { margin-bottom: 0; }
+        #ui-menu label { font-size: 12px; color: #555; }
 
         .popup-content { text-align: center; }
         .popup-img { width: 100%; border-radius: 4px; display: block; }
@@ -50,10 +56,14 @@
 <body>
 
 <div id="ui-menu">
-    <label id="lbl-lang">🗣️ Sprache / Language:</label>
+    <label for="langSelect">Sprache:</label>
     <select id="langSelect" onchange="changeLanguage(this.value)">
         <option value="de">Deutsch</option>
+        <option value="fr">Français</option>
+        <option value="it">Italiano</option>
         <option value="en">English</option>
+        <option value="uk">Українська</option>
+        <option value="ru">Русский</option>
     </select>
 
     <label id="lbl-view" for="kartenAnsicht"><b>🌍 Ausschnitt:</b></label>
@@ -66,20 +76,17 @@
 
 <div id="map"></div>
 
-<!-- Lade zuerst Leaflet (die Karte) -->
+<!-- Lade Leaflet -->
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
-<!-- NEU: Lade unsere ausgelagerten Sprachen! -->
+<!-- Lade die Sprachen -->
 <script src="lang.js"></script>
 
-<!-- Dein Haupt-Skript -->
 <script>
-    // 1. GLOBALE VARIABLEN (Der 'text' Block ist jetzt in lang.js!)
     window.currentPeaks = 4;
     window.currentValleys = 2;
     let currentLang = 'de';
 
-    // 2. KARTE INITIALISIEREN
     const map = L.map('map').setView([46.8182, 8.2275], 8);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap'
@@ -91,19 +98,15 @@
         else if (ansicht === 'welt') map.flyTo([20.0, 0.0], 2);
     }
 
-    // 3. SPRACH-STEUERUNG
     function changeLanguage(lang) {
         currentLang = lang;
-        
         document.getElementById('lbl-view').innerHTML = `<b>${text[lang].ausschnitt}</b>`;
         document.getElementById('opt-ch').innerText = text[lang].schweiz;
         document.getElementById('opt-eu').innerText = text[lang].europa;
         document.getElementById('opt-world').innerText = text[lang].welt;
-        
         marker.setPopupContent(getPopupHTML());
     }
 
-    // 4. POP-UP DYNAMISCH BAUEN
     const basisName = 'IMG_2828';
     const jsonPfad = `daten/${basisName}_array.json`;
     const bildPfad = `daten/${basisName}_linie.jpg`;
@@ -137,7 +140,6 @@
     
     marker.bindPopup(getPopupHTML(), { maxWidth: 320 });
 
-    // 5. SYNTHESIZER & LOGIK
     let audioCtx;
     const tonleiter = [130.81, 146.83, 164.81, 185.00, 196.00, 220.00, 246.94, 261.63, 293.66, 329.63, 369.99, 392.00, 440.00, 493.88, 523.25];
 
