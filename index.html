@@ -285,8 +285,11 @@
         for (let i = 5; i < kurve.length - 5; i++) {
             let val = kurve[i];
             
-            // LOGIK REPARIERT: Bei mathematischen Arrays ist ein höherer Wert ein Gipfel!
-            let isPeak = typ === 'gipfel' ? val > kurve[i-1] && val > kurve[i+1] : val < kurve[i-1] && val < kurve[i+1];
+            // DER FIX: >= und <= auf der linken Seite! 
+            // So werden auch flache Bergkuppen und breite Täler (Plateaus) erkannt.
+            let isPeak = typ === 'gipfel' 
+                ? (val >= kurve[i-1] && val > kurve[i+1]) 
+                : (val <= kurve[i-1] && val < kurve[i+1]);
             
             if (isPeak) {
                 let umgebung = kurve.slice(Math.max(0, i-5), Math.min(kurve.length, i+6));
@@ -295,6 +298,19 @@
                 if (diff >= sens) kandidaten.push({ x: i, hoehe: val, diff: diff });
             }
         }
+        
+        // Sortieren: Höchste Werte für Gipfel, tiefste für Täler
+        kandidaten.sort((a, b) => typ === 'gipfel' ? b.hoehe - a.hoehe : a.hoehe - b.hoehe);
+
+        let gefiltert = [];
+        for (let k of kandidaten) {
+            if (!gefiltert.some(g => Math.abs(k.x - g.x) < abstand)) {
+                gefiltert.push(k);
+                if (gefiltert.length >= anzahl) break;
+            }
+        }
+        return gefiltert;
+    }
         
         // Höchster Berg (größte Höhe) zuerst
         kandidaten.sort((a, b) => typ === 'gipfel' ? b.hoehe - a.hoehe : a.hoehe - b.hoehe);
