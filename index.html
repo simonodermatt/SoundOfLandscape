@@ -136,6 +136,7 @@
                 marker.bindPopup(() => getPopupHTML(pano), { maxWidth: 320 });
                 markerClusterGroup.addLayer(marker);
 
+                // Startwerte sicher parsen
                 window.activeSynth[pano.id] = {
                     peaks: parseInt(pano.peaks) || 4,
                     valleys: parseInt(pano.valleys) || 2,
@@ -147,7 +148,7 @@
                     range: parseInt(pano.range) || 100,
                     wave: pano.wave || 'triangle',
                     volume: parseFloat(pano.volume) || 0.2,
-                    duration: parseInt(pano.duration) || 5, // WICHTIG: duration (nicht dauer)
+                    duration: parseInt(pano.duration) || 5,
                     attack: parseFloat(pano.attack) || 1.0,
                     release: parseFloat(pano.release) || 2.0,
                     echo: parseFloat(pano.echo) || 0.3
@@ -256,7 +257,8 @@
     function generateScale(scaleName, octaves) {
         let baseFreq = 130.81; // C3
         let freqs = [baseFreq];
-        let intervals = scales[scaleName];
+        // Sicherheits-Fallback, falls scaleName in der Tabelle falsch geschrieben wurde
+        let intervals = scales[scaleName] || scales['lydian'];
         for (let o = 0; o < octaves; o++) {
             for (let i = 0; i < intervals.length; i++) {
                 baseFreq = baseFreq * Math.pow(2, intervals[i] / 12);
@@ -273,7 +275,7 @@
             let isPeak = typ === 'gipfel' ? val > kurve[i-1] && val > kurve[i+1] : val < kurve[i-1] && val < kurve[i+1];
             
             if (isPeak) {
-                let umgebung = kurve.slice(i-5, i+6);
+                let umgebung = kurve.slice(Math.max(0, i-5), Math.min(kurve.length, i+6));
                 let diff = typ === 'gipfel' ? val - Math.min(...umgebung) : Math.max(...umgebung) - val;
                 if (diff >= sens) kandidaten.push({ x: i, hoehe: val, diff: diff });
             }
@@ -333,6 +335,8 @@
             feedbackGain.connect(delayNode);
             delayNode.connect(audioCtx.destination);
 
+            console.log(`Spiele ${allePunkte.length} Punkte ab.`);
+
             allePunkte.forEach((punkt, indexPos) => {
                 let yProzent = (punkt.hoehe / 100) * (s.range / 100);
                 const freqIndex = Math.floor(yProzent * (tonleiter.length - 1));
@@ -355,17 +359,19 @@
                 const hold = Math.max(0.1, s.duration); 
                 const rTime = Math.max(0.1, s.release);
                 
+                const now = audioCtx.currentTime;
                 const startDelay = (s.mode === 'chord') ? 0 : (indexPos * 0.25);
-                const t0 = audioCtx.currentTime + startDelay;
+                const t0 = now + startDelay + 0.05; // 50ms Sicherheitspuffer
                 const t1 = t0 + aTime;
                 const t2 = t1 + hold;
                 const t3 = t2 + rTime;
 
-                gain.gain.cancelScheduledValues(audioCtx.currentTime);
-                gain.gain.setValueAtTime(0.001, t0); 
+                // Sichere Envelope-Steuerung
+                gain.gain.setValueAtTime(0, now); // Initiale Stille
+                gain.gain.setValueAtTime(0, t0); 
                 gain.gain.linearRampToValueAtTime(s.volume, t1); 
-                gain.gain.linearRampToValueAtTime(s.volume, t2); 
-                gain.gain.linearRampToValueAtTime(0.001, t3);   
+                gain.gain.setValueAtTime(s.volume, t2); // Halten durch Setzen
+                gain.gain.linearRampToValueAtTime(0, t3);   
 
                 osc.connect(gain);
                 gain.connect(panner);
@@ -376,7 +382,10 @@
                 osc.stop(t3 + 0.1);
             });
 
-        } catch (e) { alert("Fehler: " + e.message); }
+        } catch (e) { 
+            console.error(e);
+            alert("Fehler: " + e.message); 
+        }
     }
 </script>
 
