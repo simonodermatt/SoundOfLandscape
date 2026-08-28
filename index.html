@@ -5,6 +5,7 @@
     <title>Panorama Synthesizer Karte</title>
     
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%232c3e50'/><path d='M15,75 L35,30 L55,55 L75,20 L85,60' fill='none' stroke='%23FFD700' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/><circle cx='55' cy='55' r='8' fill='%2300BFFF'/></svg>">
+    
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
@@ -18,10 +19,10 @@
             background: rgba(255, 255, 255, 0.95); padding: 8px 10px;
             border-radius: 5px; box-shadow: 0 2px 6px rgba(0,0,0,0.2); font-size: 13px;
         }
-        #ui-menu select { width: 100%; padding: 4px; margin-bottom: 6px; font-size: 13px; }
+        #ui-menu select { width: 100%; padding: 4px; margin-bottom: 6px; font-size: 13px; border: 1px solid #ccc; border-radius: 3px; }
         #ui-menu label { font-size: 12px; color: #555; }
 
-        .popup-content { text-align: center; max-height: 400px; overflow-y: auto; padding-right: 5px; }
+        .popup-content { text-align: center; max-height: 450px; overflow-y: auto; padding-right: 5px; }
         .popup-img { width: 100%; border-radius: 4px; display: block; }
         .bild-container { position: relative; width: 100%; margin-bottom: 10px; cursor: zoom-in; }
         .punktOverlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -39,6 +40,7 @@
         button.play-btn { 
             padding: 10px 16px; cursor: pointer; background: #2c3e50; 
             color: white; border: none; border-radius: 4px; font-weight: bold; width: 100%;
+            margin-top: 5px;
         }
         button.play-btn:hover { background: #1a252f; }
 
@@ -46,7 +48,7 @@
             display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
             background: rgba(0,0,0,0.9); z-index: 9999; justify-content: center; align-items: center; cursor: zoom-out;
         }
-        #lightbox img { max-width: 95vw; max-height: 95vh; border-radius: 8px; }
+        #lightbox img { max-width: 95vw; max-height: 95vh; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
     </style>
 </head>
 <body>
@@ -134,7 +136,6 @@
                 marker.bindPopup(() => getPopupHTML(pano), { maxWidth: 320 });
                 markerClusterGroup.addLayer(marker);
 
-                // Erweiterte Standardwerte einlesen
                 window.activeSynth[pano.id] = {
                     peaks: parseInt(pano.peaks) || 4,
                     valleys: parseInt(pano.valleys) || 2,
@@ -146,13 +147,13 @@
                     range: parseInt(pano.range) || 100,
                     wave: pano.wave || 'triangle',
                     volume: parseFloat(pano.volume) || 0.2,
-                    dauer: parseInt(pano.duration) || 5,
+                    duration: parseInt(pano.duration) || 5, // WICHTIG: duration (nicht dauer)
                     attack: parseFloat(pano.attack) || 1.0,
                     release: parseFloat(pano.release) || 2.0,
                     echo: parseFloat(pano.echo) || 0.3
                 };
             });
-        } catch (e) { console.error(e); }
+        } catch (e) { console.error("Ladefehler:", e); }
     }
 
     function parseCSV(textData) {
@@ -175,6 +176,7 @@
         return `
             <div class="popup-content">
                 <h3 style="margin-top:0; margin-bottom:4px;">${pano.titel}</h3>
+                <div style="font-size: 11px; color: #666; margin-bottom: 8px;">📅 ${pano.datum}</div>
                 
                 <div class="bild-container" onclick="openLightbox('${pano.bildUrl}')" title="${t.vergroessern}">
                     <img src="${pano.bildUrl}" class="popup-img" />
@@ -226,6 +228,9 @@
                         <option value="square" ${s.wave === 'square' ? 'selected' : ''}>Square (Retro)</option>
                     </select>
 
+                    <label>${t.dauer} <b>${s.duration}</b>s</label>
+                    <input type="range" min="1" max="15" value="${s.duration}" oninput="window.activeSynth['${pano.id}'].duration = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
+
                     <label>${t.attack} <b>${s.attack}</b>s</label>
                     <input type="range" min="0.1" max="5.0" step="0.1" value="${s.attack}" oninput="window.activeSynth['${pano.id}'].attack = parseFloat(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
                     
@@ -248,7 +253,6 @@
     ladePanoramenAusSheet();
     let audioCtx;
 
-    // Generiert Frequenzen über X Oktaven
     function generateScale(scaleName, octaves) {
         let baseFreq = 130.81; // C3
         let freqs = [baseFreq];
@@ -262,7 +266,6 @@
         return freqs;
     }
 
-    // Verbesserte Gipfelsuche mit Sensibilität (Prominence)
     function findePunkte(kurve, anzahl, abstand, sens, typ) {
         let kandidaten = [];
         for (let i = 5; i < kurve.length - 5; i++) {
@@ -270,14 +273,12 @@
             let isPeak = typ === 'gipfel' ? val > kurve[i-1] && val > kurve[i+1] : val < kurve[i-1] && val < kurve[i+1];
             
             if (isPeak) {
-                // Prüfen ob er sich genug von der Umgebung (5 Pixel links/rechts) abhebt
                 let umgebung = kurve.slice(i-5, i+6);
                 let diff = typ === 'gipfel' ? val - Math.min(...umgebung) : Math.max(...umgebung) - val;
                 if (diff >= sens) kandidaten.push({ x: i, hoehe: val, diff: diff });
             }
         }
         
-        // Sortieren: Gipfel nach Höhe absteigend, Täler aufsteigend
         kandidaten.sort((a, b) => typ === 'gipfel' ? b.hoehe - a.hoehe : a.hoehe - b.hoehe);
 
         let gefiltert = [];
@@ -296,6 +297,8 @@
 
         try {
             const res = await fetch(dateiPfad);
+            if (!res.ok) throw new Error(`Array-Datei nicht gefunden!`);
+            
             const daten = await res.json();
             const s = window.activeSynth[panoId];
             
@@ -321,51 +324,56 @@
                 tiefeTaeler.forEach(p => { ctx.beginPath(); ctx.moveTo(p.x, 0); ctx.lineTo(p.x, canvas.height); ctx.stroke(); });
             }
 
-            // Globaler Echo/Delay-Knoten für räumlichen Hall
             const delayNode = audioCtx.createDelay();
             delayNode.delayTime.value = 0.4;
             const feedbackGain = audioCtx.createGain();
-            feedbackGain.gain.value = s.echo; // Echo-Stärke
+            feedbackGain.gain.value = s.echo; 
             
             delayNode.connect(feedbackGain);
             feedbackGain.connect(delayNode);
             delayNode.connect(audioCtx.destination);
 
             allePunkte.forEach((punkt, indexPos) => {
-                // Y-Wert basierend auf Range skalieren
                 let yProzent = (punkt.hoehe / 100) * (s.range / 100);
                 const freqIndex = Math.floor(yProzent * (tonleiter.length - 1));
                 
                 const osc = audioCtx.createOscillator();
                 const gain = audioCtx.createGain();
-                const panner = audioCtx.createStereoPanner();
+                
+                let panner;
+                if (audioCtx.createStereoPanner) {
+                    panner = audioCtx.createStereoPanner();
+                    panner.pan.value = (punkt.x / daten.bild_breite) * 2 - 1;
+                } else {
+                    panner = audioCtx.createGain(); 
+                }
 
                 osc.type = s.wave;
                 osc.frequency.value = tonleiter[freqIndex] || tonleiter[0];
 
-                // Stereo Panning (-1 Links, +1 Rechts) basierend auf X-Koordinate
-                panner.pan.value = (punkt.x / daten.bild_breite) * 2 - 1;
+                const aTime = Math.max(0.1, s.attack);
+                const hold = Math.max(0.1, s.duration); 
+                const rTime = Math.max(0.1, s.release);
+                
+                const startDelay = (s.mode === 'chord') ? 0 : (indexPos * 0.25);
+                const t0 = audioCtx.currentTime + startDelay;
+                const t1 = t0 + aTime;
+                const t2 = t1 + hold;
+                const t3 = t2 + rTime;
 
-                const start = (s.mode === 'chord') ? 0 : (indexPos * 0.25);
-                const aTime = s.attack;
-                const rTime = s.release;
-                const hold = s.dauer;
+                gain.gain.cancelScheduledValues(audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.001, t0); 
+                gain.gain.linearRampToValueAtTime(s.volume, t1); 
+                gain.gain.linearRampToValueAtTime(s.volume, t2); 
+                gain.gain.linearRampToValueAtTime(0.001, t3);   
 
-                gain.gain.setValueAtTime(0, audioCtx.currentTime + start);
-                // Attack
-                gain.gain.linearRampToValueAtTime(s.volume, audioCtx.currentTime + start + aTime); 
-                // Hold & Release
-                gain.gain.setValueAtTime(s.volume, audioCtx.currentTime + start + aTime + hold);
-                gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + start + aTime + hold + rTime);   
-
-                // Routing: Oszillator -> Gain -> Panner -> (Ausgang + Delay)
                 osc.connect(gain);
                 gain.connect(panner);
                 panner.connect(audioCtx.destination);
                 panner.connect(delayNode);
                 
-                osc.start(audioCtx.currentTime + start);
-                osc.stop(audioCtx.currentTime + start + aTime + hold + rTime + 0.1);
+                osc.start(t0);
+                osc.stop(t3 + 0.1);
             });
 
         } catch (e) { alert("Fehler: " + e.message); }
