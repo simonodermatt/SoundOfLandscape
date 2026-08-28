@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>Panorama Synthesizer Karte</title>
     
+    <!-- Das maßgeschneiderte Vektor-Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%232c3e50'/><path d='M15,75 L35,30 L55,55 L75,20 L85,60' fill='none' stroke='%23FFD700' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/><circle cx='55' cy='55' r='8' fill='%2300BFFF'/></svg>">
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
@@ -40,7 +41,7 @@
         .popup-content { text-align: center; }
         .popup-img { width: 100%; border-radius: 4px; display: block; }
         .bild-container { position: relative; width: 100%; margin-bottom: 10px; }
-        #punktOverlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        .punktOverlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
         
         .popup-content select, .popup-content input[type="range"] {
             width: 100%;
@@ -50,8 +51,9 @@
         .popup-content label {
             display: block;
             text-align: left;
-            font-size: 12px;
+            font-size: 11px;
             margin-top: 4px;
+            color: #444;
         }
 
         button.play-btn { 
@@ -89,15 +91,11 @@
 <script src="lang.js"></script>
 
 <script>
-    window.currentPeaks = 4;
-    window.currentValleys = 2;
-    window.currentSpacing = 35;
-    window.currentMode = 'chord';
-    window.currentScale = 'lydian';
-    window.currentWave = 'triangle';
-    window.currentVolume = 0.2;
-    window.currentDuration = 5;
     let currentLang = 'de';
+    let panoramenDaten = [];
+
+    // Deine Google Sheet ID
+    const SHEET_ID = "10pxYaSMyt5uDRjCF0DWjGEabe_a3YftdpChxYzyQJBo"; 
 
     const skalenBibliothek = {
         lydian: [130.81, 146.83, 164.81, 185.00, 196.00, 220.00, 246.94, 261.63, 293.66, 329.63, 369.99, 392.00, 440.00, 493.88, 523.25],
@@ -122,75 +120,136 @@
         document.getElementById('opt-ch').innerText = text[lang].schweiz;
         document.getElementById('opt-eu').innerText = text[lang].europa;
         document.getElementById('opt-world').innerText = text[lang].welt;
-        marker.setPopupContent(getPopupHTML());
+        
+        map.eachLayer(layer => {
+            if (layer instanceof L.Marker && layer.panoId) {
+                const pano = panoramenDaten.find(p => p.id === layer.panoId);
+                if (pano) layer.setPopupContent(getPopupHTML(pano));
+            }
+        });
     }
 
-    const basisName = 'IMG_2828';
-    const jsonPfad = `daten/${basisName}_array.json`;
-    const bildPfad = `daten/${basisName}_linie.jpg`;
-    
-    const marker = L.marker([46.5595, 7.9666]).addTo(map);
+    async function ladePanoramenAusSheet() {
+        try {
+            const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Panoramen`;
+            const response = await fetch(url);
+            if (!response.ok) throw new Error("Google Sheet konnte nicht geladen werden.");
+            
+            const csvText = await response.text();
+            panoramenDaten = parseCSV(csvText);
 
-    function getPopupHTML() {
+            panoramenDaten.forEach(pano => {
+                // Trennt die kombinierte Spalte "position" (z.B. "46.5595,7.9666") auf
+                const coords = pano.position ? pano.position.split(',').map(c => parseFloat(c.trim())) : [46.8182, 8.2275];
+                
+                const marker = L.marker(coords).addTo(map);
+                marker.panoId = pano.id;
+                marker.bindPopup(() => getPopupHTML(pano), { maxWidth: 300 });
+
+                window.activeSynth[pano.id] = {
+                    peaks: parseInt(pano.peaks) || 4,
+                    valleys: parseInt(pano.valleys) || 2,
+                    spacing: parseInt(pano.spacing) || 35,
+                    mode: pano.mode || 'chord',
+                    scale: pano.scale || 'lydian',
+                    wave: pano.wave || 'triangle',
+                    volume: parseFloat(pano.volume) || 0.2,
+                    duration: parseInt(pano.duration) || 5
+                };
+            });
+        } catch (error) {
+            console.error("Fehler beim Laden des Google Sheets:", error);
+        }
+    }
+
+    function parseCSV(text) {
+        const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+        if (lines.length < 2) return [];
+        
+        const headers = lines[0].split(",").map(h => h.replace(/^["']|["']$/g, "").trim());
+        let result = [];
+
+        for (let i = 1; i < lines.length; i++) {
+            let currentline = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+            let obj = {};
+            headers.forEach((h, index) => {
+                let val = currentline[index] ? currentline[index].replace(/^["']|["']$/g, "").trim() : "";
+                obj[h] = val;
+            });
+            result.push(obj);
+        }
+        return result;
+    }
+
+    function getPopupHTML(pano) {
+        const s = window.activeSynth[pano.id] || pano;
         return `
             <div class="popup-content">
-                <h3 style="margin-top:0; margin-bottom:8px;">${text[currentLang].kontur}</h3>
+                <h3 style="margin-top:0; margin-bottom:4px;">${pano.titel}</h3>
+                <div style="font-size: 11px; color: #666; margin-bottom: 8px;">
+                    📅 ${pano.datum} | ID: ${pano.id}
+                </div>
                 
                 <div class="bild-container">
-                    <img src="${bildPfad}" alt="Bergsilhouette" class="popup-img" />
-                    <canvas id="punktOverlay"></canvas>
+                    <img src="${pano.bildUrl}" alt="${pano.titel}" class="popup-img" />
+                    <canvas id="canvas_${pano.id}" class="punktOverlay"></canvas>
+                </div>
+
+                <div style="font-size: 12px; font-style: italic; margin-bottom: 8px; text-align: left;">
+                    "${pano.kommentar}"
                 </div>
                 
                 <div style="text-align: left;">
-                    <label>${text[currentLang].gipfel} <b id="peakWert">${window.currentPeaks}</b></label>
-                    <input type="range" id="peakSlider" min="0" max="10" value="${window.currentPeaks}" 
-                           oninput="document.getElementById('peakWert').innerText = this.value; window.currentPeaks = this.value;">
+                    <label>${text[currentLang].gipfel} <b id="peak_${pano.id}">${s.peaks}</b></label>
+                    <input type="range" min="0" max="10" value="${s.peaks}" 
+                           oninput="document.getElementById('peak_${pano.id}').innerText = this.value; window.activeSynth['${pano.id}'].peaks = parseInt(this.value);">
                     
-                    <label>${text[currentLang].taeler} <b id="talWert">${window.currentValleys}</b></label>
-                    <input type="range" id="talSlider" min="0" max="10" value="${window.currentValleys}" 
-                           oninput="document.getElementById('talWert').innerText = this.value; window.currentValleys = this.value;">
+                    <label>${text[currentLang].taeler} <b id="tal_${pano.id}">${s.valleys}</b></label>
+                    <input type="range" min="0" max="10" value="${s.valleys}" 
+                           oninput="document.getElementById('tal_${pano.id}').innerText = this.value; window.activeSynth['${pano.id}'].valleys = parseInt(this.value);">
 
-                    <label>${text[currentLang].abstand} <b id="spaceWert">${window.currentSpacing}</b>px</label>
-                    <input type="range" id="spaceSlider" min="10" max="100" step="5" value="${window.currentSpacing}" 
-                           oninput="document.getElementById('spaceWert').innerText = this.value; window.currentSpacing = parseInt(this.value);">
+                    <label>${text[currentLang].abstand} <b id="space_${pano.id}">${s.spacing}</b>px</label>
+                    <input type="range" min="10" max="100" step="5" value="${s.spacing}" 
+                           oninput="document.getElementById('space_${pano.id}').innerText = this.value; window.activeSynth['${pano.id}'].spacing = parseInt(this.value);">
 
                     <label>${text[currentLang].modus}</label>
-                    <select id="modeSelect" onchange="window.currentMode = this.value;">
-                        <option value="chord" ${window.currentMode === 'chord' ? 'selected' : ''}>${text[currentLang].mod_gleich}</option>
-                        <option value="lr" ${window.currentMode === 'lr' ? 'selected' : ''}>${text[currentLang].mod_lr}</option>
-                        <option value="rl" ${window.currentMode === 'rl' ? 'selected' : ''}>${text[currentLang].mod_rl}</option>
+                    <select onchange="window.activeSynth['${pano.id}'].mode = this.value;">
+                        <option value="chord" ${s.mode === 'chord' ? 'selected' : ''}>${text[currentLang].mod_gleich}</option>
+                        <option value="lr" ${s.mode === 'lr' ? 'selected' : ''}>${text[currentLang].mod_lr}</option>
+                        <option value="rl" ${s.mode === 'rl' ? 'selected' : ''}>${text[currentLang].mod_rl}</option>
                     </select>
 
                     <label>${text[currentLang].tonart}</label>
-                    <select id="scaleSelect" onchange="window.currentScale = this.value;">
-                        <option value="lydian" ${window.currentScale === 'lydian' ? 'selected' : ''}>Lydisch (Träumend)</option>
-                        <option value="minor" ${window.currentScale === 'minor' ? 'selected' : ''}>Moll (Melancholisch)</option>
-                        <option value="pentatonic" ${window.currentScale === 'pentatonic' ? 'selected' : ''}>Pentatonik (Harmonisch)</option>
+                    <select onchange="window.activeSynth['${pano.id}'].scale = this.value;">
+                        <option value="lydian" ${s.scale === 'lydian' ? 'selected' : ''}>Lydisch (Träumend)</option>
+                        <option value="minor" ${s.scale === 'minor' ? 'selected' : ''}>Moll (Melancholisch)</option>
+                        <option value="pentatonic" ${s.scale === 'pentatonic' ? 'selected' : ''}>Pentatonik (Harmonisch)</option>
                     </select>
 
                     <label>${text[currentLang].wellenform}</label>
-                    <select id="waveSelect" onchange="window.currentWave = this.value;">
-                        <option value="triangle" ${window.currentWave === 'triangle' ? 'selected' : ''}>Triangle (Weich)</option>
-                        <option value="sine" ${window.currentWave === 'sine' ? 'selected' : ''}>Sine (Rein)</option>
-                        <option value="sawtooth" ${window.currentWave === 'sawtooth' ? 'selected' : ''}>Sawtooth (Scharf)</option>
-                        <option value="square" ${window.currentWave === 'square' ? 'selected' : ''}>Square (Retro)</option>
+                    <select onchange="window.activeSynth['${pano.id}'].wave = this.value;">
+                        <option value="triangle" ${s.wave === 'triangle' ? 'selected' : ''}>Triangle (Weich)</option>
+                        <option value="sine" ${s.wave === 'sine' ? 'selected' : ''}>Sine (Rein)</option>
+                        <option value="sawtooth" ${s.wave === 'sawtooth' ? 'selected' : ''}>Sawtooth (Scharf)</option>
+                        <option value="square" ${s.wave === 'square' ? 'selected' : ''}>Square (Retro)</option>
                     </select>
 
-                    <label>${text[currentLang].lautstaerke} <b id="volWert">${Math.round(window.currentVolume * 100)}</b>%</label>
-                    <input type="range" id="volSlider" min="0.05" max="0.5" step="0.05" value="${window.currentVolume}" 
-                           oninput="document.getElementById('volWert').innerText = Math.round(this.value * 100); window.currentVolume = parseFloat(this.value);">
+                    <label>${text[currentLang].lautstaerke} <b id="vol_${pano.id}">${Math.round(s.volume * 100)}</b>%</label>
+                    <input type="range" min="0.05" max="0.5" step="0.05" value="${s.volume}" 
+                           oninput="document.getElementById('vol_${pano.id}').innerText = Math.round(this.value * 100); window.activeSynth['${pano.id}'].volume = parseFloat(this.value);">
 
-                    <label>${text[currentLang].dauer} <b id="durWert">${window.currentDuration}</b>s</label>
-                    <input type="range" id="durSlider" min="2" max="10" value="${window.currentDuration}" 
-                           oninput="document.getElementById('durWert').innerText = this.value; window.currentDuration = parseInt(this.value);">
+                    <label>${text[currentLang].dauer} <b id="dur_${pano.id}">${s.duration}</b>s</label>
+                    <input type="range" min="2" max="10" value="${s.duration}" 
+                           oninput="document.getElementById('dur_${pano.id}').innerText = this.value; window.activeSynth['${pano.id}'].duration = parseInt(this.value);">
                 </div>
 
-                <button class="play-btn" onclick="playPanorama('${jsonPfad}')">${text[currentLang].play}</button>
+                <button class="play-btn" onclick="playPanorama('${pano.id}', '${pano.arrayUrl}')">${text[currentLang].play}</button>
             </div>
         `;
     }
-    
-    marker.bindPopup(getPopupHTML(), { maxWidth: 300 });
+
+    window.activeSynth = {};
+    ladePanoramenAusSheet();
 
     let audioCtx;
 
@@ -202,19 +261,13 @@
             }
         }
         gefundenePeaks.sort((a, b) => b.hoehe - a.hoehe);
-
         let gefiltertePeaks = [];
         for (let gipfel of gefundenePeaks) {
             let zuNahe = false;
             for (let bestaetigt of gefiltertePeaks) {
-                if (Math.abs(gipfel.x - bestaetigt.x) < mindestAbstand) {
-                    zuNahe = true;
-                    break;
-                }
+                if (Math.abs(gipfel.x - bestaetigt.x) < mindestAbstand) { zuNahe = true; break; }
             }
-            if (!zuNahe) {
-                gefiltertePeaks.push(gipfel);
-            }
+            if (!zuNahe) gefiltertePeaks.push(gipfel);
             if (gefiltertePeaks.length >= anzahlPeaks) break;
         }
         return gefiltertePeaks;
@@ -228,58 +281,39 @@
             }
         }
         gefundeneTaeler.sort((a, b) => a.hoehe - b.hoehe);
-
         let gefilterteTaeler = [];
         for (let tal of gefundeneTaeler) {
             let zuNahe = false;
             for (let bestaetigt of gefilterteTaeler) {
-                if (Math.abs(tal.x - bestaetigt.x) < mindestAbstand) {
-                    zuNahe = true;
-                    break;
-                }
+                if (Math.abs(tal.x - bestaetigt.x) < mindestAbstand) { zuNahe = true; break; }
             }
-            if (!zuNahe) {
-                gefilterteTaeler.push(tal);
-            }
+            if (!zuNahe) gefilterteTaeler.push(tal);
             if (gefilterteTaeler.length >= anzahl) break;
         }
         return gefilterteTaeler;
     }
 
-    async function playPanorama(dateiPfad) {
+    async function playPanorama(panoId, dateiPfad) {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); 
         if (audioCtx.state === 'suspended') await audioCtx.resume();
 
         try {
             const response = await fetch(dateiPfad);
-            if (!response.ok) throw new Error(`Datei nicht gefunden! HTTP-Status: ${response.status}`);
+            if (!response.ok) throw new Error(`Array-Datei nicht gefunden!`);
             
             const daten = await response.json();
             const kurve = daten.kurve_y;
-
-            const anzahlGipfel = parseInt(window.currentPeaks);
-            const anzahlTaeler = parseInt(window.currentValleys);
-            const mindestAbstand = parseInt(window.currentSpacing);
-            const playMode = window.currentMode;
-            const activeScaleName = window.currentScale;
-            const waveType = window.currentWave;
-            const maxVol = parseFloat(window.currentVolume);
-            const totalDuration = parseInt(window.currentDuration);
+            const s = window.activeSynth[panoId];
             
-            const aktuelleTonleiter = skalenBibliothek[activeScaleName];
-
-            const topGipfel = findeGipfel(kurve, anzahlGipfel, mindestAbstand);
-            const tiefeTaeler = findeTaeler(kurve, anzahlTaeler, mindestAbstand);
+            const aktuelleTonleiter = skalenBibliothek[s.scale];
+            const topGipfel = findeGipfel(kurve, s.peaks, s.spacing);
+            const tiefeTaeler = findeTaeler(kurve, s.valleys, s.spacing);
             let allePunkte = topGipfel.concat(tiefeTaeler);
 
-            // WICHTIG: Sortierung je nach gewähltem Wiedergabe-Modus
-            if (playMode === 'lr') {
-                allePunkte.sort((a, b) => a.x - b.x); // Von links nach rechts
-            } else if (playMode === 'rl') {
-                allePunkte.sort((a, b) => b.x - a.x); // Von rechts nach links
-            }
+            if (s.mode === 'lr') allePunkte.sort((a, b) => a.x - b.x);
+            else if (s.mode === 'rl') allePunkte.sort((a, b) => b.x - a.x);
 
-            const canvas = document.getElementById('punktOverlay');
+            const canvas = document.getElementById(`canvas_${panoId}`);
             if (canvas) {
                 const ctx = canvas.getContext('2d');
                 canvas.width = daten.bild_breite; 
@@ -289,22 +323,15 @@
                 ctx.strokeStyle = 'rgba(255, 215, 0, 0.8)';
                 ctx.lineWidth = 4;
                 topGipfel.forEach(punkt => {
-                    ctx.beginPath();
-                    ctx.moveTo(punkt.x, 0); 
-                    ctx.lineTo(punkt.x, canvas.height); 
-                    ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(punkt.x, 0); ctx.lineTo(punkt.x, canvas.height); ctx.stroke();
                 });
 
                 ctx.strokeStyle = 'rgba(0, 191, 255, 0.8)';
                 tiefeTaeler.forEach(punkt => {
-                    ctx.beginPath();
-                    ctx.moveTo(punkt.x, 0);
-                    ctx.lineTo(punkt.x, canvas.height);
-                    ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(punkt.x, 0); ctx.lineTo(punkt.x, canvas.height); ctx.stroke();
                 });
             }
 
-            // Töne abspielen (mit zeitlichem Versatz im Sequencer-Modus)
             allePunkte.forEach((punkt, indexPosition) => {
                 const index = Math.floor((punkt.hoehe / 100) * (aktuelleTonleiter.length - 1));
                 const freq = aktuelleTonleiter[index];
@@ -312,28 +339,25 @@
                 const oscillator = audioCtx.createOscillator();
                 const gainNode = audioCtx.createGain();
 
-                oscillator.type = waveType;
+                oscillator.type = s.wave;
                 oscillator.frequency.value = freq;
 
-                // Wenn Modus "Akkord", starten alle gleichzeitig (0). 
-                // Wenn Modus "lr" oder "rl", startet jeder Ton nacheinander mit 0.25 Sekunden Abstand!
-                const startDelay = (playMode === 'chord') ? 0 : (indexPosition * 0.25);
-
+                const startDelay = (s.mode === 'chord') ? 0 : (indexPosition * 0.25);
                 const attackTime = 1.0;
 
                 gainNode.gain.setValueAtTime(0, audioCtx.currentTime + startDelay);
-                gainNode.gain.linearRampToValueAtTime(maxVol, audioCtx.currentTime + startDelay + attackTime); 
-                gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + startDelay + totalDuration);   
+                gainNode.gain.linearRampToValueAtTime(s.volume, audioCtx.currentTime + startDelay + attackTime); 
+                gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + startDelay + s.duration);   
 
                 oscillator.connect(gainNode);
                 gainNode.connect(audioCtx.destination);
                 
                 oscillator.start(audioCtx.currentTime + startDelay);
-                oscillator.stop(audioCtx.currentTime + startDelay + totalDuration + 0.1);
+                oscillator.stop(audioCtx.currentTime + startDelay + s.duration + 0.1);
             });
 
         } catch (error) {
-            console.error("Fehler beim Laden:", error);
+            console.error("Fehler beim Abspielen:", error);
             alert("Fehler: " + error.message); 
         }
     }

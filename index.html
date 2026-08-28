@@ -4,10 +4,12 @@
     <meta charset="UTF-8">
     <title>Panorama Synthesizer Karte</title>
     
-    <!-- Das maßgeschneiderte Vektor-Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%232c3e50'/><path d='M15,75 L35,30 L55,55 L75,20 L85,60' fill='none' stroke='%23FFD700' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/><circle cx='55' cy='55' r='8' fill='%2300BFFF'/></svg>">
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
+    
     <style>
         body { font-family: sans-serif; margin: 0; padding: 0; }
         #map { height: 100vh; width: 100vw; position: relative; }
@@ -40,7 +42,8 @@
 
         .popup-content { text-align: center; }
         .popup-img { width: 100%; border-radius: 4px; display: block; }
-        .bild-container { position: relative; width: 100%; margin-bottom: 10px; }
+        
+        .bild-container { position: relative; width: 100%; margin-bottom: 10px; cursor: zoom-in; }
         .punktOverlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
         
         .popup-content select, .popup-content input[type="range"] {
@@ -62,12 +65,30 @@
             border-radius: 4px; font-weight: bold; width: 100%;
         }
         button.play-btn:hover { background: #1a252f; }
+
+        #lightbox {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.9);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            cursor: zoom-out;
+        }
+        #lightbox img {
+            max-width: 95vw;
+            max-height: 95vh;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
     </style>
 </head>
 <body>
 
 <div id="ui-menu">
-    <label for="langSelect">Sprache:</label>
+    <label id="lbl-sprache" for="langSelect">Sprache:</label>
     <select id="langSelect" onchange="changeLanguage(this.value)">
         <option value="de">Deutsch</option>
         <option value="fr">Français</option>
@@ -87,7 +108,12 @@
 
 <div id="map"></div>
 
+<div id="lightbox" onclick="this.style.display='none'">
+    <img id="lightbox-img" src="" alt="Vollbild Panorama">
+</div>
+
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
 <script src="lang.js"></script>
 
 <script>
@@ -108,6 +134,14 @@
         attribution: '© OpenStreetMap'
     }).addTo(map);
 
+    const markerClusterGroup = L.markerClusterGroup({
+        maxClusterRadius: 40,
+        spiderfyOnMaxZoom: true,
+        showCoverageOnHover: false,
+        zoomToBoundsOnClick: true
+    });
+    map.addLayer(markerClusterGroup);
+
     function wechsleAnsicht(ansicht) {
         if (ansicht === 'schweiz') map.flyTo([46.8182, 8.2275], 8);
         else if (ansicht === 'europa') map.flyTo([51.0, 10.0], 4);
@@ -116,17 +150,28 @@
 
     function changeLanguage(lang) {
         currentLang = lang;
+        
+        // Menü-Labels übersetzen
+        document.getElementById('lbl-sprache').innerText = text[lang].sprache;
         document.getElementById('lbl-view').innerHTML = `<b>${text[lang].ausschnitt}</b>`;
         document.getElementById('opt-ch').innerText = text[lang].schweiz;
         document.getElementById('opt-eu').innerText = text[lang].europa;
         document.getElementById('opt-world').innerText = text[lang].welt;
         
-        map.eachLayer(layer => {
-            if (layer instanceof L.Marker && layer.panoId) {
+        // Popups im Cluster aktualisieren
+        markerClusterGroup.eachLayer(layer => {
+            if (layer.panoId) {
                 const pano = panoramenDaten.find(p => p.id === layer.panoId);
-                if (pano) layer.setPopupContent(getPopupHTML(pano));
+                if (pano && layer.getPopup() && layer.isPopupOpen()) {
+                    layer.setPopupContent(getPopupHTML(pano));
+                }
             }
         });
+    }
+
+    function openLightbox(url) {
+        document.getElementById('lightbox-img').src = url;
+        document.getElementById('lightbox').style.display = 'flex';
     }
 
     async function ladePanoramenAusSheet() {
@@ -138,13 +183,17 @@
             const csvText = await response.text();
             panoramenDaten = parseCSV(csvText);
 
+            markerClusterGroup.clearLayers();
+
             panoramenDaten.forEach(pano => {
-                // Trennt die kombinierte Spalte "position" (z.B. "46.5595,7.9666") auf
                 const coords = pano.position ? pano.position.split(',').map(c => parseFloat(c.trim())) : [46.8182, 8.2275];
                 
-                const marker = L.marker(coords).addTo(map);
+                const marker = L.marker(coords);
                 marker.panoId = pano.id;
+                
                 marker.bindPopup(() => getPopupHTML(pano), { maxWidth: 300 });
+
+                markerClusterGroup.addLayer(marker);
 
                 window.activeSynth[pano.id] = {
                     peaks: parseInt(pano.peaks) || 4,
@@ -183,6 +232,7 @@
 
     function getPopupHTML(pano) {
         const s = window.activeSynth[pano.id] || pano;
+        // Tooltip (title) greift jetzt auf die Übersetzung zu!
         return `
             <div class="popup-content">
                 <h3 style="margin-top:0; margin-bottom:4px;">${pano.titel}</h3>
@@ -190,7 +240,7 @@
                     📅 ${pano.datum} | ID: ${pano.id}
                 </div>
                 
-                <div class="bild-container">
+                <div class="bild-container" onclick="openLightbox('${pano.bildUrl}')" title="${text[currentLang].vergroessern}">
                     <img src="${pano.bildUrl}" alt="${pano.titel}" class="popup-img" />
                     <canvas id="canvas_${pano.id}" class="punktOverlay"></canvas>
                 </div>

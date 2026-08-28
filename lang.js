@@ -1,6 +1,7 @@
 // lang.js - Übersetzungen für das Panorama-Projekt
 const text = {
     de: {
+        sprache: "Sprache:",
         ausschnitt: "🌍 Ausschnitt:",
         schweiz: "Schweiz",
         europa: "Europa",
@@ -17,9 +18,11 @@ const text = {
         wellenform: "Wellenform (Klang):",
         lautstaerke: "Lautstärke:",
         dauer: "Dauer (Sekunden):",
-        play: "🎵 Akkord abspielen"
+        play: "🎵 Akkord abspielen",
+        vergroessern: "Bild vergrößern"
     },
     fr: {
+        sprache: "Langue :",
         ausschnitt: "🌍 Vue :",
         schweiz: "Suisse",
         europa: "Europe",
@@ -36,9 +39,11 @@ const text = {
         wellenform: "Forme d'onde :",
         lautstaerke: "Volume :",
         dauer: "Durée (secondes) :",
-        play: "🎵 Jouer l'accord"
+        play: "🎵 Jouer l'accord",
+        vergroessern: "Agrandir l'image"
     },
     it: {
+        sprache: "Lingua:",
         ausschnitt: "🌍 Vista:",
         schweiz: "Svizzera",
         europa: "Europa",
@@ -55,9 +60,11 @@ const text = {
         wellenform: "Forma d'onda:",
         lautstaerke: "Volume:",
         dauer: "Durata (secondi):",
-        play: "🎵 Suona accordo"
+        play: "🎵 Suona accordo",
+        vergroessern: "Ingrandisci l'immagine"
     },
     en: {
+        sprache: "Language:",
         ausschnitt: "🌍 View:",
         schweiz: "Switzerland",
         europa: "Europe",
@@ -74,9 +81,11 @@ const text = {
         wellenform: "Waveform (Timbre):",
         lautstaerke: "Volume:",
         dauer: "Duration (seconds):",
-        play: "🎵 Play Chord"
+        play: "🎵 Play Chord",
+        vergroessern: "Enlarge image"
     },
     uk: {
+        sprache: "Мова:",
         ausschnitt: "🌍 Вигляд:",
         schweiz: "Швейцарія",
         europa: "Європа",
@@ -93,9 +102,11 @@ const text = {
         wellenform: "Форма хвилі:",
         lautstaerke: "Гучність:",
         dauer: "Тривалість (сек):",
-        play: "🎵 Зіграти акорд"
+        play: "🎵 Зіграти акорд",
+        vergroessern: "Збільшити зображення"
     },
     ru: {
+        sprache: "Язык:",
         ausschnitt: "🌍 Вид:",
         schweiz: "Швейцария",
         europa: "Европа",
@@ -112,6 +123,7 @@ const text = {
         wellenform: "Форма волны:",
         lautstaerke: "Громкость:",
         dauer: "Длительность (сек):",
-        play: "🎵 Сыграть аккорд"
+        play: "🎵 Сыграть аккорд",
+        vergroessern: "Увеличить изображение"
     }
 };
