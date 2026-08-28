@@ -6,10 +6,9 @@
     
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%232c3e50'/><path d='M15,75 L35,30 L55,55 L75,20 L85,60' fill='none' stroke='%23FFD700' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/><circle cx='55' cy='55' r='8' fill='%2300BFFF'/></svg>">
     
-    <!-- Zuverlässigere Server (CDN) für die Karte -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
     
     <style>
         body { font-family: sans-serif; margin: 0; padding: 0; background: #eee; }
@@ -56,10 +55,12 @@
 </head>
 <body>
 
-<!-- Der Fehler-Melder für weiße Bildschirme -->
+<!-- Meldet sofort, falls etwas im Hintergrund blockiert wird -->
 <script>
-    window.onerror = function(message, source, lineno, colno, error) {
-        alert("Achtung, Code-Fehler entdeckt!\nZeile: " + lineno + "\nFehler: " + message);
+    window.onerror = function(message, source, lineno) {
+        if (!message.includes("favicon")) {
+            alert("Achtung, Fehler!\nZeile: " + lineno + "\nProblem: " + message);
+        }
     };
 </script>
 
@@ -84,9 +85,8 @@
 <div id="map"></div>
 <div id="lightbox" onclick="this.style.display='none'"><img id="lightbox-img" src="" alt=""></div>
 
-<!-- Skripte -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
 <script src="lang.js"></script>
 
 <script>
@@ -114,6 +114,10 @@
 
     function changeLanguage(lang) {
         currentLang = lang;
+        if(typeof text === "undefined") {
+            alert("Achtung: Die Datei lang.js wurde nicht gefunden oder hat einen Fehler!");
+            return;
+        }
         document.getElementById('lbl-sprache').innerText = text[lang].sprache;
         document.getElementById('lbl-view').innerHTML = `<b>${text[lang].ausschnitt}</b>`;
         document.getElementById('opt-ch').innerText = text[lang].schweiz;
@@ -136,6 +140,8 @@
         try {
             const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Panoramen`;
             const res = await fetch(url);
+            if(!res.ok) throw new Error("Netzwerkfehler beim Laden des Google Sheets");
+            
             panoramenDaten = parseCSV(await res.text());
             markerClusterGroup.clearLayers();
 
@@ -164,7 +170,10 @@
                     echo: parseFloat(pano.echo) || 0.3
                 };
             });
-        } catch (e) { console.error("Ladefehler:", e); }
+        } catch (e) { 
+            console.error("Ladefehler:", e);
+            alert("Fehler beim Laden der Google Sheet Daten:\n" + e.message);
+        }
     }
 
     function parseCSV(textData) {
@@ -183,7 +192,11 @@
 
     function getPopupHTML(pano) {
         const s = window.activeSynth[pano.id];
-        const t = text[currentLang];
+        // Sicherheitscheck falls lang.js fehlt
+        const t = (typeof text !== 'undefined' && text[currentLang]) ? text[currentLang] : {
+            grp_struktur: "Struktur", grp_klang: "Klang", vergroessern: "Vergrößern", play: "Abspielen"
+        };
+        
         return `
             <div class="popup-content">
                 <h3 style="margin-top:0; margin-bottom:4px;">${pano.titel}</h3>
@@ -196,43 +209,43 @@
 
                 <div class="controls-container">
                     <div class="control-group">
-                        <h4>${t.grp_struktur}</h4>
-                        <label>${t.gipfel} <b>${s.peaks}</b></label>
+                        <h4>${t.grp_struktur || "Struktur"}</h4>
+                        <label>${t.gipfel || "Gipfel:"} <b>${s.peaks}</b></label>
                         <input type="range" min="0" max="12" value="${s.peaks}" oninput="window.activeSynth['${pano.id}'].peaks = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
                         
-                        <label>${t.taeler} <b>${s.valleys}</b></label>
+                        <label>${t.taeler || "Täler:"} <b>${s.valleys}</b></label>
                         <input type="range" min="0" max="12" value="${s.valleys}" oninput="window.activeSynth['${pano.id}'].valleys = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
                         
-                        <label>${t.abstand} <b>${s.spacing}</b>px</label>
+                        <label>${t.abstand || "Abstand:"} <b>${s.spacing}</b>px</label>
                         <input type="range" min="10" max="150" step="5" value="${s.spacing}" oninput="window.activeSynth['${pano.id}'].spacing = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
                         
-                        <label>${t.sensibilitaet} <b>${s.sensibilitaet}</b></label>
+                        <label>${t.sensibilitaet || "Sensibilität:"} <b>${s.sensibilitaet}</b></label>
                         <input type="range" min="0" max="20" value="${s.sensibilitaet}" oninput="window.activeSynth['${pano.id}'].sensibilitaet = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
                     
-                        <label>${t.modus}</label>
+                        <label>${t.modus || "Modus:"}</label>
                         <select onchange="window.activeSynth['${pano.id}'].mode = this.value;">
-                            <option value="chord" ${s.mode === 'chord' ? 'selected' : ''}>${t.mod_gleich}</option>
-                            <option value="lr" ${s.mode === 'lr' ? 'selected' : ''}>${t.mod_lr}</option>
-                            <option value="rl" ${s.mode === 'rl' ? 'selected' : ''}>${t.mod_rl}</option>
+                            <option value="chord" ${s.mode === 'chord' ? 'selected' : ''}>${t.mod_gleich || "Akkord"}</option>
+                            <option value="lr" ${s.mode === 'lr' ? 'selected' : ''}>${t.mod_lr || "Links->Rechts"}</option>
+                            <option value="rl" ${s.mode === 'rl' ? 'selected' : ''}>${t.mod_rl || "Rechts->Links"}</option>
                         </select>
                     </div>
 
                     <div class="control-group">
-                        <h4>${t.grp_klang}</h4>
-                        <label>${t.tonart}</label>
+                        <h4>${t.grp_klang || "Klang"}</h4>
+                        <label>${t.tonart || "Tonart:"}</label>
                         <select onchange="window.activeSynth['${pano.id}'].scale = this.value;">
                             <option value="lydian" ${s.scale === 'lydian' ? 'selected' : ''}>Lydisch (Träumend)</option>
                             <option value="minor" ${s.scale === 'minor' ? 'selected' : ''}>Moll (Melancholisch)</option>
                             <option value="pentatonic" ${s.scale === 'pentatonic' ? 'selected' : ''}>Pentatonik (Harmonisch)</option>
                         </select>
 
-                        <label>${t.oktaven} <b>${s.oktaven}</b></label>
+                        <label>${t.oktaven || "Oktaven:"} <b>${s.oktaven}</b></label>
                         <input type="range" min="1" max="6" value="${s.oktaven}" oninput="window.activeSynth['${pano.id}'].oktaven = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
                         
-                        <label>${t.range} <b>${s.range}</b>%</label>
+                        <label>${t.range || "Skalierung:"} <b>${s.range}</b>%</label>
                         <input type="range" min="20" max="100" step="10" value="${s.range}" oninput="window.activeSynth['${pano.id}'].range = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
 
-                        <label>${t.wellenform}</label>
+                        <label>${t.wellenform || "Wellenform:"}</label>
                         <select onchange="window.activeSynth['${pano.id}'].wave = this.value;">
                             <option value="triangle" ${s.wave === 'triangle' ? 'selected' : ''}>Triangle (Weich)</option>
                             <option value="sine" ${s.wave === 'sine' ? 'selected' : ''}>Sine (Rein)</option>
@@ -240,27 +253,27 @@
                             <option value="square" ${s.wave === 'square' ? 'selected' : ''}>Square (Retro)</option>
                         </select>
 
-                        <label>${t.dauer} <b>${s.duration}</b>s</label>
+                        <label>${t.dauer || "Dauer:"} <b>${s.duration}</b>s</label>
                         <input type="range" min="0.5" max="15" step="0.5" value="${s.duration}" oninput="window.activeSynth['${pano.id}'].duration = parseFloat(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
                     </div>
                     
                     <div class="control-group">
                         <h4>Raum / Envelope</h4>
-                        <label>${t.attack} <b>${s.attack}</b>s</label>
+                        <label>${t.attack || "Attack:"} <b>${s.attack}</b>s</label>
                         <input type="range" min="0.1" max="5.0" step="0.1" value="${s.attack}" oninput="window.activeSynth['${pano.id}'].attack = parseFloat(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
                         
-                        <label>${t.release} <b>${s.release}</b>s</label>
+                        <label>${t.release || "Release:"} <b>${s.release}</b>s</label>
                         <input type="range" min="0.1" max="8.0" step="0.1" value="${s.release}" oninput="window.activeSynth['${pano.id}'].release = parseFloat(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
                         
-                        <label>${t.echo} <b>${Math.round(s.echo*100)}</b>%</label>
+                        <label>${t.echo || "Echo:"} <b>${Math.round(s.echo*100)}</b>%</label>
                         <input type="range" min="0" max="0.8" step="0.05" value="${s.echo}" oninput="window.activeSynth['${pano.id}'].echo = parseFloat(this.value); this.previousElementSibling.querySelector('b').innerText = Math.round(this.value*100);">
 
-                        <label>${t.lautstaerke} <b>${Math.round(s.volume*100)}</b>%</label>
+                        <label>${t.lautstaerke || "Volume:"} <b>${Math.round(s.volume*100)}</b>%</label>
                         <input type="range" min="0.05" max="0.5" step="0.05" value="${s.volume}" oninput="window.activeSynth['${pano.id}'].volume = parseFloat(this.value); this.previousElementSibling.querySelector('b').innerText = Math.round(this.value*100);">
                     </div>
                 </div>
 
-                <button class="play-btn" onclick="playPanorama('${pano.id}', '${pano.arrayUrl}')">${t.play}</button>
+                <button class="play-btn" onclick="playPanorama('${pano.id}', '${pano.arrayUrl}')">${t.play || "Abspielen"}</button>
             </div>
         `;
     }
@@ -270,7 +283,7 @@
     let audioCtx;
 
     function generateScale(scaleName, octaves) {
-        let baseFreq = 130.81; // C3
+        let baseFreq = 130.81; 
         let freqs = [baseFreq];
         let intervals = scales[scaleName] || scales['lydian'];
         for (let o = 0; o < octaves; o++) {
@@ -416,4 +429,12 @@
                 osc.stop(t3 + 0.2);
             });
 
-        } catch (e) {
+        } catch (e) { 
+            console.error("Audio-Fehler:", e);
+            alert("Fehler bei der Audiowiedergabe: " + e.message); 
+        }
+    }
+</script>
+
+</body>
+</html>
