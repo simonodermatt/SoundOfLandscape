@@ -79,7 +79,7 @@
 <script src="lang.js"></script>
 
 <script>
-    let currentLang = 'de';
+  let currentLang = 'de';
     let panoramenDaten = [];
     const SHEET_ID = "10pxYaSMyt5uDRjCF0DWjGEabe_a3YftdpChxYzyQJBo"; 
 
@@ -140,14 +140,14 @@
                     peaks: parseInt(pano.peaks) || 4,
                     valleys: parseInt(pano.valleys) || 2,
                     spacing: parseInt(pano.spacing) || 35,
-                    sensibilitaet: parseInt(pano.sensibilitaet) || 2,
+                    sensibilitaet: parseInt(pano.sensibilitaet) || 0, // Standard auf 0, um immer Töne zu haben
                     mode: pano.mode || 'chord',
                     scale: pano.scale || 'lydian',
                     oktaven: parseInt(pano.oktaven) || 3,
                     range: parseInt(pano.range) || 100,
                     wave: pano.wave || 'triangle',
                     volume: parseFloat(pano.volume) || 0.2,
-                    duration: parseInt(pano.duration) || 5, // WICHTIG: duration (nicht dauer)
+                    duration: parseFloat(pano.duration) || 5.0,
                     attack: parseFloat(pano.attack) || 1.0,
                     release: parseFloat(pano.release) || 2.0,
                     echo: parseFloat(pano.echo) || 0.3
@@ -215,7 +215,7 @@
                     </select>
 
                     <label>${t.oktaven} <b>${s.oktaven}</b></label>
-                    <input type="range" min="2" max="6" value="${s.oktaven}" oninput="window.activeSynth['${pano.id}'].oktaven = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
+                    <input type="range" min="1" max="6" value="${s.oktaven}" oninput="window.activeSynth['${pano.id}'].oktaven = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
                     
                     <label>${t.range} <b>${s.range}</b>%</label>
                     <input type="range" min="20" max="100" step="10" value="${s.range}" oninput="window.activeSynth['${pano.id}'].range = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
@@ -229,7 +229,7 @@
                     </select>
 
                     <label>${t.dauer} <b>${s.duration}</b>s</label>
-                    <input type="range" min="1" max="15" value="${s.duration}" oninput="window.activeSynth['${pano.id}'].duration = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
+                    <input type="range" min="0.5" max="15" step="0.5" value="${s.duration}" oninput="window.activeSynth['${pano.id}'].duration = parseFloat(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
 
                     <label>${t.attack} <b>${s.attack}</b>s</label>
                     <input type="range" min="0.1" max="5.0" step="0.1" value="${s.attack}" oninput="window.activeSynth['${pano.id}'].attack = parseFloat(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
@@ -256,7 +256,7 @@
     function generateScale(scaleName, octaves) {
         let baseFreq = 130.81; // C3
         let freqs = [baseFreq];
-        let intervals = scales[scaleName];
+        let intervals = scales[scaleName] || scales['lydian'];
         for (let o = 0; o < octaves; o++) {
             for (let i = 0; i < intervals.length; i++) {
                 baseFreq = baseFreq * Math.pow(2, intervals[i] / 12);
@@ -267,19 +267,22 @@
     }
 
     function findePunkte(kurve, anzahl, abstand, sens, typ) {
+        if (anzahl <= 0) return [];
         let kandidaten = [];
         for (let i = 5; i < kurve.length - 5; i++) {
             let val = kurve[i];
-            let isPeak = typ === 'gipfel' ? val > kurve[i-1] && val > kurve[i+1] : val < kurve[i-1] && val < kurve[i+1];
+            let isPeak = typ === 'gipfel' ? val < kurve[i-1] && val < kurve[i+1] : val > kurve[i-1] && val > kurve[i+1];
             
             if (isPeak) {
-                let umgebung = kurve.slice(i-5, i+6);
-                let diff = typ === 'gipfel' ? val - Math.min(...umgebung) : Math.max(...umgebung) - val;
+                let umgebung = kurve.slice(Math.max(0, i-5), Math.min(kurve.length, i+6));
+                let diff = Math.abs(val - (typ === 'gipfel' ? Math.max(...umgebung) : Math.min(...umgebung)));
+                
                 if (diff >= sens) kandidaten.push({ x: i, hoehe: val, diff: diff });
             }
         }
         
-        kandidaten.sort((a, b) => typ === 'gipfel' ? b.hoehe - a.hoehe : a.hoehe - b.hoehe);
+        // Kleinster Y-Wert (höchster Berg) zuerst für Gipfel
+        kandidaten.sort((a, b) => typ === 'gipfel' ? a.hoehe - b.hoehe : b.hoehe - a.hoehe);
 
         let gefiltert = [];
         for (let k of kandidaten) {
@@ -292,20 +295,43 @@
     }
 
     async function playPanorama(panoId, dateiPfad) {
+        // AudioContext direkt bei Klick triggern
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); 
         if (audioCtx.state === 'suspended') await audioCtx.resume();
 
         try {
             const res = await fetch(dateiPfad);
             if (!res.ok) throw new Error(`Array-Datei nicht gefunden!`);
-            
             const daten = await res.json();
-            const s = window.activeSynth[panoId];
+            
+            // 1. Parameter kugelsicher auslesen (Vermeidet NaN Fehler)
+            const raw = window.activeSynth[panoId];
+            const s = {
+                peaks: parseInt(raw.peaks) || 0,
+                valleys: parseInt(raw.valleys) || 0,
+                spacing: parseInt(raw.spacing) || 35,
+                sensibilitaet: parseInt(raw.sensibilitaet) || 0,
+                mode: raw.mode || 'chord',
+                scale: raw.scale || 'lydian',
+                oktaven: parseInt(raw.oktaven) || 3,
+                range: parseInt(raw.range) || 100,
+                wave: raw.wave || 'triangle',
+                volume: parseFloat(raw.volume) || 0.2,
+                duration: parseFloat(raw.duration) || 5.0,
+                attack: parseFloat(raw.attack) || 1.0,
+                release: parseFloat(raw.release) || 2.0,
+                echo: parseFloat(raw.echo) || 0.3
+            };
             
             const tonleiter = generateScale(s.scale, s.oktaven);
             const topGipfel = findePunkte(daten.kurve_y, s.peaks, s.spacing, s.sensibilitaet, 'gipfel');
             const tiefeTaeler = findePunkte(daten.kurve_y, s.valleys, s.spacing, s.sensibilitaet, 'tal');
             let allePunkte = topGipfel.concat(tiefeTaeler);
+
+            if (allePunkte.length === 0) {
+                alert("Es wurden keine Gipfel oder Täler gefunden. Bitte die Sensibilität reduzieren!");
+                return;
+            }
 
             if (s.mode === 'lr') allePunkte.sort((a, b) => a.x - b.x);
             else if (s.mode === 'rl') allePunkte.sort((a, b) => b.x - a.x);
@@ -324,6 +350,7 @@
                 tiefeTaeler.forEach(p => { ctx.beginPath(); ctx.moveTo(p.x, 0); ctx.lineTo(p.x, canvas.height); ctx.stroke(); });
             }
 
+            // Globales Echo
             const delayNode = audioCtx.createDelay();
             delayNode.delayTime.value = 0.4;
             const feedbackGain = audioCtx.createGain();
@@ -332,6 +359,8 @@
             delayNode.connect(feedbackGain);
             feedbackGain.connect(delayNode);
             delayNode.connect(audioCtx.destination);
+
+            const now = audioCtx.currentTime;
 
             allePunkte.forEach((punkt, indexPos) => {
                 let yProzent = (punkt.hoehe / 100) * (s.range / 100);
@@ -349,23 +378,21 @@
                 }
 
                 osc.type = s.wave;
-                osc.frequency.value = tonleiter[freqIndex] || tonleiter[0];
+                // Fallback Frequenz, falls außerhalb des Arrays
+                osc.frequency.value = tonleiter[freqIndex] || 440;
 
-                const aTime = Math.max(0.1, s.attack);
-                const hold = Math.max(0.1, s.duration); 
-                const rTime = Math.max(0.1, s.release);
-                
                 const startDelay = (s.mode === 'chord') ? 0 : (indexPos * 0.25);
-                const t0 = audioCtx.currentTime + startDelay;
-                const t1 = t0 + aTime;
-                const t2 = t1 + hold;
-                const t3 = t2 + rTime;
+                const t0 = now + startDelay + 0.1; // 100ms Sicherheitspuffer
+                const t1 = t0 + Math.max(0.01, s.attack);
+                const t2 = t1 + Math.max(0.01, s.duration); 
+                const t3 = t2 + Math.max(0.01, s.release);
 
-                gain.gain.cancelScheduledValues(audioCtx.currentTime);
-                gain.gain.setValueAtTime(0.001, t0); 
+                // Browser-sichere Hüllkurve
+                gain.gain.value = 0; 
+                gain.gain.setValueAtTime(0, t0); 
                 gain.gain.linearRampToValueAtTime(s.volume, t1); 
-                gain.gain.linearRampToValueAtTime(s.volume, t2); 
-                gain.gain.linearRampToValueAtTime(0.001, t3);   
+                gain.gain.setValueAtTime(s.volume, t2); // Garantiert halten
+                gain.gain.linearRampToValueAtTime(0.0001, t3); // Nicht genau 0, um Klick-Fehler zu vermeiden
 
                 osc.connect(gain);
                 gain.connect(panner);
@@ -373,10 +400,13 @@
                 panner.connect(delayNode);
                 
                 osc.start(t0);
-                osc.stop(t3 + 0.1);
+                osc.stop(t3 + 0.2);
             });
 
-        } catch (e) { alert("Fehler: " + e.message); }
+        } catch (e) { 
+            console.error("Audio-Fehler:", e);
+            alert("Fehler bei der Audiowiedergabe: " + e.message); 
+        }
     }
 </script>
 
