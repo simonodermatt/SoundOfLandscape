@@ -279,7 +279,7 @@
         return freqs;
     }
 
-    function findePunkte(kurve, anzahl, abstand, sens, typ) {
+function findePunkte(kurve, anzahl, abstand, sens, typ) {
         if (anzahl <= 0) return [];
         let kandidaten = [];
         for (let i = 5; i < kurve.length - 5; i++) {
@@ -298,6 +298,19 @@
                 if (diff >= sens) kandidaten.push({ x: i, hoehe: val, diff: diff });
             }
         }
+        
+        // Sortieren: Höchste Werte für Gipfel, tiefste für Täler
+        kandidaten.sort((a, b) => typ === 'gipfel' ? b.hoehe - a.hoehe : a.hoehe - b.hoehe);
+
+        let gefiltert = [];
+        for (let k of kandidaten) {
+            if (!gefiltert.some(g => Math.abs(k.x - g.x) < abstand)) {
+                gefiltert.push(k);
+                if (gefiltert.length >= anzahl) break;
+            }
+        }
+        return gefiltert;
+    }
         
         // Sortieren: Höchste Werte für Gipfel, tiefste für Täler
         kandidaten.sort((a, b) => typ === 'gipfel' ? b.hoehe - a.hoehe : a.hoehe - b.hoehe);
