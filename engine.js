@@ -15,6 +15,80 @@ const scales = {
     pentatonic: [2, 2, 3, 2, 3], hirajoshi: [2, 1, 4, 1, 4]
 };
 
+// --- FEHLENDE AUDIO- & LOGIK-FUNKTIONEN HINZUGEFÜGT ---
+
+// Wandelt die Intervall-Schritte aus dem 'scales' Objekt in Frequenzen um
+function generateScale(scaleName, octaves) {
+    const intervals = scales[scaleName] || scales.major;
+    let freqs = [];
+    let currentFreq = 130.81; // C3 als Startton (ca. 130 Hz)
+    
+    freqs.push(currentFreq);
+    
+    for (let o = 0; o < octaves; o++) {
+        for (let i = 0; i < intervals.length; i++) {
+            currentFreq = currentFreq * Math.pow(2, intervals[i] / 12);
+            freqs.push(currentFreq);
+        }
+    }
+    return freqs;
+}
+
+// Sucht die höchsten/tiefsten Punkte im Array unter Berücksichtigung von Abstand und Sensibilität
+function findePunkte(kurve, maxAnzahl, minAbstand, sensibilitaet, typ) {
+    if (!kurve || kurve.length === 0) return [];
+    
+    let punkte = [];
+    let windowRange = Math.max(1, sensibilitaet); // Suchfenster für lokale Extrema
+    
+    // Ermittle Min/Max für die Höhen-Normalisierung (0-100%)
+    let maxY = Math.max(...kurve);
+    let minY = Math.min(...kurve);
+    let span = maxY - minY || 1;
+
+    for (let i = windowRange; i < kurve.length - windowRange; i++) {
+        let isGipfel = true;
+        let isTal = true;
+        
+        for (let j = 1; j <= windowRange; j++) {
+            // Bei Canvas ist ein kleinerer Y-Wert optisch höher (Gipfel)
+            if (kurve[i] > kurve[i-j] || kurve[i] > kurve[i+j]) isGipfel = false; 
+            if (kurve[i] < kurve[i-j] || kurve[i] < kurve[i+j]) isTal = false;
+        }
+        
+        if ((typ === 'gipfel' && isGipfel) || (typ === 'tal' && isTal)) {
+            // Hoehe in %: 100% ist ganz oben im Bild (minY), 0% ganz unten (maxY)
+            let hoehe = 100 - ((kurve[i] - minY) / span) * 100;
+            punkte.push({ x: i, y: kurve[i], hoehe: hoehe });
+        }
+    }
+
+    // Sortieren nach Prominenz: Gipfel absteigend (höchste zuerst), Täler aufsteigend (tiefste zuerst)
+    if (typ === 'gipfel') {
+        punkte.sort((a, b) => b.hoehe - a.hoehe);
+    } else {
+        punkte.sort((a, b) => a.hoehe - b.hoehe);
+    }
+
+    // Filtern nach minimalem Pixel-Abstand (spacing)
+    let filtered = [];
+    for (let p of punkte) {
+        let tooClose = false;
+        for (let f of filtered) {
+            if (Math.abs(p.x - f.x) < minAbstand) {
+                tooClose = true; 
+                break;
+            }
+        }
+        if (!tooClose) filtered.push(p);
+        if (filtered.length >= maxAnzahl) break; // Stoppen, wenn Anzahl erreicht ist
+    }
+    
+    return filtered;
+}
+
+// --------------------------------------------------------
+
 const map = L.map('map').setView([46.8182, 8.2275], 8);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
 const markerClusterGroup = L.markerClusterGroup({ maxClusterRadius: 40, spiderfyOnMaxZoom: true });
