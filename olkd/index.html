@@ -6,7 +6,6 @@
     
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%232c3e50'/><path d='M15,75 L35,30 L55,55 L75,20 L85,60' fill='none' stroke='%23FFD700' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/><circle cx='55' cy='55' r='8' fill='%2300BFFF'/></svg>">
     
-    <!-- Zuverlässigere Server (CDN) für die Karte -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css" />
@@ -56,10 +55,11 @@
 </head>
 <body>
 
-<!-- Der Fehler-Melder für weiße Bildschirme -->
 <script>
-    window.onerror = function(message, source, lineno, colno, error) {
-        alert("Achtung, Code-Fehler entdeckt!\nZeile: " + lineno + "\nFehler: " + message);
+    window.onerror = function(message, source, lineno) {
+        if (!message.includes("favicon")) {
+            alert("Achtung, Fehler!\nZeile: " + lineno + "\nProblem: " + message);
+        }
     };
 </script>
 
@@ -84,7 +84,6 @@
 <div id="map"></div>
 <div id="lightbox" onclick="this.style.display='none'"><img id="lightbox-img" src="" alt=""></div>
 
-<!-- Skripte -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
 <script src="lang.js"></script>
@@ -95,9 +94,12 @@
     const SHEET_ID = "10pxYaSMyt5uDRjCF0DWjGEabe_a3YftdpChxYzyQJBo"; 
 
     const scales = {
-        lydian: [2, 2, 2, 1, 2, 2, 1],
+        major: [2, 2, 1, 2, 2, 2, 1],
         minor: [2, 1, 2, 2, 1, 2, 2],
-        pentatonic: [2, 2, 3, 2, 3]
+        lydian: [2, 2, 2, 1, 2, 2, 1],
+        dorian: [2, 1, 2, 2, 2, 1, 2],
+        pentatonic: [2, 2, 3, 2, 3],
+        hirajoshi: [2, 1, 4, 1, 4]
     };
 
     const map = L.map('map').setView([46.8182, 8.2275], 8);
@@ -114,6 +116,10 @@
 
     function changeLanguage(lang) {
         currentLang = lang;
+        if(typeof text === "undefined") {
+            alert("Achtung: Die Datei lang.js wurde nicht gefunden oder hat einen Fehler!");
+            return;
+        }
         document.getElementById('lbl-sprache').innerText = text[lang].sprache;
         document.getElementById('lbl-view').innerHTML = `<b>${text[lang].ausschnitt}</b>`;
         document.getElementById('opt-ch').innerText = text[lang].schweiz;
@@ -136,6 +142,8 @@
         try {
             const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Panoramen`;
             const res = await fetch(url);
+            if(!res.ok) throw new Error("Netzwerkfehler beim Laden des Google Sheets");
+            
             panoramenDaten = parseCSV(await res.text());
             markerClusterGroup.clearLayers();
 
@@ -156,7 +164,7 @@
                     scale: pano.scale || 'lydian',
                     oktaven: parseInt(pano.oktaven) || 3,
                     range: parseInt(pano.range) || 100,
-                    wave: pano.wave || 'triangle',
+                    wave: pano.wave || 'darkpad', // Startet jetzt schöner mit Darkpad
                     volume: parseFloat(pano.volume) || 0.2,
                     duration: parseFloat(pano.duration) || 5.0,
                     attack: parseFloat(pano.attack) || 1.0,
@@ -164,7 +172,10 @@
                     echo: parseFloat(pano.echo) || 0.3
                 };
             });
-        } catch (e) { console.error("Ladefehler:", e); }
+        } catch (e) { 
+            console.error("Ladefehler:", e);
+            alert("Fehler beim Laden der Google Sheet Daten:\n" + e.message);
+        }
     }
 
     function parseCSV(textData) {
@@ -183,7 +194,10 @@
 
     function getPopupHTML(pano) {
         const s = window.activeSynth[pano.id];
-        const t = text[currentLang];
+        const t = (typeof text !== 'undefined' && text[currentLang]) ? text[currentLang] : {
+            grp_struktur: "Struktur", grp_klang: "Klang", vergroessern: "Vergrößern", play: "Abspielen"
+        };
+        
         return `
             <div class="popup-content">
                 <h3 style="margin-top:0; margin-bottom:4px;">${pano.titel}</h3>
@@ -196,71 +210,79 @@
 
                 <div class="controls-container">
                     <div class="control-group">
-                        <h4>${t.grp_struktur}</h4>
-                        <label>${t.gipfel} <b>${s.peaks}</b></label>
+                        <h4>${t.grp_struktur || "Struktur"}</h4>
+                        <label>${t.gipfel || "Gipfel:"} <b>${s.peaks}</b></label>
                         <input type="range" min="0" max="12" value="${s.peaks}" oninput="window.activeSynth['${pano.id}'].peaks = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
                         
-                        <label>${t.taeler} <b>${s.valleys}</b></label>
+                        <label>${t.taeler || "Täler:"} <b>${s.valleys}</b></label>
                         <input type="range" min="0" max="12" value="${s.valleys}" oninput="window.activeSynth['${pano.id}'].valleys = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
                         
-                        <label>${t.abstand} <b>${s.spacing}</b>px</label>
+                        <label>${t.abstand || "Abstand:"} <b>${s.spacing}</b>px</label>
                         <input type="range" min="10" max="150" step="5" value="${s.spacing}" oninput="window.activeSynth['${pano.id}'].spacing = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
                         
-                        <label>${t.sensibilitaet} <b>${s.sensibilitaet}</b></label>
+                        <label>${t.sensibilitaet || "Sensibilität:"} <b>${s.sensibilitaet}</b></label>
                         <input type="range" min="0" max="20" value="${s.sensibilitaet}" oninput="window.activeSynth['${pano.id}'].sensibilitaet = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
                     
-                        <label>${t.modus}</label>
+                        <label>${t.modus || "Modus:"}</label>
                         <select onchange="window.activeSynth['${pano.id}'].mode = this.value;">
-                            <option value="chord" ${s.mode === 'chord' ? 'selected' : ''}>${t.mod_gleich}</option>
-                            <option value="lr" ${s.mode === 'lr' ? 'selected' : ''}>${t.mod_lr}</option>
-                            <option value="rl" ${s.mode === 'rl' ? 'selected' : ''}>${t.mod_rl}</option>
+                            <option value="chord" ${s.mode === 'chord' ? 'selected' : ''}>${t.mod_gleich || "Akkord"}</option>
+                            <option value="lr" ${s.mode === 'lr' ? 'selected' : ''}>${t.mod_lr || "Links->Rechts"}</option>
+                            <option value="rl" ${s.mode === 'rl' ? 'selected' : ''}>${t.mod_rl || "Rechts->Links"}</option>
                         </select>
                     </div>
 
                     <div class="control-group">
-                        <h4>${t.grp_klang}</h4>
-                        <label>${t.tonart}</label>
+                        <h4>${t.grp_klang || "Klang"}</h4>
+                        <label>${t.tonart || "Tonart:"}</label>
                         <select onchange="window.activeSynth['${pano.id}'].scale = this.value;">
-                            <option value="lydian" ${s.scale === 'lydian' ? 'selected' : ''}>Lydisch (Träumend)</option>
-                            <option value="minor" ${s.scale === 'minor' ? 'selected' : ''}>Moll (Melancholisch)</option>
-                            <option value="pentatonic" ${s.scale === 'pentatonic' ? 'selected' : ''}>Pentatonik (Harmonisch)</option>
+                            <option value="major" ${s.scale === 'major' ? 'selected' : ''}>${t.scale_major || "Dur (Majestätisch)"}</option>
+                            <option value="minor" ${s.scale === 'minor' ? 'selected' : ''}>${t.scale_minor || "Moll (Melancholisch)"}</option>
+                            <option value="lydian" ${s.scale === 'lydian' ? 'selected' : ''}>${t.scale_lydian || "Lydisch (Träumend)"}</option>
+                            <option value="dorian" ${s.scale === 'dorian' ? 'selected' : ''}>${t.scale_dorian || "Dorisch (Mystisch)"}</option>
+                            <option value="pentatonic" ${s.scale === 'pentatonic' ? 'selected' : ''}>${t.scale_pentatonic || "Pentatonik (Harmonisch)"}</option>
+                            <option value="hirajoshi" ${s.scale === 'hirajoshi' ? 'selected' : ''}>${t.scale_hirajoshi || "Hirajōshi (Meditativ)"}</option>
                         </select>
 
-                        <label>${t.oktaven} <b>${s.oktaven}</b></label>
+                        <label>${t.oktaven || "Oktaven:"} <b>${s.oktaven}</b></label>
                         <input type="range" min="1" max="6" value="${s.oktaven}" oninput="window.activeSynth['${pano.id}'].oktaven = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
                         
-                        <label>${t.range} <b>${s.range}</b>%</label>
+                        <label>${t.range || "Skalierung:"} <b>${s.range}</b>%</label>
                         <input type="range" min="20" max="100" step="10" value="${s.range}" oninput="window.activeSynth['${pano.id}'].range = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
 
-                        <label>${t.wellenform}</label>
+                        <label>${t.wellenform || "Wellenform:"}</label>
                         <select onchange="window.activeSynth['${pano.id}'].wave = this.value;">
-                            <option value="triangle" ${s.wave === 'triangle' ? 'selected' : ''}>Triangle (Weich)</option>
-                            <option value="sine" ${s.wave === 'sine' ? 'selected' : ''}>Sine (Rein)</option>
-                            <option value="sawtooth" ${s.wave === 'sawtooth' ? 'selected' : ''}>Sawtooth (Scharf)</option>
-                            <option value="square" ${s.wave === 'square' ? 'selected' : ''}>Square (Retro)</option>
+                            <option value="sine" ${s.wave === 'sine' ? 'selected' : ''}>${t.wave_sine || "Sinus (Rein)"}</option>
+                            <option value="triangle" ${s.wave === 'triangle' ? 'selected' : ''}>${t.wave_triangle || "Dreieck (Weich)"}</option>
+                            <option value="sawtooth" ${s.wave === 'sawtooth' ? 'selected' : ''}>${t.wave_sawtooth || "Sägezahn (Scharf)"}</option>
+                            <option value="square" ${s.wave === 'square' ? 'selected' : ''}>${t.wave_square || "Rechteck (Retro)"}</option>
+                            <optgroup label="Complex Patches">
+                                <option value="organ" ${s.wave === 'organ' ? 'selected' : ''}>${t.wave_organ || "Kirchenorgel"}</option>
+                                <option value="darkpad" ${s.wave === 'darkpad' ? 'selected' : ''}>${t.wave_darkpad || "Dark Pad (Warm)"}</option>
+                                <option value="chime" ${s.wave === 'chime' ? 'selected' : ''}>${t.wave_chime || "Glöckchen (Magisch)"}</option>
+                            </optgroup>
                         </select>
 
-                        <label>${t.dauer} <b>${s.duration}</b>s</label>
+                        <label>${t.dauer || "Dauer:"} <b>${s.duration}</b>s</label>
                         <input type="range" min="0.5" max="15" step="0.5" value="${s.duration}" oninput="window.activeSynth['${pano.id}'].duration = parseFloat(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
                     </div>
                     
                     <div class="control-group">
                         <h4>Raum / Envelope</h4>
-                        <label>${t.attack} <b>${s.attack}</b>s</label>
+                        <label>${t.attack || "Attack:"} <b>${s.attack}</b>s</label>
                         <input type="range" min="0.1" max="5.0" step="0.1" value="${s.attack}" oninput="window.activeSynth['${pano.id}'].attack = parseFloat(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
                         
-                        <label>${t.release} <b>${s.release}</b>s</label>
+                        <label>${t.release || "Release:"} <b>${s.release}</b>s</label>
                         <input type="range" min="0.1" max="8.0" step="0.1" value="${s.release}" oninput="window.activeSynth['${pano.id}'].release = parseFloat(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
                         
-                        <label>${t.echo} <b>${Math.round(s.echo*100)}</b>%</label>
+                        <label>${t.echo || "Echo:"} <b>${Math.round(s.echo*100)}</b>%</label>
                         <input type="range" min="0" max="0.8" step="0.05" value="${s.echo}" oninput="window.activeSynth['${pano.id}'].echo = parseFloat(this.value); this.previousElementSibling.querySelector('b').innerText = Math.round(this.value*100);">
 
-                        <label>${t.lautstaerke} <b>${Math.round(s.volume*100)}</b>%</label>
+                        <label>${t.lautstaerke || "Volume:"} <b>${Math.round(s.volume*100)}</b>%</label>
                         <input type="range" min="0.05" max="0.5" step="0.05" value="${s.volume}" oninput="window.activeSynth['${pano.id}'].volume = parseFloat(this.value); this.previousElementSibling.querySelector('b').innerText = Math.round(this.value*100);">
                     </div>
                 </div>
 
-                <button class="play-btn" onclick="playPanorama('${pano.id}', '${pano.arrayUrl}')">${t.play}</button>
+                <button class="play-btn" onclick="playPanorama('${pano.id}', '${pano.arrayUrl}')">${t.play || "Abspielen"}</button>
             </div>
         `;
     }
@@ -270,7 +292,7 @@
     let audioCtx;
 
     function generateScale(scaleName, octaves) {
-        let baseFreq = 130.81; // C3
+        let baseFreq = 130.81; 
         let freqs = [baseFreq];
         let intervals = scales[scaleName] || scales['lydian'];
         for (let o = 0; o < octaves; o++) {
@@ -380,9 +402,10 @@
             allePunkte.forEach((punkt, indexPos) => {
                 let yProzent = (punkt.hoehe / 100) * (s.range / 100);
                 const freqIndex = Math.floor(yProzent * (tonleiter.length - 1));
+                const freq = tonleiter[freqIndex] || 440;
                 
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
+                // Der Master-Gain (Hüllkurve) für diesen Punkt
+                const masterGain = audioCtx.createGain();
                 
                 let panner;
                 if (audioCtx.createStereoPanner) {
@@ -392,28 +415,94 @@
                     panner = audioCtx.createGain(); 
                 }
 
-                osc.type = s.wave;
-                osc.frequency.value = tonleiter[freqIndex] || 440;
-
+                // Hüllkurven-Timing (Envelope)
                 const startDelay = (s.mode === 'chord') ? 0 : (indexPos * 0.25);
                 const t0 = now + startDelay + 0.1; 
                 const t1 = t0 + Math.max(0.01, s.attack);
                 const t2 = t1 + Math.max(0.01, s.duration); 
                 const t3 = t2 + Math.max(0.01, s.release);
 
-                gain.gain.value = 0; 
-                gain.gain.setValueAtTime(0, t0); 
-                gain.gain.linearRampToValueAtTime(s.volume, t1); 
-                gain.gain.setValueAtTime(s.volume, t2); 
-                gain.gain.linearRampToValueAtTime(0.0001, t3); 
+                masterGain.gain.value = 0; 
+                masterGain.gain.setValueAtTime(0, t0); 
+                masterGain.gain.linearRampToValueAtTime(s.volume, t1); 
+                masterGain.gain.setValueAtTime(s.volume, t2); 
+                masterGain.gain.linearRampToValueAtTime(0.0001, t3); 
 
-                osc.connect(gain);
-                gain.connect(panner);
+                masterGain.connect(panner);
                 panner.connect(audioCtx.destination);
                 panner.connect(delayNode);
-                
-                osc.start(t0);
-                osc.stop(t3 + 0.2);
+
+                // --- HIER STARTET DIE PATCH-ENGINE ---
+                let oscs = [];
+
+                if (s.wave === 'organ') {
+                    // Sub-Oktave
+                    let o1 = audioCtx.createOscillator(); o1.type = 'sine'; o1.frequency.value = freq / 2;
+                    let g1 = audioCtx.createGain(); g1.gain.value = 0.6;
+                    o1.connect(g1); g1.connect(masterGain); oscs.push(o1);
+                    
+                    // Grundton
+                    let o2 = audioCtx.createOscillator(); o2.type = 'sine'; o2.frequency.value = freq;
+                    let g2 = audioCtx.createGain(); g2.gain.value = 1.0;
+                    o2.connect(g2); g2.connect(masterGain); oscs.push(o2);
+                    
+                    // Hohe Oktave
+                    let o3 = audioCtx.createOscillator(); o3.type = 'triangle'; o3.frequency.value = freq * 2;
+                    let g3 = audioCtx.createGain(); g3.gain.value = 0.4;
+                    o3.connect(g3); g3.connect(masterGain); oscs.push(o3);
+
+                } else if (s.wave === 'darkpad') {
+                    let osc = audioCtx.createOscillator();
+                    osc.type = 'sawtooth'; 
+                    osc.frequency.value = freq;
+                    
+                    // Tiefpassfilter (schneidet schrille Höhen weg)
+                    let filter = audioCtx.createBiquadFilter();
+                    filter.type = 'lowpass';
+                    filter.Q.value = 2; // Leichte Resonanz
+                    
+                    // Filter öffnet sich beim Spielen leicht
+                    filter.frequency.setValueAtTime(300, t0);
+                    filter.frequency.linearRampToValueAtTime(1000, t1);
+                    filter.frequency.linearRampToValueAtTime(300, t3);
+                    
+                    osc.connect(filter); 
+                    filter.connect(masterGain);
+                    oscs.push(osc);
+
+                } else if (s.wave === 'chime') {
+                    // Grundton
+                    let o1 = audioCtx.createOscillator(); o1.type = 'sine'; o1.frequency.value = freq;
+                    let g1 = audioCtx.createGain(); g1.gain.value = 0.8;
+                    o1.connect(g1); g1.connect(masterGain); oscs.push(o1);
+                    
+                    // Schiefer Oberton (typisch für Glocken)
+                    let o2 = audioCtx.createOscillator(); o2.type = 'sine'; o2.frequency.value = freq * 2.76;
+                    let g2 = audioCtx.createGain(); g2.gain.value = 0.4;
+                    o2.connect(g2); g2.connect(masterGain); oscs.push(o2);
+
+                } else {
+                    // Standard Wellenformen (sine, triangle, sawtooth, square)
+                    let osc = audioCtx.createOscillator();
+                    osc.type = s.wave;
+                    osc.frequency.value = freq;
+                    osc.connect(masterGain);
+                    oscs.push(osc);
+                }
+
+                // Alle Oszillatoren dieses Patches starten
+                oscs.forEach(o => {
+                    o.start(t0);
+                    o.stop(t3 + 0.2);
+                });
             });
 
-        } catch (e) {
+        } catch (e) { 
+            console.error("Audio-Fehler:", e);
+            alert("Fehler bei der Audiowiedergabe: " + e.message); 
+        }
+    }
+</script>
+
+</body>
+</html>
