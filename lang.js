@@ -27,7 +27,17 @@ const text = {
         play: "🎵 Akkord abspielen",
         vergroessern: "Bild vergrößern",
         grp_struktur: "🏔️ Struktur & Auswahl",
-        grp_klang: "🎹 Klang & Raum"
+        grp_klang: "🎹 Klang & Raum",
+        scale_lydian: "Lydisch (Träumend)",
+        scale_major: "Dur (Majestätisch)",
+        scale_minor: "Moll (Melancholisch)",
+        scale_dorian: "Dorisch (Episch/Mystisch)",
+        scale_pentatonic: "Pentatonik (Harmonisch)",
+        scale_hirajoshi: "Hirajōshi (Meditativ)",
+        wave_sine: "Sinus (Rein/Tropfen)",
+        wave_triangle: "Dreieck (Weich/Flöte)",
+        wave_sawtooth: "Sägezahn (Scharf/Streicher)",
+        wave_square: "Rechteck (Retro/8-Bit)"
     },
     fr: {
         sprache: "Langue :",
@@ -56,7 +66,17 @@ const text = {
         play: "🎵 Jouer l'accord",
         vergroessern: "Agrandir l'image",
         grp_struktur: "🏔️ Structure & Sélection",
-        grp_klang: "🎹 Son & Espace"
+        grp_klang: "🎹 Son & Espace",
+        scale_lydian: "Lydisch (Träumend)",
+        scale_major: "Dur (Majestätisch)",
+        scale_minor: "Moll (Melancholisch)",
+        scale_dorian: "Dorisch (Episch/Mystisch)",
+        scale_pentatonic: "Pentatonik (Harmonisch)",
+        scale_hirajoshi: "Hirajōshi (Meditativ)",
+        wave_sine: "Sinus (Rein/Tropfen)",
+        wave_triangle: "Dreieck (Weich/Flöte)",
+        wave_sawtooth: "Sägezahn (Scharf/Streicher)",
+        wave_square: "Rechteck (Retro/8-Bit)"
     },
     it: {
         sprache: "Lingua:",
@@ -85,7 +105,17 @@ const text = {
         play: "🎵 Suona accordo",
         vergroessern: "Ingrandisci",
         grp_struktur: "🏔️ Struttura & Selezione",
-        grp_klang: "🎹 Suono & Spazio"
+        grp_klang: "🎹 Suono & Spazio",
+        scale_lydian: "Lydisch (Träumend)",
+        scale_major: "Dur (Majestätisch)",
+        scale_minor: "Moll (Melancholisch)",
+        scale_dorian: "Dorisch (Episch/Mystisch)",
+        scale_pentatonic: "Pentatonik (Harmonisch)",
+        scale_hirajoshi: "Hirajōshi (Meditativ)",
+        wave_sine: "Sinus (Rein/Tropfen)",
+        wave_triangle: "Dreieck (Weich/Flöte)",
+        wave_sawtooth: "Sägezahn (Scharf/Streicher)",
+        wave_square: "Rechteck (Retro/8-Bit)"
     },
     en: {
         sprache: "Language:",
@@ -114,7 +144,17 @@ const text = {
         play: "🎵 Play Chord",
         vergroessern: "Enlarge image",
         grp_struktur: "🏔️ Structure & Selection",
-        grp_klang: "🎹 Sound & Space"
+        grp_klang: "🎹 Sound & Space",
+        scale_lydian: "Lydisch (Träumend)",
+        scale_major: "Dur (Majestätisch)",
+        scale_minor: "Moll (Melancholisch)",
+        scale_dorian: "Dorisch (Episch/Mystisch)",
+        scale_pentatonic: "Pentatonik (Harmonisch)",
+        scale_hirajoshi: "Hirajōshi (Meditativ)",
+        wave_sine: "Sinus (Rein/Tropfen)",
+        wave_triangle: "Dreieck (Weich/Flöte)",
+        wave_sawtooth: "Sägezahn (Scharf/Streicher)",
+        wave_square: "Rechteck (Retro/8-Bit)"
     },
     uk: {
         sprache: "Мова:",
@@ -143,7 +183,17 @@ const text = {
         play: "🎵 Зіграти акорд",
         vergroessern: "Збільшити зображення",
         grp_struktur: "🏔️ Структура та вибір",
-        grp_klang: "🎹 Звук та простір"
+        grp_klang: "🎹 Звук та простір",
+        scale_lydian: "Lydisch (Träumend)",
+        scale_major: "Dur (Majestätisch)",
+        scale_minor: "Moll (Melancholisch)",
+        scale_dorian: "Dorisch (Episch/Mystisch)",
+        scale_pentatonic: "Pentatonik (Harmonisch)",
+        scale_hirajoshi: "Hirajōshi (Meditativ)",
+        wave_sine: "Sinus (Rein/Tropfen)",
+        wave_triangle: "Dreieck (Weich/Flöte)",
+        wave_sawtooth: "Sägezahn (Scharf/Streicher)",
+        wave_square: "Rechteck (Retro/8-Bit)"
     },
     ru: {
         sprache: "Язык:",
@@ -172,6 +222,16 @@ const text = {
         play: "🎵 Сыграть аккорд",
         vergroessern: "Увеличить",
         grp_struktur: "🏔️ Структура и выбор",
-        grp_klang: "🎹 Звук и пространство"
+        grp_klang: "🎹 Звук и пространство",
+        scale_lydian: "Lydisch (Träumend)",
+        scale_major: "Dur (Majestätisch)",
+        scale_minor: "Moll (Melancholisch)",
+        scale_dorian: "Dorisch (Episch/Mystisch)",
+        scale_pentatonic: "Pentatonik (Harmonisch)",
+        scale_hirajoshi: "Hirajōshi (Meditativ)",
+        wave_sine: "Sinus (Rein/Tropfen)",
+        wave_triangle: "Dreieck (Weich/Flöte)",
+        wave_sawtooth: "Sägezahn (Scharf/Streicher)",
+        wave_square: "Rechteck (Retro/8-Bit)"
     }
 };

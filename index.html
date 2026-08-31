@@ -95,9 +95,12 @@
     const SHEET_ID = "10pxYaSMyt5uDRjCF0DWjGEabe_a3YftdpChxYzyQJBo"; 
 
     const scales = {
-        lydian: [2, 2, 2, 1, 2, 2, 1],
+        major: [2, 2, 1, 2, 2, 2, 1],
         minor: [2, 1, 2, 2, 1, 2, 2],
-        pentatonic: [2, 2, 3, 2, 3]
+        lydian: [2, 2, 2, 1, 2, 2, 1],
+        dorian: [2, 1, 2, 2, 2, 1, 2],
+        pentatonic: [2, 2, 3, 2, 3],
+        hirajoshi: [2, 1, 4, 1, 4]
     };
 
     const map = L.map('map').setView([46.8182, 8.2275], 8);
@@ -233,12 +236,14 @@
                     <div class="control-group">
                         <h4>${t.grp_klang || "Klang"}</h4>
                         <label>${t.tonart || "Tonart:"}</label>
-                        <select onchange="window.activeSynth['${pano.id}'].scale = this.value;">
-                            <option value="lydian" ${s.scale === 'lydian' ? 'selected' : ''}>Lydisch (Träumend)</option>
-                            <option value="minor" ${s.scale === 'minor' ? 'selected' : ''}>Moll (Melancholisch)</option>
-                            <option value="pentatonic" ${s.scale === 'pentatonic' ? 'selected' : ''}>Pentatonik (Harmonisch)</option>
-                        </select>
-
+                            <select onchange="window.activeSynth['${pano.id}'].scale = this.value;">
+                                <option value="major" ${s.scale === 'major' ? 'selected' : ''}>${t.scale_major}</option>
+                                <option value="minor" ${s.scale === 'minor' ? 'selected' : ''}>${t.scale_minor}</option>
+                                <option value="lydian" ${s.scale === 'lydian' ? 'selected' : ''}>${t.scale_lydian}</option>
+                                <option value="dorian" ${s.scale === 'dorian' ? 'selected' : ''}>${t.scale_dorian}</option>
+                                <option value="pentatonic" ${s.scale === 'pentatonic' ? 'selected' : ''}>${t.scale_pentatonic}</option>
+                                <option value="hirajoshi" ${s.scale === 'hirajoshi' ? 'selected' : ''}>${t.scale_hirajoshi}</option>
+                            </select>
                         <label>${t.oktaven || "Oktaven:"} <b>${s.oktaven}</b></label>
                         <input type="range" min="1" max="6" value="${s.oktaven}" oninput="window.activeSynth['${pano.id}'].oktaven = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
                         
@@ -246,13 +251,12 @@
                         <input type="range" min="20" max="100" step="10" value="${s.range}" oninput="window.activeSynth['${pano.id}'].range = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
 
                         <label>${t.wellenform || "Wellenform:"}</label>
-                        <select onchange="window.activeSynth['${pano.id}'].wave = this.value;">
-                            <option value="triangle" ${s.wave === 'triangle' ? 'selected' : ''}>Triangle (Weich)</option>
-                            <option value="sine" ${s.wave === 'sine' ? 'selected' : ''}>Sine (Rein)</option>
-                            <option value="sawtooth" ${s.wave === 'sawtooth' ? 'selected' : ''}>Sawtooth (Scharf)</option>
-                            <option value="square" ${s.wave === 'square' ? 'selected' : ''}>Square (Retro)</option>
-                        </select>
-
+                            <select onchange="window.activeSynth['${pano.id}'].wave = this.value;">
+                                <option value="sine" ${s.wave === 'sine' ? 'selected' : ''}>${t.wave_sine}</option>
+                                <option value="triangle" ${s.wave === 'triangle' ? 'selected' : ''}>${t.wave_triangle}</option>
+                                <option value="sawtooth" ${s.wave === 'sawtooth' ? 'selected' : ''}>${t.wave_sawtooth}</option>
+                                <option value="square" ${s.wave === 'square' ? 'selected' : ''}>${t.wave_square}</option>
+                            </select>
                         <label>${t.dauer || "Dauer:"} <b>${s.duration}</b>s</label>
                         <input type="range" min="0.5" max="15" step="0.5" value="${s.duration}" oninput="window.activeSynth['${pano.id}'].duration = parseFloat(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
                     </div>
