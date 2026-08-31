@@ -3,7 +3,7 @@
 const SHEET_ID = "10pxYaSMyt5uDRjCF0DWjGEabe_a3YftdpChxYzyQJBo"; 
 let currentLang = 'de';
 let panoramenDaten = [];
-window.activeSynth = {}; 
+window.activeSynth = {}; // Global für die HTML-Slider
 
 const scales = {
     major: [2, 2, 1, 2, 2, 2, 1],
@@ -17,16 +17,11 @@ const scales = {
 // --- KARTEN-SETUP ---
 const map = L.map('map').setView([46.8182, 8.2275], 8);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+
 const markerClusterGroup = L.markerClusterGroup({ maxClusterRadius: 40, spiderfyOnMaxZoom: true });
 map.addLayer(markerClusterGroup);
 
-// Initialisiert die Drehregler optisch, sobald ein Popup geöffnet wird
-map.on('popupopen', function() {
-    document.querySelectorAll('.hidden-range').forEach(input => {
-        input.dispatchEvent(new Event('input')); 
-    });
-});
-
+// Globale UI Funktionen
 window.wechsleAnsicht = function(ansicht) {
     if (ansicht === 'schweiz') map.flyTo([46.8182, 8.2275], 8);
     else if (ansicht === 'europa') map.flyTo([51.0, 10.0], 4);
@@ -35,7 +30,10 @@ window.wechsleAnsicht = function(ansicht) {
 
 window.changeLanguage = function(lang) {
     currentLang = lang;
-    if(typeof text === "undefined") { alert("lang.js fehlt!"); return; }
+    if(typeof text === "undefined") {
+        alert("Die Datei lang.js fehlt oder hat einen Fehler!");
+        return;
+    }
     document.getElementById('lbl-sprache').innerText = text[lang].sprache;
     document.getElementById('lbl-view').innerHTML = `<b>${text[lang].ausschnitt}</b>`;
     document.getElementById('opt-ch').innerText = text[lang].schweiz;
@@ -54,17 +52,7 @@ window.openLightbox = function(url) {
     document.getElementById('lightbox').style.display = 'flex';
 };
 
-// Berechnet den Winkel für den Drehregler
-window.updateKnob = function(input, visualId) {
-    let min = parseFloat(input.min) || 0;
-    let max = parseFloat(input.max) || 100;
-    let val = parseFloat(input.value);
-    let percent = (val - min) / (max - min);
-    let degrees = -135 + (percent * 270); // Drehung von -135 bis +135 Grad
-    let vis = document.getElementById(visualId);
-    if(vis) vis.style.transform = `rotate(${degrees}deg)`;
-};
-
+// --- DATEN LADEN ---
 async function ladePanoramenAusSheet() {
     try {
         const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Panoramen`;
@@ -79,8 +67,7 @@ async function ladePanoramenAusSheet() {
             const marker = L.marker(coords);
             marker.panoId = pano.id;
             
-            // Popup ist jetzt schmaler (CSS übernimmt die Breite)
-            marker.bindPopup(() => getPopupHTML(pano));
+            marker.bindPopup(() => getPopupHTML(pano), { minWidth: 600, maxWidth: 650 });
             markerClusterGroup.addLayer(marker);
 
             window.activeSynth[pano.id] = {
@@ -100,7 +87,9 @@ async function ladePanoramenAusSheet() {
                 echo: parseFloat(pano.echo) || 0.3
             };
         });
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+        console.error(e); alert("Fehler beim Laden der Google Sheet Daten:\n" + e.message);
+    }
 }
 
 function parseCSV(textData) {
@@ -117,29 +106,12 @@ function parseCSV(textData) {
     return result;
 }
 
-// Hilfsfunktion: Generiert einen einzelnen Drehregler in HTML
-function buildKnob(panoId, key, label, min, max, step, isInt, displayMult, unit = "") {
-    let val = window.activeSynth[panoId][key];
-    let visId = `vis_${key}_${panoId}`;
-    let valId = `val_${key}_${panoId}`;
-    
-    // JS Logic, die ausgeführt wird, wenn der (unsichtbare) Slider gezogen wird
-    let jsAction = `updateKnob(this, '${visId}'); window.activeSynth['${panoId}'].${key} = ${isInt ? 'parseInt' : 'parseFloat'}(this.value); document.getElementById('${valId}').innerText = ${displayMult ? 'Math.round(this.value * '+displayMult+')' : 'this.value'} + '${unit}';`;
-    
-    return `
-    <div class="knob-box">
-        <div class="knob-label">${label}</div>
-        <div class="knob-container">
-            <div class="knob-visual" id="${visId}"><div class="knob-indicator"></div></div>
-            <input type="range" class="hidden-range" min="${min}" max="${max}" step="${step}" value="${val}" oninput="${jsAction}">
-        </div>
-        <div class="knob-value" id="${valId}">${displayMult ? Math.round(val * displayMult) : val}${unit}</div>
-    </div>`;
-}
-
+// --- HTML GENERATOR FÜR DAS POP-UP ---
 function getPopupHTML(pano) {
     const s = window.activeSynth[pano.id];
-    const t = (typeof text !== 'undefined' && text[currentLang]) ? text[currentLang] : {};
+    const t = (typeof text !== 'undefined' && text[currentLang]) ? text[currentLang] : {
+        grp_struktur: "Struktur", grp_klang: "Klang", vergroessern: "Vergrößern", play: "Abspielen"
+    };
     
     return `
         <div class="popup-content">
@@ -151,18 +123,32 @@ function getPopupHTML(pano) {
                 <canvas id="canvas_${pano.id}" class="punktOverlay"></canvas>
             </div>
 
-            <!-- Dropdowns oben -->
-            <div class="dropdown-row">
-                <div class="dropdown-box">
-                    <label>${t.modus || "Modus"}</label>
+            <div class="controls-container">
+                <div class="control-group">
+                    <h4>${t.grp_struktur || "Struktur"}</h4>
+                    <label>${t.gipfel || "Gipfel:"} <b>${s.peaks}</b></label>
+                    <input type="range" min="0" max="12" value="${s.peaks}" oninput="window.activeSynth['${pano.id}'].peaks = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
+                    
+                    <label>${t.taeler || "Täler:"} <b>${s.valleys}</b></label>
+                    <input type="range" min="0" max="12" value="${s.valleys}" oninput="window.activeSynth['${pano.id}'].valleys = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
+                    
+                    <label>${t.abstand || "Abstand:"} <b>${s.spacing}</b>px</label>
+                    <input type="range" min="10" max="150" step="5" value="${s.spacing}" oninput="window.activeSynth['${pano.id}'].spacing = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
+                    
+                    <label>${t.sensibilitaet || "Sensibilität:"} <b>${s.sensibilitaet}</b></label>
+                    <input type="range" min="0" max="20" value="${s.sensibilitaet}" oninput="window.activeSynth['${pano.id}'].sensibilitaet = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
+                
+                    <label>${t.modus || "Modus:"}</label>
                     <select onchange="window.activeSynth['${pano.id}'].mode = this.value;">
                         <option value="chord" ${s.mode === 'chord' ? 'selected' : ''}>${t.mod_gleich || "Akkord"}</option>
-                        <option value="lr" ${s.mode === 'lr' ? 'selected' : ''}>${t.mod_lr || "L -> R"}</option>
-                        <option value="rl" ${s.mode === 'rl' ? 'selected' : ''}>${t.mod_rl || "R -> L"}</option>
+                        <option value="lr" ${s.mode === 'lr' ? 'selected' : ''}>${t.mod_lr || "Links->Rechts"}</option>
+                        <option value="rl" ${s.mode === 'rl' ? 'selected' : ''}>${t.mod_rl || "Rechts->Links"}</option>
                     </select>
                 </div>
-                <div class="dropdown-box">
-                    <label>${t.tonart || "Tonart"}</label>
+
+                <div class="control-group">
+                    <h4>${t.grp_klang || "Klang"}</h4>
+                    <label>${t.tonart || "Tonart:"}</label>
                     <select onchange="window.activeSynth['${pano.id}'].scale = this.value;">
                         <option value="major" ${s.scale === 'major' ? 'selected' : ''}>${t.scale_major || "Dur"}</option>
                         <option value="minor" ${s.scale === 'minor' ? 'selected' : ''}>${t.scale_minor || "Moll"}</option>
@@ -171,36 +157,44 @@ function getPopupHTML(pano) {
                         <option value="pentatonic" ${s.scale === 'pentatonic' ? 'selected' : ''}>${t.scale_pentatonic || "Pentatonik"}</option>
                         <option value="hirajoshi" ${s.scale === 'hirajoshi' ? 'selected' : ''}>${t.scale_hirajoshi || "Hirajōshi"}</option>
                     </select>
-                </div>
-                <div class="dropdown-box">
-                    <label>${t.wellenform || "Patch"}</label>
+
+                    <label>${t.oktaven || "Oktaven:"} <b>${s.oktaven}</b></label>
+                    <input type="range" min="1" max="6" value="${s.oktaven}" oninput="window.activeSynth['${pano.id}'].oktaven = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
+                    
+                    <label>${t.range || "Skalierung:"} <b>${s.range}</b>%</label>
+                    <input type="range" min="20" max="100" step="10" value="${s.range}" oninput="window.activeSynth['${pano.id}'].range = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
+
+                    <label>${t.wellenform || "Wellenform:"}</label>
                     <select onchange="window.activeSynth['${pano.id}'].wave = this.value;">
                         <option value="sine" ${s.wave === 'sine' ? 'selected' : ''}>${t.wave_sine || "Sinus"}</option>
                         <option value="triangle" ${s.wave === 'triangle' ? 'selected' : ''}>${t.wave_triangle || "Dreieck"}</option>
                         <option value="sawtooth" ${s.wave === 'sawtooth' ? 'selected' : ''}>${t.wave_sawtooth || "Sägezahn"}</option>
                         <option value="square" ${s.wave === 'square' ? 'selected' : ''}>${t.wave_square || "Rechteck"}</option>
-                        <option value="organ" ${s.wave === 'organ' ? 'selected' : ''}>${t.wave_organ || "Orgel"}</option>
-                        <option value="darkpad" ${s.wave === 'darkpad' ? 'selected' : ''}>${t.wave_darkpad || "Dark Pad"}</option>
-                        <option value="chime" ${s.wave === 'chime' ? 'selected' : ''}>${t.wave_chime || "Glöckchen"}</option>
+                        <optgroup label="Complex Patches">
+                            <option value="organ" ${s.wave === 'organ' ? 'selected' : ''}>${t.wave_organ || "Kirchenorgel"}</option>
+                            <option value="darkpad" ${s.wave === 'darkpad' ? 'selected' : ''}>${t.wave_darkpad || "Dark Pad"}</option>
+                            <option value="chime" ${s.wave === 'chime' ? 'selected' : ''}>${t.wave_chime || "Glöckchen"}</option>
+                        </optgroup>
                     </select>
+
+                    <label>${t.dauer || "Dauer:"} <b>${s.duration}</b>s</label>
+                    <input type="range" min="0.5" max="15" step="0.5" value="${s.duration}" oninput="window.activeSynth['${pano.id}'].duration = parseFloat(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
                 </div>
-            </div>
-
-            <!-- Drehregler Grid -->
-            <div class="synth-grid">
-                ${buildKnob(pano.id, 'peaks', t.gipfel || 'Gipfel', 0, 12, 1, true, null)}
-                ${buildKnob(pano.id, 'valleys', t.taeler || 'Täler', 0, 12, 1, true, null)}
-                ${buildKnob(pano.id, 'spacing', t.abstand || 'Abstand', 10, 150, 5, true, null, 'px')}
-                ${buildKnob(pano.id, 'sensibilitaet', t.sensibilitaet || 'Sensib.', 0, 30, 1, true, null)}
                 
-                ${buildKnob(pano.id, 'oktaven', t.oktaven || 'Oktaven', 1, 6, 1, true, null)}
-                ${buildKnob(pano.id, 'range', t.range || 'Scale', 20, 100, 5, true, null, '%')}
-                ${buildKnob(pano.id, 'duration', t.dauer || 'Dauer', 0.5, 15, 0.5, false, null, 's')}
-                ${buildKnob(pano.id, 'echo', t.echo || 'Echo', 0, 0.8, 0.05, false, 100, '%')}
+                <div class="control-group">
+                    <h4>Raum / Envelope</h4>
+                    <label>${t.attack || "Attack:"} <b>${s.attack}</b>s</label>
+                    <input type="range" min="0.1" max="5.0" step="0.1" value="${s.attack}" oninput="window.activeSynth['${pano.id}'].attack = parseFloat(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
+                    
+                    <label>${t.release || "Release:"} <b>${s.release}</b>s</label>
+                    <input type="range" min="0.1" max="8.0" step="0.1" value="${s.release}" oninput="window.activeSynth['${pano.id}'].release = parseFloat(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
+                    
+                    <label>${t.echo || "Echo:"} <b>${Math.round(s.echo*100)}</b>%</label>
+                    <input type="range" min="0" max="0.8" step="0.05" value="${s.echo}" oninput="window.activeSynth['${pano.id}'].echo = parseFloat(this.value); this.previousElementSibling.querySelector('b').innerText = Math.round(this.value*100);">
 
-                ${buildKnob(pano.id, 'attack', t.attack || 'Attack', 0.1, 5.0, 0.1, false, null, 's')}
-                ${buildKnob(pano.id, 'release', t.release || 'Release', 0.1, 8.0, 0.1, false, null, 's')}
-                ${buildKnob(pano.id, 'volume', t.lautstaerke || 'Vol', 0.05, 0.5, 0.05, false, 100, '%')}
+                    <label>${t.lautstaerke || "Volume:"} <b>${Math.round(s.volume*100)}</b>%</label>
+                    <input type="range" min="0.05" max="0.5" step="0.05" value="${s.volume}" oninput="window.activeSynth['${pano.id}'].volume = parseFloat(this.value); this.previousElementSibling.querySelector('b').innerText = Math.round(this.value*100);">
+                </div>
             </div>
 
             <button class="play-btn" onclick="playPanorama('${pano.id}', '${pano.arrayUrl}')">${t.play || "Abspielen"}</button>
@@ -208,7 +202,7 @@ function getPopupHTML(pano) {
     `;
 }
 
-// --- AUDIO & MATH ENGINE ---
+// --- AUDIO ENGINE ---
 let audioCtx;
 
 function generateScale(scaleName, octaves) {
@@ -227,29 +221,19 @@ function generateScale(scaleName, octaves) {
 function findePunkte(kurve, anzahl, abstand, sens, typ) {
     if (anzahl <= 0) return [];
     let kandidaten = [];
-    
-    // DIE NEUE SENSIBILITÄT: Dynamischer, viel breiterer Suchradius!
-    // Schaut mindestens 20 Pixel nach links/rechts, anstatt nur 5.
-    let radius = Math.max(20, Math.floor(abstand / 2)); 
-
-    for (let i = radius; i < kurve.length - radius; i++) {
+    for (let i = 5; i < kurve.length - 5; i++) {
         let val = kurve[i];
-        
         let isPeak = typ === 'gipfel' 
             ? (val >= kurve[i-1] && val > kurve[i+1]) 
             : (val <= kurve[i-1] && val < kurve[i+1]);
         
         if (isPeak) {
-            // Misst die Umgebung basierend auf dem neuen Radius
-            let umgebung = kurve.slice(i - radius, i + radius + 1);
+            let umgebung = kurve.slice(Math.max(0, i-5), Math.min(kurve.length, i+6));
             let diff = typ === 'gipfel' ? val - Math.min(...umgebung) : Math.max(...umgebung) - val;
-            
             if (diff >= sens) kandidaten.push({ x: i, hoehe: val, diff: diff });
         }
     }
-    
     kandidaten.sort((a, b) => typ === 'gipfel' ? b.hoehe - a.hoehe : a.hoehe - b.hoehe);
-
     let gefiltert = [];
     for (let k of kandidaten) {
         if (!gefiltert.some(g => Math.abs(k.x - g.x) < abstand)) {
@@ -275,10 +259,7 @@ window.playPanorama = async function(panoId, dateiPfad) {
         const tiefeTaeler = findePunkte(daten.kurve_y, s.valleys, s.spacing, s.sensibilitaet, 'tal');
         let allePunkte = topGipfel.concat(tiefeTaeler);
 
-        if (allePunkte.length === 0) {
-            alert("Es wurden keine Gipfel oder Täler gefunden. Bitte die Sensibilität reduzieren!");
-            return;
-        }
+        if (allePunkte.length === 0) { alert("Keine Gipfel gefunden. Sensibilität reduzieren!"); return; }
 
         if (s.mode === 'lr') allePunkte.sort((a, b) => a.x - b.x);
         else if (s.mode === 'rl') allePunkte.sort((a, b) => b.x - a.x);

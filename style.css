@@ -2,7 +2,7 @@
 body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #111; }
 #map { height: 100vh; width: 100vw; position: relative; }
 
-/* Hauptmenü oben rechts (Hell für Lesbarkeit auf Karte) */
+/* Hauptmenü oben rechts */
 #ui-menu {
     position: absolute; top: 10px; right: 10px; z-index: 1000;
     background: rgba(255, 255, 255, 0.95); padding: 8px 10px;
@@ -12,54 +12,65 @@ body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; 
 #ui-menu label { font-size: 12px; color: #333; }
 
 /* -----------------------------------------
-   DARK SYNTH POP-UP (Hardware Look)
+   DARK SYNTH POP-UP (Kompaktes Knob-Design)
 ------------------------------------------ */
-.leaflet-popup-content-wrapper { background: #1e1e1e; color: #ddd; border-radius: 6px; }
-.leaflet-popup-tip { background: #1e1e1e; }
-.popup-content { text-align: center; max-height: 85vh; overflow-y: auto; padding: 5px; }
+.leaflet-popup-content-wrapper { background: #1a1a1a; color: #ddd; border-radius: 8px; padding: 0; }
+.leaflet-popup-tip { background: #1a1a1a; }
+.leaflet-popup-content { margin: 15px; width: 450px !important; } /* Deutlich schmaler! */
+
+.popup-content { text-align: center; max-height: 85vh; overflow-y: auto; padding-right: 5px; }
 .popup-content h3 { margin: 0 0 4px 0; color: #fff; font-size: 16px; letter-spacing: 0.5px; }
 
-/* Bild & Canvas */
-.bild-container { position: relative; width: 100%; margin-bottom: 15px; cursor: zoom-in; border: 1px solid #333; border-radius: 4px; overflow: hidden;}
+/* Bild Container */
+.bild-container { position: relative; width: 100%; margin-bottom: 15px; cursor: zoom-in; border: 1px solid #333; border-radius: 4px; overflow: hidden; background: #000; }
 .popup-img { width: 100%; display: block; filter: contrast(1.1) brightness(0.9); }
 .punktOverlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
 
-/* 3-Spalten Grid für die Synth-Regler */
-.controls-container { display: flex; gap: 10px; text-align: left; margin-bottom: 10px; flex-wrap: wrap; }
-.control-group { 
-    background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 6px; 
-    padding: 10px; flex: 1; min-width: 140px; box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
-}
-.control-group h4 { margin: 0 0 10px 0; font-size: 11px; color: #FFD700; text-transform: uppercase; border-bottom: 1px solid #444; padding-bottom: 4px; }
-
-/* Labels und Werte */
-.popup-content label { display: flex; justify-content: space-between; font-size: 10px; margin-top: 6px; color: #aaa; text-transform: uppercase; }
-.popup-content label b { color: #00BFFF; font-weight: bold; }
-
-/* Dropdowns */
-.popup-content select {
-    width: 100%; margin-top: 4px; margin-bottom: 4px; background: #111; color: #00BFFF;
-    border: 1px solid #444; border-radius: 3px; padding: 3px; font-size: 11px; outline: none;
+/* Die Dropdown-Reihe (Modus, Scale, Wave) */
+.dropdown-row { display: flex; gap: 10px; margin-bottom: 15px; text-align: left; }
+.dropdown-box { flex: 1; }
+.dropdown-box label { font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 3px; display: block; }
+.dropdown-box select { 
+    width: 100%; background: #222; color: #00BFFF; border: 1px solid #444; 
+    border-radius: 4px; padding: 4px; font-size: 11px; outline: none; 
 }
 
-/* Kompakte Synth-Fader (Range Inputs) */
-.popup-content input[type="range"] {
-    -webkit-appearance: none; width: 100%; background: transparent; margin: 4px 0 8px 0;
+/* Das neue Knob-Grid (Drehregler) */
+.synth-grid { 
+    display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; 
+    background: #222; padding: 15px; border-radius: 6px; border: 1px solid #333;
+    box-shadow: inset 0 2px 10px rgba(0,0,0,0.5); margin-bottom: 15px;
 }
-.popup-content input[type="range"]:focus { outline: none; }
-.popup-content input[type="range"]::-webkit-slider-runnable-track {
-    width: 100%; height: 4px; cursor: pointer; background: #000; border-radius: 2px; border: 1px solid #333;
+
+/* Einzelner Drehregler-Block */
+.knob-box { display: flex; flex-direction: column; align-items: center; width: 55px; margin-bottom: 10px; }
+.knob-label { font-size: 9px; color: #888; text-transform: uppercase; text-align: center; height: 22px; line-height: 1.1; }
+.knob-value { font-size: 11px; color: #00BFFF; font-family: monospace; font-weight: bold; margin-top: 4px; }
+
+/* Die Magie: Der Drehregler */
+.knob-container { position: relative; width: 36px; height: 36px; margin: 2px 0; }
+.hidden-range { 
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+    opacity: 0; cursor: ew-resize; z-index: 10; 
 }
-.popup-content input[type="range"]::-webkit-slider-thumb {
-    height: 14px; width: 8px; border-radius: 2px; background: #00BFFF; cursor: pointer;
-    -webkit-appearance: none; margin-top: -6px; box-shadow: 0 0 4px rgba(0, 191, 255, 0.6);
+.knob-visual { 
+    width: 100%; height: 100%; border-radius: 50%; background: #2a2a2a; 
+    border: 2px solid #111; box-sizing: border-box;
+    box-shadow: 0 3px 5px rgba(0,0,0,0.5), inset 0 1px 2px rgba(255,255,255,0.1); 
+    pointer-events: none; transition: transform 0.05s linear; 
+}
+/* Der Leuchtstrich auf dem Regler */
+.knob-indicator { 
+    position: absolute; width: 2px; height: 12px; background: #FFD700; 
+    top: 2px; left: 50%; transform: translateX(-50%); border-radius: 1px; 
+    box-shadow: 0 0 4px rgba(255, 215, 0, 0.8); 
 }
 
 /* Abspielen Button */
 button.play-btn { 
     padding: 12px; cursor: pointer; background: #FFD700; color: #111; 
     border: none; border-radius: 4px; font-weight: bold; width: 100%;
-    margin-top: 5px; font-size: 14px; text-transform: uppercase; transition: 0.2s;
+    font-size: 14px; text-transform: uppercase; transition: 0.2s;
 }
 button.play-btn:hover { background: #fff; box-shadow: 0 0 10px rgba(255, 215, 0, 0.5); }
 
