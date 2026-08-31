@@ -6,9 +6,9 @@
     
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%232c3e50'/><path d='M15,75 L35,30 L55,55 L75,20 L85,60' fill='none' stroke='%23FFD700' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/><circle cx='55' cy='55' r='8' fill='%2300BFFF'/></svg>">
     
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
     
     <style>
         body { font-family: sans-serif; margin: 0; padding: 0; background: #eee; }
@@ -55,6 +55,7 @@
 </head>
 <body>
 
+<!-- Meldet sofort, falls etwas im Hintergrund blockiert wird -->
 <script>
     window.onerror = function(message, source, lineno) {
         if (!message.includes("favicon")) {
@@ -84,8 +85,8 @@
 <div id="map"></div>
 <div id="lightbox" onclick="this.style.display='none'"><img id="lightbox-img" src="" alt=""></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
 <script src="lang.js"></script>
 
 <script>
@@ -164,7 +165,7 @@
                     scale: pano.scale || 'lydian',
                     oktaven: parseInt(pano.oktaven) || 3,
                     range: parseInt(pano.range) || 100,
-                    wave: pano.wave || 'darkpad', // Startet jetzt schöner mit Darkpad
+                    wave: pano.wave || 'triangle',
                     volume: parseFloat(pano.volume) || 0.2,
                     duration: parseFloat(pano.duration) || 5.0,
                     attack: parseFloat(pano.attack) || 1.0,
@@ -194,6 +195,7 @@
 
     function getPopupHTML(pano) {
         const s = window.activeSynth[pano.id];
+        // Sicherheitscheck falls lang.js fehlt
         const t = (typeof text !== 'undefined' && text[currentLang]) ? text[currentLang] : {
             grp_struktur: "Struktur", grp_klang: "Klang", vergroessern: "Vergrößern", play: "Abspielen"
         };
@@ -234,15 +236,14 @@
                     <div class="control-group">
                         <h4>${t.grp_klang || "Klang"}</h4>
                         <label>${t.tonart || "Tonart:"}</label>
-                        <select onchange="window.activeSynth['${pano.id}'].scale = this.value;">
-                            <option value="major" ${s.scale === 'major' ? 'selected' : ''}>${t.scale_major || "Dur (Majestätisch)"}</option>
-                            <option value="minor" ${s.scale === 'minor' ? 'selected' : ''}>${t.scale_minor || "Moll (Melancholisch)"}</option>
-                            <option value="lydian" ${s.scale === 'lydian' ? 'selected' : ''}>${t.scale_lydian || "Lydisch (Träumend)"}</option>
-                            <option value="dorian" ${s.scale === 'dorian' ? 'selected' : ''}>${t.scale_dorian || "Dorisch (Mystisch)"}</option>
-                            <option value="pentatonic" ${s.scale === 'pentatonic' ? 'selected' : ''}>${t.scale_pentatonic || "Pentatonik (Harmonisch)"}</option>
-                            <option value="hirajoshi" ${s.scale === 'hirajoshi' ? 'selected' : ''}>${t.scale_hirajoshi || "Hirajōshi (Meditativ)"}</option>
-                        </select>
-
+                            <select onchange="window.activeSynth['${pano.id}'].scale = this.value;">
+                                <option value="major" ${s.scale === 'major' ? 'selected' : ''}>${t.scale_major}</option>
+                                <option value="minor" ${s.scale === 'minor' ? 'selected' : ''}>${t.scale_minor}</option>
+                                <option value="lydian" ${s.scale === 'lydian' ? 'selected' : ''}>${t.scale_lydian}</option>
+                                <option value="dorian" ${s.scale === 'dorian' ? 'selected' : ''}>${t.scale_dorian}</option>
+                                <option value="pentatonic" ${s.scale === 'pentatonic' ? 'selected' : ''}>${t.scale_pentatonic}</option>
+                                <option value="hirajoshi" ${s.scale === 'hirajoshi' ? 'selected' : ''}>${t.scale_hirajoshi}</option>
+                            </select>
                         <label>${t.oktaven || "Oktaven:"} <b>${s.oktaven}</b></label>
                         <input type="range" min="1" max="6" value="${s.oktaven}" oninput="window.activeSynth['${pano.id}'].oktaven = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
                         
@@ -250,18 +251,12 @@
                         <input type="range" min="20" max="100" step="10" value="${s.range}" oninput="window.activeSynth['${pano.id}'].range = parseInt(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
 
                         <label>${t.wellenform || "Wellenform:"}</label>
-                        <select onchange="window.activeSynth['${pano.id}'].wave = this.value;">
-                            <option value="sine" ${s.wave === 'sine' ? 'selected' : ''}>${t.wave_sine || "Sinus (Rein)"}</option>
-                            <option value="triangle" ${s.wave === 'triangle' ? 'selected' : ''}>${t.wave_triangle || "Dreieck (Weich)"}</option>
-                            <option value="sawtooth" ${s.wave === 'sawtooth' ? 'selected' : ''}>${t.wave_sawtooth || "Sägezahn (Scharf)"}</option>
-                            <option value="square" ${s.wave === 'square' ? 'selected' : ''}>${t.wave_square || "Rechteck (Retro)"}</option>
-                            <optgroup label="Complex Patches">
-                                <option value="organ" ${s.wave === 'organ' ? 'selected' : ''}>${t.wave_organ || "Kirchenorgel"}</option>
-                                <option value="darkpad" ${s.wave === 'darkpad' ? 'selected' : ''}>${t.wave_darkpad || "Dark Pad (Warm)"}</option>
-                                <option value="chime" ${s.wave === 'chime' ? 'selected' : ''}>${t.wave_chime || "Glöckchen (Magisch)"}</option>
-                            </optgroup>
-                        </select>
-
+                            <select onchange="window.activeSynth['${pano.id}'].wave = this.value;">
+                                <option value="sine" ${s.wave === 'sine' ? 'selected' : ''}>${t.wave_sine}</option>
+                                <option value="triangle" ${s.wave === 'triangle' ? 'selected' : ''}>${t.wave_triangle}</option>
+                                <option value="sawtooth" ${s.wave === 'sawtooth' ? 'selected' : ''}>${t.wave_sawtooth}</option>
+                                <option value="square" ${s.wave === 'square' ? 'selected' : ''}>${t.wave_square}</option>
+                            </select>
                         <label>${t.dauer || "Dauer:"} <b>${s.duration}</b>s</label>
                         <input type="range" min="0.5" max="15" step="0.5" value="${s.duration}" oninput="window.activeSynth['${pano.id}'].duration = parseFloat(this.value); this.previousElementSibling.querySelector('b').innerText = this.value;">
                     </div>
@@ -402,10 +397,9 @@
             allePunkte.forEach((punkt, indexPos) => {
                 let yProzent = (punkt.hoehe / 100) * (s.range / 100);
                 const freqIndex = Math.floor(yProzent * (tonleiter.length - 1));
-                const freq = tonleiter[freqIndex] || 440;
                 
-                // Der Master-Gain (Hüllkurve) für diesen Punkt
-                const masterGain = audioCtx.createGain();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
                 
                 let panner;
                 if (audioCtx.createStereoPanner) {
@@ -415,86 +409,28 @@
                     panner = audioCtx.createGain(); 
                 }
 
-                // Hüllkurven-Timing (Envelope)
+                osc.type = s.wave;
+                osc.frequency.value = tonleiter[freqIndex] || 440;
+
                 const startDelay = (s.mode === 'chord') ? 0 : (indexPos * 0.25);
                 const t0 = now + startDelay + 0.1; 
                 const t1 = t0 + Math.max(0.01, s.attack);
                 const t2 = t1 + Math.max(0.01, s.duration); 
                 const t3 = t2 + Math.max(0.01, s.release);
 
-                masterGain.gain.value = 0; 
-                masterGain.gain.setValueAtTime(0, t0); 
-                masterGain.gain.linearRampToValueAtTime(s.volume, t1); 
-                masterGain.gain.setValueAtTime(s.volume, t2); 
-                masterGain.gain.linearRampToValueAtTime(0.0001, t3); 
+                gain.gain.value = 0; 
+                gain.gain.setValueAtTime(0, t0); 
+                gain.gain.linearRampToValueAtTime(s.volume, t1); 
+                gain.gain.setValueAtTime(s.volume, t2); 
+                gain.gain.linearRampToValueAtTime(0.0001, t3); 
 
-                masterGain.connect(panner);
+                osc.connect(gain);
+                gain.connect(panner);
                 panner.connect(audioCtx.destination);
                 panner.connect(delayNode);
-
-                // --- HIER STARTET DIE PATCH-ENGINE ---
-                let oscs = [];
-
-                if (s.wave === 'organ') {
-                    // Sub-Oktave
-                    let o1 = audioCtx.createOscillator(); o1.type = 'sine'; o1.frequency.value = freq / 2;
-                    let g1 = audioCtx.createGain(); g1.gain.value = 0.6;
-                    o1.connect(g1); g1.connect(masterGain); oscs.push(o1);
-                    
-                    // Grundton
-                    let o2 = audioCtx.createOscillator(); o2.type = 'sine'; o2.frequency.value = freq;
-                    let g2 = audioCtx.createGain(); g2.gain.value = 1.0;
-                    o2.connect(g2); g2.connect(masterGain); oscs.push(o2);
-                    
-                    // Hohe Oktave
-                    let o3 = audioCtx.createOscillator(); o3.type = 'triangle'; o3.frequency.value = freq * 2;
-                    let g3 = audioCtx.createGain(); g3.gain.value = 0.4;
-                    o3.connect(g3); g3.connect(masterGain); oscs.push(o3);
-
-                } else if (s.wave === 'darkpad') {
-                    let osc = audioCtx.createOscillator();
-                    osc.type = 'sawtooth'; 
-                    osc.frequency.value = freq;
-                    
-                    // Tiefpassfilter (schneidet schrille Höhen weg)
-                    let filter = audioCtx.createBiquadFilter();
-                    filter.type = 'lowpass';
-                    filter.Q.value = 2; // Leichte Resonanz
-                    
-                    // Filter öffnet sich beim Spielen leicht
-                    filter.frequency.setValueAtTime(300, t0);
-                    filter.frequency.linearRampToValueAtTime(1000, t1);
-                    filter.frequency.linearRampToValueAtTime(300, t3);
-                    
-                    osc.connect(filter); 
-                    filter.connect(masterGain);
-                    oscs.push(osc);
-
-                } else if (s.wave === 'chime') {
-                    // Grundton
-                    let o1 = audioCtx.createOscillator(); o1.type = 'sine'; o1.frequency.value = freq;
-                    let g1 = audioCtx.createGain(); g1.gain.value = 0.8;
-                    o1.connect(g1); g1.connect(masterGain); oscs.push(o1);
-                    
-                    // Schiefer Oberton (typisch für Glocken)
-                    let o2 = audioCtx.createOscillator(); o2.type = 'sine'; o2.frequency.value = freq * 2.76;
-                    let g2 = audioCtx.createGain(); g2.gain.value = 0.4;
-                    o2.connect(g2); g2.connect(masterGain); oscs.push(o2);
-
-                } else {
-                    // Standard Wellenformen (sine, triangle, sawtooth, square)
-                    let osc = audioCtx.createOscillator();
-                    osc.type = s.wave;
-                    osc.frequency.value = freq;
-                    osc.connect(masterGain);
-                    oscs.push(osc);
-                }
-
-                // Alle Oszillatoren dieses Patches starten
-                oscs.forEach(o => {
-                    o.start(t0);
-                    o.stop(t3 + 0.2);
-                });
+                
+                osc.start(t0);
+                osc.stop(t3 + 0.2);
             });
 
         } catch (e) { 
