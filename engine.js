@@ -4,7 +4,6 @@ const SHEET_ID = "10pxYaSMyt5uDRjCF0DWjGEabe_a3YftdpChxYzyQJBo";
 let currentLang = 'de';
 let panoramenDaten = [];
 window.activeSynth = {}; 
-window.panoDataCache = {}; // NEU: Speichert die Koordinaten für Live-Zeichnungen
 
 const scales = {
     major: [2, 2, 1, 2, 2, 2, 1],
@@ -20,6 +19,13 @@ const map = L.map('map').setView([46.8182, 8.2275], 8);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
 const markerClusterGroup = L.markerClusterGroup({ maxClusterRadius: 40, spiderfyOnMaxZoom: true });
 map.addLayer(markerClusterGroup);
+
+// Initialisiert die Drehregler optisch, sobald ein Popup geöffnet wird
+map.on('popupopen', function() {
+    document.querySelectorAll('.hidden-range').forEach(input => {
+        input.dispatchEvent(new Event('input')); 
+    });
+});
 
 window.wechsleAnsicht = function(ansicht) {
     if (ansicht === 'schweiz') map.flyTo([46.8182, 8.2275], 8);
@@ -54,7 +60,7 @@ window.updateKnob = function(input, visualId) {
     let max = parseFloat(input.max) || 100;
     let val = parseFloat(input.value);
     let percent = (val - min) / (max - min);
-    let degrees = -135 + (percent * 270); 
+    let degrees = -135 + (percent * 270); // Drehung von -135 bis +135 Grad
     let vis = document.getElementById(visualId);
     if(vis) vis.style.transform = `rotate(${degrees}deg)`;
 };
@@ -73,26 +79,8 @@ async function ladePanoramenAusSheet() {
             const marker = L.marker(coords);
             marker.panoId = pano.id;
             
+            // Popup ist jetzt schmaler (CSS übernimmt die Breite)
             marker.bindPopup(() => getPopupHTML(pano));
-            
-            // NEU: Sobald das Pop-up öffnet, laden wir das JSON und zeichnen die Linien
-            marker.on('popupopen', async function() {
-                // Drehregler initialisieren
-                document.querySelectorAll('.hidden-range').forEach(input => {
-                    input.dispatchEvent(new Event('input')); 
-                });
-                
-                // Koordinaten im Hintergrund laden
-                if(!window.panoDataCache[pano.id]) {
-                    try {
-                        let r = await fetch(pano.arrayUrl);
-                        window.panoDataCache[pano.id] = await r.json();
-                    } catch(e) { console.error("Konnte Array nicht laden", e); }
-                }
-                // Linien direkt einmal zeichnen
-                drawLines(pano.id);
-            });
-
             markerClusterGroup.addLayer(marker);
 
             window.activeSynth[pano.id] = {
@@ -129,39 +117,14 @@ function parseCSV(textData) {
     return result;
 }
 
-// NEU: Live-Zeichnen Funktion
-window.drawLines = function(panoId) {
-    const daten = window.panoDataCache[panoId];
-    if(!daten) return; // JSON noch nicht geladen
-    
-    const s = window.activeSynth[panoId];
-    const topGipfel = findePunkte(daten.kurve_y, s.peaks, s.spacing, s.sensibilitaet, 'gipfel');
-    const tiefeTaeler = findePunkte(daten.kurve_y, s.valleys, s.spacing, s.sensibilitaet, 'tal');
-
-    const canvas = document.getElementById(`canvas_${panoId}`);
-    if (canvas) {
-        const ctx = canvas.getContext('2d');
-        canvas.width = daten.bild_breite; canvas.height = daten.bild_hoehe;
-        ctx.clearRect(0, 0, canvas.width, canvas.height); 
-        ctx.lineWidth = 4;
-        
-        ctx.strokeStyle = 'rgba(255, 215, 0, 0.8)';
-        topGipfel.forEach(p => { ctx.beginPath(); ctx.moveTo(p.x, 0); ctx.lineTo(p.x, canvas.height); ctx.stroke(); });
-        
-        ctx.strokeStyle = 'rgba(0, 191, 255, 0.8)';
-        tiefeTaeler.forEach(p => { ctx.beginPath(); ctx.moveTo(p.x, 0); ctx.lineTo(p.x, canvas.height); ctx.stroke(); });
-    }
-};
-
+// Hilfsfunktion: Generiert einen einzelnen Drehregler in HTML
 function buildKnob(panoId, key, label, min, max, step, isInt, displayMult, unit = "") {
     let val = window.activeSynth[panoId][key];
     let visId = `vis_${key}_${panoId}`;
     let valId = `val_${key}_${panoId}`;
     
-    // NEU: Prüfen, ob dieser Regler die Linien verändern soll
-    let triggerDraw = ['peaks', 'valleys', 'spacing', 'sensibilitaet'].includes(key) ? `drawLines('${panoId}');` : '';
-    
-    let jsAction = `updateKnob(this, '${visId}'); window.activeSynth['${panoId}'].${key} = ${isInt ? 'parseInt' : 'parseFloat'}(this.value); document.getElementById('${valId}').innerText = ${displayMult ? 'Math.round(this.value * '+displayMult+')' : 'this.value'} + '${unit}'; ${triggerDraw}`;
+    // JS Logic, die ausgeführt wird, wenn der (unsichtbare) Slider gezogen wird
+    let jsAction = `updateKnob(this, '${visId}'); window.activeSynth['${panoId}'].${key} = ${isInt ? 'parseInt' : 'parseFloat'}(this.value); document.getElementById('${valId}').innerText = ${displayMult ? 'Math.round(this.value * '+displayMult+')' : 'this.value'} + '${unit}';`;
     
     return `
     <div class="knob-box">
@@ -178,13 +141,9 @@ function getPopupHTML(pano) {
     const s = window.activeSynth[pano.id];
     const t = (typeof text !== 'undefined' && text[currentLang]) ? text[currentLang] : {};
     
-    // Kleines Speicher-Icon (vorerst ohne Funktion, für später vorbereitet)
     return `
         <div class="popup-content">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom:4px;">
-                <h3 style="margin:0;">${pano.titel}</h3>
-                <button title="Als Preset speichern" style="background:none; border:none; color:#FFD700; font-size:18px; cursor:pointer;" onclick="alert('Speichern kommt im nächsten Schritt!')">💾</button>
-            </div>
+            <h3>${pano.titel}</h3>
             <div style="font-size: 10px; color: #777; margin-bottom: 8px;">📅 ${pano.datum}</div>
             
             <div class="bild-container" onclick="openLightbox('${pano.bildUrl}')" title="${t.vergroessern}">
@@ -192,6 +151,7 @@ function getPopupHTML(pano) {
                 <canvas id="canvas_${pano.id}" class="punktOverlay"></canvas>
             </div>
 
+            <!-- Dropdowns oben -->
             <div class="dropdown-row">
                 <div class="dropdown-box">
                     <label>${t.modus || "Modus"}</label>
@@ -226,6 +186,7 @@ function getPopupHTML(pano) {
                 </div>
             </div>
 
+            <!-- Drehregler Grid -->
             <div class="synth-grid">
                 ${buildKnob(pano.id, 'peaks', t.gipfel || 'Gipfel', 0, 12, 1, true, null)}
                 ${buildKnob(pano.id, 'valleys', t.taeler || 'Täler', 0, 12, 1, true, null)}
@@ -266,6 +227,9 @@ function generateScale(scaleName, octaves) {
 function findePunkte(kurve, anzahl, abstand, sens, typ) {
     if (anzahl <= 0) return [];
     let kandidaten = [];
+    
+    // DIE NEUE SENSIBILITÄT: Dynamischer, viel breiterer Suchradius!
+    // Schaut mindestens 20 Pixel nach links/rechts, anstatt nur 5.
     let radius = Math.max(20, Math.floor(abstand / 2)); 
 
     for (let i = radius; i < kurve.length - radius; i++) {
@@ -276,8 +240,10 @@ function findePunkte(kurve, anzahl, abstand, sens, typ) {
             : (val <= kurve[i-1] && val < kurve[i+1]);
         
         if (isPeak) {
+            // Misst die Umgebung basierend auf dem neuen Radius
             let umgebung = kurve.slice(i - radius, i + radius + 1);
             let diff = typ === 'gipfel' ? val - Math.min(...umgebung) : Math.max(...umgebung) - val;
+            
             if (diff >= sens) kandidaten.push({ x: i, hoehe: val, diff: diff });
         }
     }
@@ -299,12 +265,9 @@ window.playPanorama = async function(panoId, dateiPfad) {
     if (audioCtx.state === 'suspended') await audioCtx.resume();
 
     try {
-        // Fallback, falls Cache leer ist
-        if (!window.panoDataCache[panoId]) {
-            const res = await fetch(dateiPfad);
-            window.panoDataCache[panoId] = await res.json();
-        }
-        const daten = window.panoDataCache[panoId];
+        const res = await fetch(dateiPfad);
+        if (!res.ok) throw new Error(`Array-Datei nicht gefunden!`);
+        const daten = await res.json();
         const s = window.activeSynth[panoId];
         
         const tonleiter = generateScale(s.scale, s.oktaven);
@@ -320,8 +283,19 @@ window.playPanorama = async function(panoId, dateiPfad) {
         if (s.mode === 'lr') allePunkte.sort((a, b) => a.x - b.x);
         else if (s.mode === 'rl') allePunkte.sort((a, b) => b.x - a.x);
 
-        // Optisches Zeichnen nochmal aufrufen (zur Sicherheit)
-        drawLines(panoId);
+        const canvas = document.getElementById(`canvas_${panoId}`);
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            canvas.width = daten.bild_breite; canvas.height = daten.bild_hoehe;
+            ctx.clearRect(0, 0, canvas.width, canvas.height); 
+            ctx.lineWidth = 4;
+            
+            ctx.strokeStyle = 'rgba(255, 215, 0, 0.8)';
+            topGipfel.forEach(p => { ctx.beginPath(); ctx.moveTo(p.x, 0); ctx.lineTo(p.x, canvas.height); ctx.stroke(); });
+            
+            ctx.strokeStyle = 'rgba(0, 191, 255, 0.8)';
+            tiefeTaeler.forEach(p => { ctx.beginPath(); ctx.moveTo(p.x, 0); ctx.lineTo(p.x, canvas.height); ctx.stroke(); });
+        }
 
         const delayNode = audioCtx.createDelay();
         delayNode.delayTime.value = 0.4;
