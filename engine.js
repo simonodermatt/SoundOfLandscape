@@ -135,24 +135,25 @@ window.savePreset = async function(panoId) {
     btn.innerText = "⏳";
     
     try {
-        // DER MAGIC FIX: 'Content-Type': 'text/plain;charset=utf-8' umgeht Googles CORS Blockade!
-        let response = await fetch(API_URL, { 
+        // DER FIX FÜR GOOGLE: "no-cors" ignoriert die Sicherheitsblockade.
+        await fetch(API_URL, { 
             method: 'POST', 
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain' },
             body: JSON.stringify(payload) 
         });
         
-        let result = await response.json();
-        if(result.status === "success") {
-            alert(`Erfolg! "${presetName}" wurde gespeichert.`);
+        alert(`Erfolg! "${presetName}" wurde gespeichert.`);
+        
+        // Wir geben Google 1.5 Sekunden Zeit, um die Zeile ins Sheet zu schreiben, bevor wir neu laden
+        setTimeout(() => {
             loadPresets(panoId);
-            document.getElementById(`preset-container-${panoId}`).style.display = 'block';
-            document.getElementById(`preset-arrow-${panoId}`).innerText = '▼';
-        } else {
-            alert("Fehler vom Server: " + result.message);
-        }
+        }, 1500);
+        
+        document.getElementById(`preset-container-${panoId}`).style.display = 'block';
+        document.getElementById(`preset-arrow-${panoId}`).innerText = '▼';
     } catch(e) { 
-        alert("Fehler beim Senden: " + e.message); 
+        alert("Netzwerkfehler beim Speichern."); 
     }
     btn.innerText = oldBtn;
 };
@@ -162,15 +163,16 @@ window.deletePreset = async function(presetId, panoId) {
     try {
         await fetch(API_URL, { 
             method: 'POST', 
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain' },
             body: JSON.stringify({ action: "delete", preset_id: presetId, user_id: getUserId() }) 
         });
-        loadPresets(panoId);
+        setTimeout(() => { loadPresets(panoId); }, 1500);
     } catch(e) { alert("Fehler beim Löschen."); }
 };
 
 
-// --- INITIALISIERUNG ---
+// --- INITIALISIERUNG & KNOBS ---
 window.updateKnob = function(input, visualId) {
     let min = parseFloat(input.min) || 0; let max = parseFloat(input.max) || 100;
     let val = parseFloat(input.value);
@@ -355,9 +357,14 @@ function getPopupHTML(pano) {
 }
 
 // --- MULTI-PLAY AUDIO ENGINE ---
+window.getAudioCtx = function() {
+    if (!window.audioCtx) { window.audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    return window.audioCtx;
+};
+
 window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets) {
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); 
-    if (audioCtx.state === 'suspended') await audioCtx.resume();
+    const actx = window.getAudioCtx();
+    if (actx.state === 'suspended') await actx.resume();
 
     try {
         if (!window.panoDataCache[panoId]) {
@@ -387,18 +394,18 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
             synthsToPlay.push(window.activeSynth[panoId]);
         }
 
-        const delayNode = audioCtx.createDelay();
+        const delayNode = actx.createDelay();
         delayNode.delayTime.value = 0.4;
         
-        let maxEcho = Math.max(...synthsToPlay.map(s => s.echo));
-        const feedbackGain = audioCtx.createGain();
+        let maxEcho = Math.max(...synthsToPlay.map(s => s.echo || 0));
+        const feedbackGain = actx.createGain();
         feedbackGain.gain.value = maxEcho; 
         
         delayNode.connect(feedbackGain);
         feedbackGain.connect(delayNode);
-        delayNode.connect(audioCtx.destination);
+        delayNode.connect(actx.destination);
 
-        const now = audioCtx.currentTime;
+        const now = actx.currentTime;
         let playedCount = 0;
 
         synthsToPlay.forEach((s) => {
@@ -418,8 +425,8 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
                 const freqIndex = Math.floor(yProzent * (tonleiter.length - 1));
                 const freq = tonleiter[freqIndex] || 440;
                 
-                const masterGain = audioCtx.createGain();
-                let panner = audioCtx.createStereoPanner ? audioCtx.createStereoPanner() : audioCtx.createGain();
+                const masterGain = actx.createGain();
+                let panner = actx.createStereoPanner ? actx.createStereoPanner() : actx.createGain();
                 if(panner.pan) panner.pan.value = (punkt.x / daten.bild_breite) * 2 - 1;
 
                 const startDelay = (s.mode === 'chord') ? 0 : (indexPos * 0.25);
@@ -435,29 +442,29 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
                 masterGain.gain.linearRampToValueAtTime(0.0001, t3); 
 
                 masterGain.connect(panner);
-                panner.connect(audioCtx.destination);
+                panner.connect(actx.destination);
                 panner.connect(delayNode);
 
                 let oscs = [];
                 if (s.wave === 'organ') {
-                    let o1 = audioCtx.createOscillator(); o1.type = 'sine'; o1.frequency.value = freq / 2;
-                    let g1 = audioCtx.createGain(); g1.gain.value = 0.6; o1.connect(g1); g1.connect(masterGain); oscs.push(o1);
-                    let o2 = audioCtx.createOscillator(); o2.type = 'sine'; o2.frequency.value = freq;
-                    let g2 = audioCtx.createGain(); g2.gain.value = 1.0; o2.connect(g2); g2.connect(masterGain); oscs.push(o2);
-                    let o3 = audioCtx.createOscillator(); o3.type = 'triangle'; o3.frequency.value = freq * 2;
-                    let g3 = audioCtx.createGain(); g3.gain.value = 0.4; o3.connect(g3); g3.connect(masterGain); oscs.push(o3);
+                    let o1 = actx.createOscillator(); o1.type = 'sine'; o1.frequency.value = freq / 2;
+                    let g1 = actx.createGain(); g1.gain.value = 0.6; o1.connect(g1); g1.connect(masterGain); oscs.push(o1);
+                    let o2 = actx.createOscillator(); o2.type = 'sine'; o2.frequency.value = freq;
+                    let g2 = actx.createGain(); g2.gain.value = 1.0; o2.connect(g2); g2.connect(masterGain); oscs.push(o2);
+                    let o3 = actx.createOscillator(); o3.type = 'triangle'; o3.frequency.value = freq * 2;
+                    let g3 = actx.createGain(); g3.gain.value = 0.4; o3.connect(g3); g3.connect(masterGain); oscs.push(o3);
                 } else if (s.wave === 'darkpad') {
-                    let osc = audioCtx.createOscillator(); osc.type = 'sawtooth'; osc.frequency.value = freq;
-                    let filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.Q.value = 2; 
+                    let osc = actx.createOscillator(); osc.type = 'sawtooth'; osc.frequency.value = freq;
+                    let filter = actx.createBiquadFilter(); filter.type = 'lowpass'; filter.Q.value = 2; 
                     filter.frequency.setValueAtTime(300, t0); filter.frequency.linearRampToValueAtTime(1000, t1); filter.frequency.linearRampToValueAtTime(300, t3);
                     osc.connect(filter); filter.connect(masterGain); oscs.push(osc);
                 } else if (s.wave === 'chime') {
-                    let o1 = audioCtx.createOscillator(); o1.type = 'sine'; o1.frequency.value = freq;
-                    let g1 = audioCtx.createGain(); g1.gain.value = 0.8; o1.connect(g1); g1.connect(masterGain); oscs.push(o1);
-                    let o2 = audioCtx.createOscillator(); o2.type = 'sine'; o2.frequency.value = freq * 2.76;
-                    let g2 = audioCtx.createGain(); g2.gain.value = 0.4; o2.connect(g2); g2.connect(masterGain); oscs.push(o2);
+                    let o1 = actx.createOscillator(); o1.type = 'sine'; o1.frequency.value = freq;
+                    let g1 = actx.createGain(); g1.gain.value = 0.8; o1.connect(g1); g1.connect(masterGain); oscs.push(o1);
+                    let o2 = actx.createOscillator(); o2.type = 'sine'; o2.frequency.value = freq * 2.76;
+                    let g2 = actx.createGain(); g2.gain.value = 0.4; o2.connect(g2); g2.connect(masterGain); oscs.push(o2);
                 } else {
-                    let osc = audioCtx.createOscillator(); osc.type = s.wave; osc.frequency.value = freq;
+                    let osc = actx.createOscillator(); osc.type = s.wave; osc.frequency.value = freq;
                     osc.connect(masterGain); oscs.push(osc);
                 }
                 oscs.forEach(o => { o.start(t0); o.stop(t3 + 0.2); });

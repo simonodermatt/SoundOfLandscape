@@ -7,7 +7,7 @@ let currentLang = 'de';
 let panoramenDaten = [];
 window.activeSynth = {}; 
 window.panoDataCache = {}; 
-window.currentPresets = []; // Speichert die geladenen Presets für Multi-Play
+window.currentPresets = []; 
 
 const scales = {
     major: [2, 2, 1, 2, 2, 2, 1], minor: [2, 1, 2, 2, 1, 2, 2],
@@ -15,7 +15,6 @@ const scales = {
     pentatonic: [2, 2, 3, 2, 3], hirajoshi: [2, 1, 4, 1, 4]
 };
 
-// --- KARTEN-SETUP ---
 const map = L.map('map').setView([46.8182, 8.2275], 8);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
 const markerClusterGroup = L.markerClusterGroup({ maxClusterRadius: 40, spiderfyOnMaxZoom: true });
@@ -31,7 +30,7 @@ window.changeLanguage = function(lang) {
     currentLang = lang;
     if(typeof text === "undefined") return;
     document.getElementById('lbl-sprache').innerText = text[lang].sprache;
-    document.getElementById('lbl-view').innerHTML = `<b>${text[lang].ausschnitt}</b>`;
+    document.getElementById('lbl-view').innerText = text[lang].ausschnitt;
     document.getElementById('opt-ch').innerText = text[lang].schweiz;
     document.getElementById('opt-eu').innerText = text[lang].europa;
     document.getElementById('opt-world').innerText = text[lang].welt;
@@ -57,12 +56,11 @@ function getUserId() {
     }
     return id;
 }
-
 function getUserName() { return localStorage.getItem('pano_user_name'); }
 function setUserName(name) { localStorage.setItem('pano_user_name', name); }
 
 
-// --- COMMUNITY PRESETS (Laden, Speichern, Löschen) ---
+// --- COMMUNITY PRESETS ---
 window.togglePresets = function(panoId) {
     let el = document.getElementById(`preset-container-${panoId}`);
     let arrow = document.getElementById(`preset-arrow-${panoId}`);
@@ -86,7 +84,7 @@ window.loadPresets = async function(panoId) {
         window.currentPresets = presets; 
         
         if (presets.length === 0) {
-            container.innerHTML = "<div style='font-size:11px; color:#888;'>Noch keine Presets. Klicke auf 💾 um dein erstes zu speichern!</div>";
+            container.innerHTML = "<div style='font-size:11px; color:#888;'>Noch keine Presets vorhanden.</div>";
             return;
         }
 
@@ -137,25 +135,34 @@ window.savePreset = async function(panoId) {
     btn.innerText = "⏳";
     
     try {
-        await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
-        alert(`Erfolg! "${presetName}" wurde gespeichert.`);
-        loadPresets(panoId);
+        // DER MAGIC FIX: 'Content-Type': 'text/plain;charset=utf-8' umgeht Googles CORS Blockade!
+        let response = await fetch(API_URL, { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload) 
+        });
         
-        // Liste automatisch aufklappen, falls noch zu
-        document.getElementById(`preset-container-${panoId}`).style.display = 'block';
-        document.getElementById(`preset-arrow-${panoId}`).innerText = '▼';
+        let result = await response.json();
+        if(result.status === "success") {
+            alert(`Erfolg! "${presetName}" wurde gespeichert.`);
+            loadPresets(panoId);
+            document.getElementById(`preset-container-${panoId}`).style.display = 'block';
+            document.getElementById(`preset-arrow-${panoId}`).innerText = '▼';
+        } else {
+            alert("Fehler vom Server: " + result.message);
+        }
     } catch(e) { 
-        alert("Fehler beim Speichern!"); 
+        alert("Fehler beim Senden: " + e.message); 
     }
     btn.innerText = oldBtn;
 };
 
 window.deletePreset = async function(presetId, panoId) {
     if(!confirm("Möchtest du dieses Preset wirklich löschen?")) return;
-    
     try {
         await fetch(API_URL, { 
             method: 'POST', 
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify({ action: "delete", preset_id: presetId, user_id: getUserId() }) 
         });
         loadPresets(panoId);
@@ -197,7 +204,7 @@ async function ladePanoramenAusSheet() {
                     } catch(e) { console.error(e); }
                 }
                 drawLines(pano.id);
-                loadPresets(pano.id); // Lade sofort die Presets aus dem Backend!
+                loadPresets(pano.id); 
             });
 
             markerClusterGroup.addLayer(marker);
@@ -334,7 +341,6 @@ function getPopupHTML(pano) {
 
             <button class="play-btn" onclick="playMultiPanorama('${pano.id}', '${pano.arrayUrl}', false)">Aktuelle Einstellung Abspielen</button>
 
-            <!-- NEU: Preset Bereich -->
             <div class="presets-section">
                 <div class="preset-header" onclick="togglePresets('${pano.id}')">
                     <span id="preset-arrow-${pano.id}">▶</span> Community Presets
@@ -359,19 +365,15 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
             window.panoDataCache[panoId] = await res.json();
         }
         const daten = window.panoDataCache[panoId];
-
-        // Wir bauen eine Liste mit allen Synthesizern, die jetzt gleichzeitig spielen sollen
         let synthsToPlay = [];
 
         if (playSelectedPresets) {
-            // Sammle alle markierten Checkboxen ein
             let checkedBoxes = document.querySelectorAll(`#preset-list-${panoId} .preset-cb:checked`);
             if (checkedBoxes.length === 0) { alert("Bitte markiere mindestens ein Preset!"); return; }
             
             checkedBoxes.forEach(cb => {
                 let p = window.currentPresets.find(pr => pr.preset_id === cb.value);
                 if(p) {
-                    // String aus JSON zurück in Zahlen verwandeln
                     synthsToPlay.push({
                         peaks: parseInt(p.peaks), valleys: parseInt(p.valleys), spacing: parseInt(p.spacing),
                         sensibilitaet: parseInt(p.sensibilitaet), mode: p.mode, scale: p.scale,
@@ -382,14 +384,12 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
                 }
             });
         } else {
-            // Nur die aktuellen Regler abspielen
             synthsToPlay.push(window.activeSynth[panoId]);
         }
 
         const delayNode = audioCtx.createDelay();
         delayNode.delayTime.value = 0.4;
         
-        // Nimmt das größte Echo aller aktiven Synths für den Master-Effekt
         let maxEcho = Math.max(...synthsToPlay.map(s => s.echo));
         const feedbackGain = audioCtx.createGain();
         feedbackGain.gain.value = maxEcho; 
@@ -401,7 +401,6 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
         const now = audioCtx.currentTime;
         let playedCount = 0;
 
-        // Loop über ALLE ausgewählten Synthesizer
         synthsToPlay.forEach((s) => {
             const tonleiter = generateScale(s.scale, s.oktaven);
             const topGipfel = findePunkte(daten.kurve_y, s.peaks, s.spacing, s.sensibilitaet, 'gipfel');
@@ -465,10 +464,9 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
             });
         });
 
-        if (playedCount === 0) alert("Mit diesen Einstellungen wurden keine Punkte auf dem Panorama gefunden!");
+        if (playedCount === 0) alert("Mit diesen Einstellungen wurden keine Punkte gefunden!");
 
     } catch (e) { alert("Audio-Fehler: " + e.message); }
 };
 
-// Start
 ladePanoramenAusSheet();
