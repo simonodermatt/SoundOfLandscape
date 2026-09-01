@@ -184,24 +184,33 @@ window.loadSelectedPreset = function(panoId) {
     let p = window.currentPresets.find(pr => pr.preset_id === presetId);
     
     if (p) {
-        // 1. Daten im Hintergrund aktualisieren
+        // 1. Daten aktualisieren: .trim() entfernt Leerzeichen, das || definiert einen Standardwert falls leer
         window.activeSynth[panoId] = {
-            peaks: parseInt(p.peaks), valleys: parseInt(p.valleys), spacing: parseInt(p.spacing),
-            sensibilitaet: parseInt(p.sensibilitaet), mode: p.mode, scale: p.scale,
-            oktaven: parseInt(p.oktaven), range: parseInt(p.range), wave: p.wave,
-            volume: parseFloat(p.volume), duration: parseFloat(p.duration), 
-            attack: parseFloat(p.attack), release: parseFloat(p.release), echo: parseFloat(p.echo)
+            peaks: parseInt(p.peaks) || 4, 
+            valleys: parseInt(p.valleys) || 2, 
+            spacing: parseInt(p.spacing) || 35,
+            sensibilitaet: parseInt(p.sensibilitaet) || 0, 
+            mode: p.mode ? p.mode.trim() : 'chord', 
+            scale: p.scale ? p.scale.trim() : 'lydian',
+            oktaven: parseInt(p.oktaven) || 3, 
+            range: parseInt(p.range) || 100, 
+            wave: p.wave ? p.wave.trim() : 'darkpad',
+            volume: parseFloat(p.volume) || 0.2, 
+            duration: parseFloat(p.duration) || 5.0, 
+            attack: parseFloat(p.attack) || 1.0, 
+            release: parseFloat(p.release) || 2.0, 
+            echo: parseFloat(p.echo) || 0.3
         };
         
-        // 2. Dropdowns im GUI umstellen
+        // 2. Dropdowns im GUI sicher umstellen
         let modeSel = document.getElementById(`sel_mode_${panoId}`);
-        if (modeSel) modeSel.value = p.mode;
+        if (modeSel) modeSel.value = window.activeSynth[panoId].mode;
         
         let scaleSel = document.getElementById(`sel_scale_${panoId}`);
-        if (scaleSel) scaleSel.value = p.scale;
+        if (scaleSel) scaleSel.value = window.activeSynth[panoId].scale;
         
         let waveSel = document.getElementById(`sel_wave_${panoId}`);
-        if (waveSel) waveSel.value = p.wave;
+        if (waveSel) waveSel.value = window.activeSynth[panoId].wave;
 
         // 3. Slider physisch anpassen und visuelle Updates triggern
         const sliderKeys = ['peaks', 'valleys', 'spacing', 'sensibilitaet', 'oktaven', 'range', 'duration', 'echo', 'attack', 'release', 'volume'];
