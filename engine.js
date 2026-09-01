@@ -12,6 +12,14 @@ const scales = {
     pentatonic: [2, 2, 3, 2, 3], hirajoshi: [2, 1, 4, 1, 4]
 };
 
+// --- HILFSFUNKTION FÜR SICHERHEIT (XSS-Schutz) ---
+function escapeHTML(str) {
+    if (typeof str !== 'string') return '';
+    return str.replace(/[&<>'"]/g, tag => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+    }[tag]));
+}
+
 function generateScale(scaleName, octaves) {
     const intervals = scales[scaleName] || scales.major;
     let freqs = [];
@@ -140,7 +148,6 @@ window.changeUserName = function() {
     }
 };
 
-
 window.togglePresets = function(panoId) {
     let el = document.getElementById(`preset-container-${panoId}`);
     let arrow = document.getElementById(`preset-arrow-${panoId}`);
@@ -175,7 +182,6 @@ window.loadPresets = async function(panoId) {
             let isOwner = (myId === p.user_id);
             let timeStr = "";
             
-            // Zeitstempel formatieren, falls vorhanden (z.B. 14.08.2026 15:30)
             if (p.timestamp) {
                 let d = new Date(p.timestamp);
                 if (!isNaN(d.getTime())) {
@@ -187,14 +193,15 @@ window.loadPresets = async function(panoId) {
                 }
             }
 
+            // XSS FIX: escapeHTML() schützt vor eingeschleustem Code
             html += `
             <div class="preset-item">
-                <input type="checkbox" class="preset-cb" value="${p.preset_id}">
+                <input type="checkbox" class="preset-cb" value="${escapeHTML(p.preset_id)}">
                 <div class="preset-info">
-                    <strong>${p.preset_name}</strong> 
-                    <span>von ${p.user_name}${timeStr}</span>
+                    <strong>${escapeHTML(p.preset_name)}</strong> 
+                    <span>von ${escapeHTML(p.user_name)}${timeStr}</span>
                 </div>
-                ${isOwner ? `<button onclick="deletePreset('${p.preset_id}', '${panoId}')" class="del-btn" title="Löschen">🗑️</button>` : ''}
+                ${isOwner ? `<button onclick="deletePreset('${escapeHTML(p.preset_id)}', '${escapeHTML(panoId)}')" class="del-btn" title="Löschen">🗑️</button>` : ''}
             </div>`;
         });
         container.innerHTML = html;
@@ -219,7 +226,6 @@ window.loadSelectedPreset = function(panoId) {
     let p = window.currentPresets.find(pr => pr.preset_id === presetId);
     
     if (p) {
-        // FIX: Werte extrem strikt als Text behandeln, Leerzeichen abschneiden und in Kleinbuchstaben zwingen
         window.activeSynth[panoId] = {
             peaks: parseInt(p.peaks) || 4, 
             valleys: parseInt(p.valleys) || 2, 
@@ -240,7 +246,7 @@ window.loadSelectedPreset = function(panoId) {
         let modeSel = document.getElementById(`sel_mode_${panoId}`);
         if (modeSel) { 
             modeSel.value = window.activeSynth[panoId].mode; 
-            modeSel.dispatchEvent(new Event('change')); // Triggert visuelles Update im Browser
+            modeSel.dispatchEvent(new Event('change'));
         }
         
         let scaleSel = document.getElementById(`sel_scale_${panoId}`);
@@ -313,6 +319,20 @@ window.savePreset = async function(panoId) {
         alert("Netzwerkfehler beim Speichern."); 
     }
     if (btn) { btn.innerText = "💾"; }
+};
+
+// --- FEHLENDE FUNKTION HINZUGEFÜGT ---
+window.deletePreset = async function(presetId, panoId) {
+    if(!confirm("Möchtest du dieses Preset wirklich löschen?")) return;
+    try {
+        await fetch(API_URL, { 
+            method: 'POST', 
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({ action: "delete", preset_id: presetId, user_id: getUserId() }) 
+        });
+        setTimeout(() => { loadPresets(panoId); }, 1500);
+    } catch(e) { alert("Fehler beim Löschen."); }
 };
 
 window.updateKnob = function(input, visualId) {
