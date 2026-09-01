@@ -33,7 +33,6 @@ function generateScale(scaleName, octaves) {
     }
     return freqs;
 }
-
 // Sucht die höchsten/tiefsten Punkte im Array unter Berücksichtigung von Abstand und Sensibilität
 function findePunkte(kurve, maxAnzahl, minAbstand, sensibilitaet, typ) {
     if (!kurve || kurve.length === 0) return [];
@@ -62,6 +61,30 @@ function findePunkte(kurve, maxAnzahl, minAbstand, sensibilitaet, typ) {
             punkte.push({ x: i, y: kurve[i], hoehe: hoehe });
         }
     }
+
+    // Sortieren nach Prominenz
+    if (typ === 'gipfel') {
+        punkte.sort((a, b) => b.hoehe - a.hoehe); // Höchste Gipfel zuerst
+    } else {
+        punkte.sort((a, b) => a.hoehe - b.hoehe); // Tiefste Täler zuerst
+    }
+
+    // Filtern nach minimalem Pixel-Abstand (spacing)
+    let filtered = [];
+    for (let p of punkte) {
+        let tooClose = false;
+        for (let f of filtered) {
+            if (Math.abs(p.x - f.x) < minAbstand) {
+                tooClose = true; 
+                break;
+            }
+        }
+        if (!tooClose) filtered.push(p);
+        if (filtered.length >= maxAnzahl) break;
+    }
+    
+    return filtered;
+}
 
     // Sortieren nach Prominenz
     if (typ === 'gipfel') {
