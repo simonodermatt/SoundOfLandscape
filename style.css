@@ -86,3 +86,39 @@ button.play-btn:hover { background: #fff; box-shadow: 0 0 10px rgba(255, 215, 0,
 /* Vollbild Modus */
 #lightbox { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.95); z-index: 9999; justify-content: center; align-items: center; cursor: zoom-out; }
 #lightbox img { max-width: 95vw; max-height: 95vh; border-radius: 4px; box-shadow: 0 4px 30px rgba(0,0,0,0.8); }
+
+/* Neue Icon-Button-Reihe */
+.action-btn-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 15px;
+    width: 100%;
+}
+
+.icon-btn {
+    flex: 1;
+    background: #222;
+    border: 1px solid #444;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 20px;
+    padding: 10px 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+}
+
+.icon-btn:hover {
+    background: #333;
+    border-color: #00BFFF;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0, 191, 255, 0.4);
+}
+
+.icon-btn:active {
+    transform: translateY(0);
+}
