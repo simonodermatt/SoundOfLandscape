@@ -51,17 +51,41 @@ function findePunkte(kurve, maxAnzahl, minAbstand, sensibilitaet, typ) {
         let isTal = true;
         
         for (let j = 1; j <= windowRange; j++) {
-            // Bei Canvas ist ein kleinerer Y-Wert optisch höher (Gipfel)
-            if (kurve[i] > kurve[i-j] || kurve[i] > kurve[i+j]) isGipfel = false; 
-            if (kurve[i] < kurve[i-j] || kurve[i] < kurve[i+j]) isTal = false;
+            // FIX: Vorzeichen getauscht! 
+            // So erkennt der Algorithmus die grafischen Gipfel und Täler korrekt.
+            if (kurve[i] < kurve[i-j] || kurve[i] < kurve[i+j]) isGipfel = false; 
+            if (kurve[i] > kurve[i-j] || kurve[i] > kurve[i+j]) isTal = false;
         }
         
         if ((typ === 'gipfel' && isGipfel) || (typ === 'tal' && isTal)) {
-            // Hoehe in %: 100% ist ganz oben im Bild (minY), 0% ganz unten (maxY)
             let hoehe = 100 - ((kurve[i] - minY) / span) * 100;
             punkte.push({ x: i, y: kurve[i], hoehe: hoehe });
         }
     }
+
+    // Sortieren nach Prominenz
+    if (typ === 'gipfel') {
+        punkte.sort((a, b) => b.hoehe - a.hoehe); // Höchste Gipfel zuerst
+    } else {
+        punkte.sort((a, b) => a.hoehe - b.hoehe); // Tiefste Täler zuerst
+    }
+
+    // Filtern nach minimalem Pixel-Abstand (spacing)
+    let filtered = [];
+    for (let p of punkte) {
+        let tooClose = false;
+        for (let f of filtered) {
+            if (Math.abs(p.x - f.x) < minAbstand) {
+                tooClose = true; 
+                break;
+            }
+        }
+        if (!tooClose) filtered.push(p);
+        if (filtered.length >= maxAnzahl) break;
+    }
+    
+    return filtered;
+}
 
     // Sortieren nach Prominenz: Gipfel absteigend (höchste zuerst), Täler aufsteigend (tiefste zuerst)
     if (typ === 'gipfel') {
