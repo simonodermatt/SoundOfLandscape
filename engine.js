@@ -167,7 +167,7 @@ window.loadPresets = async function(panoId) {
     }
 };
 
-/ Selektiertes Preset laden & GUI updaten
+// Selektiertes Preset laden & GUI updaten
 window.loadSelectedPreset = function(panoId) {
     let checkedBoxes = document.querySelectorAll(`#preset-list-${panoId} .preset-cb:checked`);
     
