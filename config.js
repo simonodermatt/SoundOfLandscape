@@ -1,3 +1,3 @@
 const SHEET_ID = "10pxYaSMyt5uDRjCF0DWjGEabe_a3YftdpChxYzyQJBo"; 
-const API_URL = "https://script.google.com/macros/s/AKfycbwF7WNjiH6Na6zC0qOcgVm3lhIEXBxiYd55LPEdJBaog-s5iFgQ5ATqmxliNjCz4N_N/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbyN7jtPB29kaL7_5wBV342HqNvCwfbIA8v1mz1-zUPhJI-tCbfPPIb6uGfNuN83A4_I/exec";
 
