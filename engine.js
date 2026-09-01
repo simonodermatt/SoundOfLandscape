@@ -32,39 +32,45 @@ function generateScale(scaleName, octaves) {
     return freqs;
 }
 
-// Sucht die höchsten/tiefsten Punkte im Array unter Berücksichtigung von Abstand und Sensibilität
+// Sucht die höchsten/tiefsten Punkte im Array 
 function findePunkte(kurve, maxAnzahl, minAbstand, sensibilitaet, typ) {
     if (!kurve || kurve.length === 0) return [];
     
     let punkte = [];
     let windowRange = Math.max(1, sensibilitaet);
     
-    let maxY = Math.max(...kurve);
+    // Canvas: minY ist ganz OBEN im Bild (höchster Berggipfel), maxY ist ganz UNTEN im Bild (tiefstes Tal)
+    let maxY = Math.max(...kurve); 
     let minY = Math.min(...kurve);
     let span = maxY - minY || 1;
 
     for (let i = windowRange; i < kurve.length - windowRange; i++) {
-        let isGipfel = true;
-        let isTal = true;
+        let isPeak = true;   // Optischer Gipfel (kleinerer Y-Wert)
+        let isValley = true; // Optisches Tal (größerer Y-Wert)
         
         for (let j = 1; j <= windowRange; j++) {
-            // FIX: Vorzeichen getauscht, damit Regler und optische Berge/Täler matchen
-            if (kurve[i] < kurve[i-j] || kurve[i] < kurve[i+j]) isGipfel = false; 
-            if (kurve[i] > kurve[i-j] || kurve[i] > kurve[i+j]) isTal = false;
+            // Ein Punkt ist KEIN Gipfel, wenn ein Nachbar noch weiter oben ist (kleinerer Y-Wert)
+            if (kurve[i] > kurve[i-j] || kurve[i] > kurve[i+j]) isPeak = false; 
+            // Ein Punkt ist KEIN Tal, wenn ein Nachbar noch weiter unten ist (größerer Y-Wert)
+            if (kurve[i] < kurve[i-j] || kurve[i] < kurve[i+j]) isValley = false;
         }
         
-        if ((typ === 'gipfel' && isGipfel) || (typ === 'tal' && isTal)) {
+        // Zuweisung je nach übergebenem Typ ('gipfel' oder 'tal')
+        if ((typ === 'gipfel' && isPeak) || (typ === 'tal' && isValley)) {
+            // Berechnung der Höhe in % (100% = minY = ganz oben im Bild)
             let hoehe = 100 - ((kurve[i] - minY) / span) * 100;
             punkte.push({ x: i, y: kurve[i], hoehe: hoehe });
         }
     }
 
+    // Sortieren nach Wichtigkeit
     if (typ === 'gipfel') {
-        punkte.sort((a, b) => b.hoehe - a.hoehe);
+        punkte.sort((a, b) => b.hoehe - a.hoehe); // Die höchsten Gipfel (nahe 100%) zuerst
     } else {
-        punkte.sort((a, b) => a.hoehe - b.hoehe);
+        punkte.sort((a, b) => a.hoehe - b.hoehe); // Die tiefsten Täler (nahe 0%) zuerst
     }
 
+    // Filtern nach minimalem Pixel-Abstand (spacing)
     let filtered = [];
     for (let p of punkte) {
         let tooClose = false;
@@ -295,24 +301,43 @@ function parseCSV(textData) {
     return result;
 }
 
+// Zeichnet die Linien auf das Canvas
 window.drawLines = function(panoId) {
     const daten = window.panoDataCache[panoId];
     if(!daten) return; 
     
     const s = window.activeSynth[panoId];
+    
+    // Gipfel-Regler (s.peaks) steuert die höchsten Punkte
     const topGipfel = findePunkte(daten.kurve_y, s.peaks, s.spacing, s.sensibilitaet, 'gipfel');
+    // Täler-Regler (s.valleys) steuert die tiefsten Punkte
     const tiefeTaeler = findePunkte(daten.kurve_y, s.valleys, s.spacing, s.sensibilitaet, 'tal');
 
     const canvas = document.getElementById(`canvas_${panoId}`);
     if (canvas) {
         const ctx = canvas.getContext('2d');
-        canvas.width = daten.bild_breite; canvas.height = daten.bild_hoehe;
+        canvas.width = daten.bild_breite; 
+        canvas.height = daten.bild_hoehe;
         ctx.clearRect(0, 0, canvas.width, canvas.height); 
         ctx.lineWidth = 4;
+        
+        // GIPFEL = GELBE LINIEN
         ctx.strokeStyle = 'rgba(255, 215, 0, 0.8)';
-        topGipfel.forEach(p => { ctx.beginPath(); ctx.moveTo(p.x, 0); ctx.lineTo(p.x, canvas.height); ctx.stroke(); });
+        topGipfel.forEach(p => { 
+            ctx.beginPath(); 
+            ctx.moveTo(p.x, 0); 
+            ctx.lineTo(p.x, canvas.height); 
+            ctx.stroke(); 
+        });
+        
+        // TÄLER = BLAUE LINIEN
         ctx.strokeStyle = 'rgba(0, 191, 255, 0.8)';
-        tiefeTaeler.forEach(p => { ctx.beginPath(); ctx.moveTo(p.x, 0); ctx.lineTo(p.x, canvas.height); ctx.stroke(); });
+        tiefeTaeler.forEach(p => { 
+            ctx.beginPath(); 
+            ctx.moveTo(p.x, 0); 
+            ctx.lineTo(p.x, canvas.height); 
+            ctx.stroke(); 
+        });
     }
 };
 
