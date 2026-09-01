@@ -1,4 +1,5 @@
 // engine.js - Ausgelagerte Logik für den Panorama Synthesizer
+// HINWEIS: SHEET_ID und API_URL werden aus der config.js geladen!
 
 let currentLang = 'de';
 let panoramenDaten = [];
@@ -30,8 +31,10 @@ function generateScale(scaleName, octaves) {
 
 function findePunkte(kurve, maxAnzahl, minAbstand, sensibilitaet, typ) {
     if (!kurve || kurve.length === 0) return [];
+    
     let punkte = [];
     let windowRange = Math.max(1, sensibilitaet);
+    
     let maxY = Math.max(...kurve); 
     let minY = Math.min(...kurve);
     let span = maxY - minY || 1;
@@ -39,10 +42,12 @@ function findePunkte(kurve, maxAnzahl, minAbstand, sensibilitaet, typ) {
     for (let i = windowRange; i < kurve.length - windowRange; i++) {
         let isPeak = true;   
         let isValley = true; 
+        
         for (let j = 1; j <= windowRange; j++) {
             if (kurve[i] < kurve[i-j] || kurve[i] < kurve[i+j]) isPeak = false; 
             if (kurve[i] > kurve[i-j] || kurve[i] > kurve[i+j]) isValley = false;
         }
+        
         if ((typ === 'gipfel' && isPeak) || (typ === 'tal' && isValley)) {
             let hoehe = ((kurve[i] - minY) / span) * 100;
             punkte.push({ x: i, y: kurve[i], hoehe: hoehe });
@@ -67,6 +72,7 @@ function findePunkte(kurve, maxAnzahl, minAbstand, sensibilitaet, typ) {
         if (!tooClose) filtered.push(p);
         if (filtered.length >= maxAnzahl) break;
     }
+    
     return filtered;
 }
 
@@ -161,15 +167,16 @@ window.loadPresets = async function(panoId) {
     }
 };
 
-// NEU: Selektiertes Preset laden
+// Selektiertes Preset laden & GUI updaten
 window.loadSelectedPreset = function(panoId) {
     let checkedBoxes = document.querySelectorAll(`#preset-list-${panoId} .preset-cb:checked`);
+    
     if (checkedBoxes.length === 0) {
-        alert("Bitte markiere ein Preset, das du laden möchtest.");
+        alert("Bitte markiere ein Preset zum Laden.");
         return;
     }
     if (checkedBoxes.length > 1) {
-        alert("Bitte markiere nur EIN Preset zum Laden.");
+        alert("Zum Laden auf die Regler darf nur EIN Preset markiert sein (Mehrfachauswahl ist nur für Play Selection).");
         return;
     }
     
@@ -177,6 +184,7 @@ window.loadSelectedPreset = function(panoId) {
     let p = window.currentPresets.find(pr => pr.preset_id === presetId);
     
     if (p) {
+        // 1. Daten im Hintergrund aktualisieren
         window.activeSynth[panoId] = {
             peaks: parseInt(p.peaks), valleys: parseInt(p.valleys), spacing: parseInt(p.spacing),
             sensibilitaet: parseInt(p.sensibilitaet), mode: p.mode, scale: p.scale,
@@ -185,15 +193,26 @@ window.loadSelectedPreset = function(panoId) {
             attack: parseFloat(p.attack), release: parseFloat(p.release), echo: parseFloat(p.echo)
         };
         
-        let marker = markerClusterGroup.getLayers().find(l => l.panoId === panoId);
-        if (marker && marker.isPopupOpen()) {
-            marker.setPopupContent(getPopupHTML(panoramenDaten.find(pd => pd.id === panoId)));
-            document.querySelectorAll('.hidden-range').forEach(input => { input.dispatchEvent(new Event('input')); });
-            drawLines(panoId);
-            document.getElementById(`preset-container-${panoId}`).style.display = 'block';
-            document.getElementById(`preset-arrow-${panoId}`).innerText = '▼';
-            loadPresets(panoId); 
-        }
+        // 2. Dropdowns im GUI umstellen
+        let modeSel = document.getElementById(`sel_mode_${panoId}`);
+        if (modeSel) modeSel.value = p.mode;
+        
+        let scaleSel = document.getElementById(`sel_scale_${panoId}`);
+        if (scaleSel) scaleSel.value = p.scale;
+        
+        let waveSel = document.getElementById(`sel_wave_${panoId}`);
+        if (waveSel) waveSel.value = p.wave;
+
+        // 3. Slider physisch anpassen und visuelle Updates triggern
+        const sliderKeys = ['peaks', 'valleys', 'spacing', 'sensibilitaet', 'oktaven', 'range', 'duration', 'echo', 'attack', 'release', 'volume'];
+        
+        sliderKeys.forEach(key => {
+            let rangeInput = document.getElementById(`range_${key}_${panoId}`);
+            if (rangeInput) {
+                rangeInput.value = window.activeSynth[panoId][key];
+                rangeInput.dispatchEvent(new Event('input'));
+            }
+        });
     }
 };
 
@@ -327,6 +346,7 @@ window.drawLines = function(panoId) {
     if(!daten) return; 
     
     const s = window.activeSynth[panoId];
+    
     const topGipfel = findePunkte(daten.kurve_y, s.peaks, s.spacing, s.sensibilitaet, 'gipfel');
     const tiefeTaeler = findePunkte(daten.kurve_y, s.valleys, s.spacing, s.sensibilitaet, 'tal');
 
@@ -339,10 +359,20 @@ window.drawLines = function(panoId) {
         ctx.lineWidth = 4;
         
         ctx.strokeStyle = 'rgba(255, 215, 0, 0.8)';
-        topGipfel.forEach(p => { ctx.beginPath(); ctx.moveTo(p.x, 0); ctx.lineTo(p.x, canvas.height); ctx.stroke(); });
+        topGipfel.forEach(p => { 
+            ctx.beginPath(); 
+            ctx.moveTo(p.x, 0); 
+            ctx.lineTo(p.x, canvas.height); 
+            ctx.stroke(); 
+        });
         
         ctx.strokeStyle = 'rgba(0, 191, 255, 0.8)';
-        tiefeTaeler.forEach(p => { ctx.beginPath(); ctx.moveTo(p.x, 0); ctx.lineTo(p.x, canvas.height); ctx.stroke(); });
+        tiefeTaeler.forEach(p => { 
+            ctx.beginPath(); 
+            ctx.moveTo(p.x, 0); 
+            ctx.lineTo(p.x, canvas.height); 
+            ctx.stroke(); 
+        });
     }
 };
 
@@ -357,7 +387,7 @@ function buildKnob(panoId, key, label, min, max, step, isInt, displayMult, unit 
         <div class="knob-label">${label}</div>
         <div class="knob-container">
             <div class="knob-visual" id="${visId}"><div class="knob-indicator"></div></div>
-            <input type="range" class="hidden-range" min="${min}" max="${max}" step="${step}" value="${val}" oninput="${jsAction}">
+            <input type="range" id="range_${key}_${panoId}" class="hidden-range" min="${min}" max="${max}" step="${step}" value="${val}" oninput="${jsAction}">
         </div>
         <div class="knob-value" id="${valId}">${displayMult ? Math.round(val * displayMult) : val}${unit}</div>
     </div>`;
@@ -371,7 +401,6 @@ function getPopupHTML(pano) {
         <div class="popup-content">
             <div class="popup-header">
                 <h3>${pano.titel}</h3>
-                <!-- Der alte Speicher-Button wurde hier entfernt -->
             </div>
             <div style="font-size: 10px; color: #777; margin-bottom: 8px;">📅 ${pano.datum}</div>
             
@@ -383,7 +412,7 @@ function getPopupHTML(pano) {
             <div class="dropdown-row">
                 <div class="dropdown-box">
                     <label>${t.modus || "Modus"}</label>
-                    <select onchange="window.activeSynth['${pano.id}'].mode = this.value;">
+                    <select id="sel_mode_${pano.id}" onchange="window.activeSynth['${pano.id}'].mode = this.value;">
                         <option value="chord" ${s.mode === 'chord' ? 'selected' : ''}>${t.mod_gleich || "Akkord"}</option>
                         <option value="lr" ${s.mode === 'lr' ? 'selected' : ''}>${t.mod_lr || "L -> R"}</option>
                         <option value="rl" ${s.mode === 'rl' ? 'selected' : ''}>${t.mod_rl || "R -> L"}</option>
@@ -391,7 +420,7 @@ function getPopupHTML(pano) {
                 </div>
                 <div class="dropdown-box">
                     <label>${t.tonart || "Tonart"}</label>
-                    <select onchange="window.activeSynth['${pano.id}'].scale = this.value;">
+                    <select id="sel_scale_${pano.id}" onchange="window.activeSynth['${pano.id}'].scale = this.value;">
                         <option value="major" ${s.scale === 'major' ? 'selected' : ''}>${t.scale_major || "Dur"}</option>
                         <option value="minor" ${s.scale === 'minor' ? 'selected' : ''}>${t.scale_minor || "Moll"}</option>
                         <option value="lydian" ${s.scale === 'lydian' ? 'selected' : ''}>${t.scale_lydian || "Lydisch"}</option>
@@ -402,7 +431,7 @@ function getPopupHTML(pano) {
                 </div>
                 <div class="dropdown-box">
                     <label>${t.wellenform || "Patch"}</label>
-                    <select onchange="window.activeSynth['${pano.id}'].wave = this.value;">
+                    <select id="sel_wave_${pano.id}" onchange="window.activeSynth['${pano.id}'].wave = this.value;">
                         <option value="sine" ${s.wave === 'sine' ? 'selected' : ''}>${t.wave_sine || "Sinus"}</option>
                         <option value="triangle" ${s.wave === 'triangle' ? 'selected' : ''}>${t.wave_triangle || "Dreieck"}</option>
                         <option value="sawtooth" ${s.wave === 'sawtooth' ? 'selected' : ''}>${t.wave_sawtooth || "Sägezahn"}</option>
@@ -430,7 +459,6 @@ function getPopupHTML(pano) {
                 ${buildKnob(pano.id, 'volume', t.lautstaerke || 'Vol', 0.05, 0.5, 0.05, false, 100, '%')}
             </div>
 
-            <!-- NEUE ICON-BUTTON-REIHE -->
             <div class="action-btn-row">
                 <button class="icon-btn" title="${t.hint_play_current || 'Play'}" onclick="playMultiPanorama('${pano.id}', '${pano.arrayUrl}', false)">▶️</button>
                 <button class="icon-btn" title="${t.hint_play_sel || 'Play Selection'}" onclick="playMultiPanorama('${pano.id}', '${pano.arrayUrl}', true)">🎶</button>
