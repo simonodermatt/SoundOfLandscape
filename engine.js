@@ -15,11 +15,10 @@ const scales = {
     pentatonic: [2, 2, 3, 2, 3], hirajoshi: [2, 1, 4, 1, 4]
 };
 
-// Wandelt die Intervall-Schritte aus dem 'scales' Objekt in Frequenzen um
 function generateScale(scaleName, octaves) {
     const intervals = scales[scaleName] || scales.major;
     let freqs = [];
-    let currentFreq = 130.81; // C3 als Startton (ca. 130 Hz)
+    let currentFreq = 130.81; 
     
     freqs.push(currentFreq);
     
@@ -32,13 +31,10 @@ function generateScale(scaleName, octaves) {
     return freqs;
 }
 
-// Sucht die höchsten/tiefsten Punkte im Array 
 function findePunkte(kurve, maxAnzahl, minAbstand, sensibilitaet, typ) {
     if (!kurve || kurve.length === 0) return [];
-    
     let punkte = [];
     let windowRange = Math.max(1, sensibilitaet);
-    
     let maxY = Math.max(...kurve); 
     let minY = Math.min(...kurve);
     let span = maxY - minY || 1;
@@ -46,29 +42,22 @@ function findePunkte(kurve, maxAnzahl, minAbstand, sensibilitaet, typ) {
     for (let i = windowRange; i < kurve.length - windowRange; i++) {
         let isPeak = true;   
         let isValley = true; 
-        
         for (let j = 1; j <= windowRange; j++) {
-            // Ein GIPFEL muss der lokal höchste Wert sein (größer als die Nachbarn)
             if (kurve[i] < kurve[i-j] || kurve[i] < kurve[i+j]) isPeak = false; 
-            // Ein TAL muss der lokal tiefste Wert sein (kleiner als die Nachbarn)
             if (kurve[i] > kurve[i-j] || kurve[i] > kurve[i+j]) isValley = false;
         }
-        
         if ((typ === 'gipfel' && isPeak) || (typ === 'tal' && isValley)) {
-            // Höhe in % berechnen: Der größte Y-Wert ergibt jetzt 100% (hoher Ton)
             let hoehe = ((kurve[i] - minY) / span) * 100;
             punkte.push({ x: i, y: kurve[i], hoehe: hoehe });
         }
     }
 
-    // Sortieren nach Wichtigkeit
     if (typ === 'gipfel') {
-        punkte.sort((a, b) => b.hoehe - a.hoehe); // Höchste Gipfel zuerst
+        punkte.sort((a, b) => b.hoehe - a.hoehe); 
     } else {
-        punkte.sort((a, b) => a.hoehe - b.hoehe); // Tiefste Täler zuerst
+        punkte.sort((a, b) => a.hoehe - b.hoehe); 
     }
 
-    // Filtern nach minimalem Pixel-Abstand (spacing)
     let filtered = [];
     for (let p of punkte) {
         let tooClose = false;
@@ -81,7 +70,6 @@ function findePunkte(kurve, maxAnzahl, minAbstand, sensibilitaet, typ) {
         if (!tooClose) filtered.push(p);
         if (filtered.length >= maxAnzahl) break;
     }
-    
     return filtered;
 }
 
@@ -176,6 +164,42 @@ window.loadPresets = async function(panoId) {
     }
 };
 
+// NEU: Selektiertes Preset laden
+window.loadSelectedPreset = function(panoId) {
+    let checkedBoxes = document.querySelectorAll(`#preset-list-${panoId} .preset-cb:checked`);
+    if (checkedBoxes.length === 0) {
+        alert("Bitte markiere ein Preset, das du laden möchtest.");
+        return;
+    }
+    if (checkedBoxes.length > 1) {
+        alert("Bitte markiere nur EIN Preset zum Laden.");
+        return;
+    }
+    
+    let presetId = checkedBoxes[0].value;
+    let p = window.currentPresets.find(pr => pr.preset_id === presetId);
+    
+    if (p) {
+        window.activeSynth[panoId] = {
+            peaks: parseInt(p.peaks), valleys: parseInt(p.valleys), spacing: parseInt(p.spacing),
+            sensibilitaet: parseInt(p.sensibilitaet), mode: p.mode, scale: p.scale,
+            oktaven: parseInt(p.oktaven), range: parseInt(p.range), wave: p.wave,
+            volume: parseFloat(p.volume), duration: parseFloat(p.duration), 
+            attack: parseFloat(p.attack), release: parseFloat(p.release), echo: parseFloat(p.echo)
+        };
+        
+        let marker = markerClusterGroup.getLayers().find(l => l.panoId === panoId);
+        if (marker && marker.isPopupOpen()) {
+            marker.setPopupContent(getPopupHTML(panoramenDaten.find(pd => pd.id === panoId)));
+            document.querySelectorAll('.hidden-range').forEach(input => { input.dispatchEvent(new Event('input')); });
+            drawLines(panoId);
+            document.getElementById(`preset-container-${panoId}`).style.display = 'block';
+            document.getElementById(`preset-arrow-${panoId}`).innerText = '▼';
+            loadPresets(panoId); 
+        }
+    }
+};
+
 window.savePreset = async function(panoId) {
     let name = getUserName();
     if (!name) {
@@ -198,8 +222,7 @@ window.savePreset = async function(panoId) {
     };
 
     let btn = document.getElementById(`save-btn-${panoId}`);
-    let oldBtn = btn.innerText;
-    btn.innerText = "⏳";
+    if (btn) { btn.innerText = "⏳"; }
     
     try {
         await fetch(API_URL, { 
@@ -215,12 +238,15 @@ window.savePreset = async function(panoId) {
             loadPresets(panoId);
         }, 1500);
         
-        document.getElementById(`preset-container-${panoId}`).style.display = 'block';
-        document.getElementById(`preset-arrow-${panoId}`).innerText = '▼';
+        let container = document.getElementById(`preset-container-${panoId}`);
+        if (container) {
+            container.style.display = 'block';
+            document.getElementById(`preset-arrow-${panoId}`).innerText = '▼';
+        }
     } catch(e) { 
         alert("Netzwerkfehler beim Speichern."); 
     }
-    btn.innerText = oldBtn;
+    if (btn) { btn.innerText = "💾"; }
 };
 
 window.deletePreset = async function(presetId, panoId) {
@@ -299,16 +325,12 @@ function parseCSV(textData) {
     return result;
 }
 
-// Zeichnet die Linien auf das Canvas
 window.drawLines = function(panoId) {
     const daten = window.panoDataCache[panoId];
     if(!daten) return; 
     
     const s = window.activeSynth[panoId];
-    
-    // Gipfel-Regler (s.peaks) steuert die höchsten Punkte
     const topGipfel = findePunkte(daten.kurve_y, s.peaks, s.spacing, s.sensibilitaet, 'gipfel');
-    // Täler-Regler (s.valleys) steuert die tiefsten Punkte
     const tiefeTaeler = findePunkte(daten.kurve_y, s.valleys, s.spacing, s.sensibilitaet, 'tal');
 
     const canvas = document.getElementById(`canvas_${panoId}`);
@@ -319,23 +341,11 @@ window.drawLines = function(panoId) {
         ctx.clearRect(0, 0, canvas.width, canvas.height); 
         ctx.lineWidth = 4;
         
-        // GIPFEL = GELBE LINIEN
         ctx.strokeStyle = 'rgba(255, 215, 0, 0.8)';
-        topGipfel.forEach(p => { 
-            ctx.beginPath(); 
-            ctx.moveTo(p.x, 0); 
-            ctx.lineTo(p.x, canvas.height); 
-            ctx.stroke(); 
-        });
+        topGipfel.forEach(p => { ctx.beginPath(); ctx.moveTo(p.x, 0); ctx.lineTo(p.x, canvas.height); ctx.stroke(); });
         
-        // TÄLER = BLAUE LINIEN
         ctx.strokeStyle = 'rgba(0, 191, 255, 0.8)';
-        tiefeTaeler.forEach(p => { 
-            ctx.beginPath(); 
-            ctx.moveTo(p.x, 0); 
-            ctx.lineTo(p.x, canvas.height); 
-            ctx.stroke(); 
-        });
+        tiefeTaeler.forEach(p => { ctx.beginPath(); ctx.moveTo(p.x, 0); ctx.lineTo(p.x, canvas.height); ctx.stroke(); });
     }
 };
 
@@ -364,7 +374,7 @@ function getPopupHTML(pano) {
         <div class="popup-content">
             <div class="popup-header">
                 <h3>${pano.titel}</h3>
-                <button id="save-btn-${pano.id}" class="save-btn" onclick="savePreset('${pano.id}')" title="Als Preset speichern">💾</button>
+                <!-- Der alte Speicher-Button wurde hier entfernt -->
             </div>
             <div style="font-size: 10px; color: #777; margin-bottom: 8px;">📅 ${pano.datum}</div>
             
@@ -423,7 +433,13 @@ function getPopupHTML(pano) {
                 ${buildKnob(pano.id, 'volume', t.lautstaerke || 'Vol', 0.05, 0.5, 0.05, false, 100, '%')}
             </div>
 
-            <button class="play-btn" onclick="playMultiPanorama('${pano.id}', '${pano.arrayUrl}', false)">Aktuelle Einstellung Abspielen</button>
+            <!-- NEUE ICON-BUTTON-REIHE -->
+            <div class="action-btn-row">
+                <button class="icon-btn" title="${t.hint_play_current || 'Play'}" onclick="playMultiPanorama('${pano.id}', '${pano.arrayUrl}', false)">▶️</button>
+                <button class="icon-btn" title="${t.hint_play_sel || 'Play Selection'}" onclick="playMultiPanorama('${pano.id}', '${pano.arrayUrl}', true)">🎶</button>
+                <button class="icon-btn" title="${t.hint_load_sel || 'Load Preset'}" onclick="loadSelectedPreset('${pano.id}')">📂</button>
+                <button class="icon-btn" id="save-btn-${pano.id}" title="${t.hint_save || 'Save'}" onclick="savePreset('${pano.id}')">💾</button>
+            </div>
 
             <div class="presets-section">
                 <div class="preset-header" onclick="togglePresets('${pano.id}')">
@@ -431,7 +447,6 @@ function getPopupHTML(pano) {
                 </div>
                 <div id="preset-container-${pano.id}" style="display:none; margin-top:8px;">
                     <div id="preset-list-${pano.id}"></div>
-                    <button class="play-btn multi-play-btn" onclick="playMultiPanorama('${pano.id}', '${pano.arrayUrl}', true)">✓ Markierte Zusammen Abspielen</button>
                 </div>
             </div>
         </div>
