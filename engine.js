@@ -1,5 +1,4 @@
 // engine.js - Ausgelagerte Logik für den Panorama Synthesizer
-// HINWEIS: SHEET_ID und API_URL werden aus der config.js geladen!
 
 let currentLang = 'de';
 let panoramenDaten = [];
@@ -108,6 +107,7 @@ window.openLightbox = function(url) {
     document.getElementById('lightbox').style.display = 'flex';
 };
 
+// --- BENUTZERNAME & ANZEIGE ---
 function getUserId() {
     let id = localStorage.getItem('pano_user_id');
     if (!id) {
@@ -116,8 +116,30 @@ function getUserId() {
     }
     return id;
 }
+
 function getUserName() { return localStorage.getItem('pano_user_name'); }
-function setUserName(name) { localStorage.setItem('pano_user_name', name); }
+
+function setUserName(name) { 
+    localStorage.setItem('pano_user_name', name); 
+    window.updateUserNameDisplay();
+}
+
+window.updateUserNameDisplay = function() {
+    let name = getUserName();
+    let display = document.getElementById('user-display');
+    if (display) {
+        display.innerText = name ? `👤 ${name}` : "👤 Gast";
+    }
+};
+
+window.changeUserName = function() {
+    let current = getUserName() || "";
+    let newName = prompt("Wie lautet dein (Spitz-)Name?", current);
+    if (newName && newName.trim() !== "") {
+        setUserName(newName.trim());
+    }
+};
+
 
 window.togglePresets = function(panoId) {
     let el = document.getElementById(`preset-container-${panoId}`);
@@ -151,12 +173,26 @@ window.loadPresets = async function(panoId) {
         
         presets.forEach(p => {
             let isOwner = (myId === p.user_id);
+            let timeStr = "";
+            
+            // Zeitstempel formatieren, falls vorhanden (z.B. 14.08.2026 15:30)
+            if (p.timestamp) {
+                let d = new Date(p.timestamp);
+                if (!isNaN(d.getTime())) {
+                    let day = d.getDate().toString().padStart(2, '0');
+                    let month = (d.getMonth() + 1).toString().padStart(2, '0');
+                    let hours = d.getHours().toString().padStart(2, '0');
+                    let mins = d.getMinutes().toString().padStart(2, '0');
+                    timeStr = ` - ${day}.${month}.${d.getFullYear()} ${hours}:${mins}`;
+                }
+            }
+
             html += `
             <div class="preset-item">
                 <input type="checkbox" class="preset-cb" value="${p.preset_id}">
                 <div class="preset-info">
                     <strong>${p.preset_name}</strong> 
-                    <span>von ${p.user_name}</span>
+                    <span>von ${p.user_name}${timeStr}</span>
                 </div>
                 ${isOwner ? `<button onclick="deletePreset('${p.preset_id}', '${panoId}')" class="del-btn" title="Löschen">🗑️</button>` : ''}
             </div>`;
@@ -167,7 +203,6 @@ window.loadPresets = async function(panoId) {
     }
 };
 
-// Selektiertes Preset laden & GUI updaten
 window.loadSelectedPreset = function(panoId) {
     let checkedBoxes = document.querySelectorAll(`#preset-list-${panoId} .preset-cb:checked`);
     
@@ -176,7 +211,7 @@ window.loadSelectedPreset = function(panoId) {
         return;
     }
     if (checkedBoxes.length > 1) {
-        alert("Zum Laden auf die Regler darf nur EIN Preset markiert sein (Mehrfachauswahl ist nur für Play Selection).");
+        alert("Zum Laden auf die Regler darf nur EIN Preset markiert sein.");
         return;
     }
     
@@ -184,17 +219,17 @@ window.loadSelectedPreset = function(panoId) {
     let p = window.currentPresets.find(pr => pr.preset_id === presetId);
     
     if (p) {
-        // 1. Daten absolut sicher als Text (String) behandeln, um trim() Fehler zu vermeiden
+        // FIX: Werte extrem strikt als Text behandeln, Leerzeichen abschneiden und in Kleinbuchstaben zwingen
         window.activeSynth[panoId] = {
             peaks: parseInt(p.peaks) || 4, 
             valleys: parseInt(p.valleys) || 2, 
             spacing: parseInt(p.spacing) || 35,
             sensibilitaet: parseInt(p.sensibilitaet) || 0, 
-            mode: p.mode ? String(p.mode).trim() : 'chord', 
-            scale: p.scale ? String(p.scale).trim() : 'lydian',
+            mode: p.mode ? String(p.mode).trim().toLowerCase() : 'chord', 
+            scale: p.scale ? String(p.scale).trim().toLowerCase() : 'lydian',
             oktaven: parseInt(p.oktaven) || 3, 
             range: parseInt(p.range) || 100, 
-            wave: p.wave ? String(p.wave).trim() : 'darkpad',
+            wave: p.wave ? String(p.wave).trim().toLowerCase() : 'darkpad',
             volume: parseFloat(p.volume) || 0.2, 
             duration: parseFloat(p.duration) || 5.0, 
             attack: parseFloat(p.attack) || 1.0, 
@@ -202,19 +237,25 @@ window.loadSelectedPreset = function(panoId) {
             echo: parseFloat(p.echo) || 0.3
         };
         
-        // 2. Dropdowns im GUI sicher umstellen
         let modeSel = document.getElementById(`sel_mode_${panoId}`);
-        if (modeSel) modeSel.value = window.activeSynth[panoId].mode;
+        if (modeSel) { 
+            modeSel.value = window.activeSynth[panoId].mode; 
+            modeSel.dispatchEvent(new Event('change')); // Triggert visuelles Update im Browser
+        }
         
         let scaleSel = document.getElementById(`sel_scale_${panoId}`);
-        if (scaleSel) scaleSel.value = window.activeSynth[panoId].scale;
+        if (scaleSel) { 
+            scaleSel.value = window.activeSynth[panoId].scale; 
+            scaleSel.dispatchEvent(new Event('change'));
+        }
         
         let waveSel = document.getElementById(`sel_wave_${panoId}`);
-        if (waveSel) waveSel.value = window.activeSynth[panoId].wave;
+        if (waveSel) { 
+            waveSel.value = window.activeSynth[panoId].wave; 
+            waveSel.dispatchEvent(new Event('change'));
+        }
 
-        // 3. Slider physisch anpassen und visuelle Updates triggern
         const sliderKeys = ['peaks', 'valleys', 'spacing', 'sensibilitaet', 'oktaven', 'range', 'duration', 'echo', 'attack', 'release', 'volume'];
-        
         sliderKeys.forEach(key => {
             let rangeInput = document.getElementById(`range_${key}_${panoId}`);
             if (rangeInput) {
@@ -272,19 +313,6 @@ window.savePreset = async function(panoId) {
         alert("Netzwerkfehler beim Speichern."); 
     }
     if (btn) { btn.innerText = "💾"; }
-};
-
-window.deletePreset = async function(presetId, panoId) {
-    if(!confirm("Möchtest du dieses Preset wirklich löschen?")) return;
-    try {
-        await fetch(API_URL, { 
-            method: 'POST', 
-            mode: 'no-cors',
-            headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({ action: "delete", preset_id: presetId, user_id: getUserId() }) 
-        });
-        setTimeout(() => { loadPresets(panoId); }, 1500);
-    } catch(e) { alert("Fehler beim Löschen."); }
 };
 
 window.updateKnob = function(input, visualId) {
@@ -355,7 +383,6 @@ window.drawLines = function(panoId) {
     if(!daten) return; 
     
     const s = window.activeSynth[panoId];
-    
     const topGipfel = findePunkte(daten.kurve_y, s.peaks, s.spacing, s.sensibilitaet, 'gipfel');
     const tiefeTaeler = findePunkte(daten.kurve_y, s.valleys, s.spacing, s.sensibilitaet, 'tal');
 
@@ -606,4 +633,8 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
     } catch (e) { alert("Audio-Fehler: " + e.message); }
 };
 
+// Start Setup
 ladePanoramenAusSheet();
+document.addEventListener("DOMContentLoaded", () => {
+    updateUserNameDisplay();
+});
