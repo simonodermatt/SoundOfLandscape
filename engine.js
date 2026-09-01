@@ -167,7 +167,7 @@ window.loadPresets = async function(panoId) {
     }
 };
 
-// Selektiertes Preset laden & GUI updaten
+/ Selektiertes Preset laden & GUI updaten
 window.loadSelectedPreset = function(panoId) {
     let checkedBoxes = document.querySelectorAll(`#preset-list-${panoId} .preset-cb:checked`);
     
@@ -184,17 +184,17 @@ window.loadSelectedPreset = function(panoId) {
     let p = window.currentPresets.find(pr => pr.preset_id === presetId);
     
     if (p) {
-        // 1. Daten aktualisieren: .trim() entfernt Leerzeichen, das || definiert einen Standardwert falls leer
+        // 1. Daten absolut sicher als Text (String) behandeln, um trim() Fehler zu vermeiden
         window.activeSynth[panoId] = {
             peaks: parseInt(p.peaks) || 4, 
             valleys: parseInt(p.valleys) || 2, 
             spacing: parseInt(p.spacing) || 35,
             sensibilitaet: parseInt(p.sensibilitaet) || 0, 
-            mode: p.mode ? p.mode.trim() : 'chord', 
-            scale: p.scale ? p.scale.trim() : 'lydian',
+            mode: p.mode ? String(p.mode).trim() : 'chord', 
+            scale: p.scale ? String(p.scale).trim() : 'lydian',
             oktaven: parseInt(p.oktaven) || 3, 
             range: parseInt(p.range) || 100, 
-            wave: p.wave ? p.wave.trim() : 'darkpad',
+            wave: p.wave ? String(p.wave).trim() : 'darkpad',
             volume: parseFloat(p.volume) || 0.2, 
             duration: parseFloat(p.duration) || 5.0, 
             attack: parseFloat(p.attack) || 1.0, 
