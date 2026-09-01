@@ -1,7 +1,7 @@
 // engine.js - Ausgelagerte Logik für den Panorama Synthesizer
 
 const SHEET_ID = "10pxYaSMyt5uDRjCF0DWjGEabe_a3YftdpChxYzyQJBo"; 
-const API_URL = "https://script.google.com/macros/s/AKfycbyIx4JRbeLauQK4c41kW6sIwPByEqFRKHeEgTpCzdixe-vayEsNZ2h61H7_WTgASSbu/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbz08qUIVvAbiWibACoBOzRB9c5IDUgkylPFOGJfKvQyqItECg7WvlU9IEIQ5UBN0Sxg/exec";
 
 let currentLang = 'de';
 let panoramenDaten = [];
@@ -14,8 +14,6 @@ const scales = {
     lydian: [2, 2, 2, 1, 2, 2, 1], dorian: [2, 1, 2, 2, 2, 1, 2],
     pentatonic: [2, 2, 3, 2, 3], hirajoshi: [2, 1, 4, 1, 4]
 };
-
-// --- FEHLENDE AUDIO- & LOGIK-FUNKTIONEN HINZUGEFÜGT ---
 
 // Wandelt die Intervall-Schritte aus dem 'scales' Objekt in Frequenzen um
 function generateScale(scaleName, octaves) {
@@ -33,14 +31,14 @@ function generateScale(scaleName, octaves) {
     }
     return freqs;
 }
+
 // Sucht die höchsten/tiefsten Punkte im Array unter Berücksichtigung von Abstand und Sensibilität
 function findePunkte(kurve, maxAnzahl, minAbstand, sensibilitaet, typ) {
     if (!kurve || kurve.length === 0) return [];
     
     let punkte = [];
-    let windowRange = Math.max(1, sensibilitaet); // Suchfenster für lokale Extrema
+    let windowRange = Math.max(1, sensibilitaet);
     
-    // Ermittle Min/Max für die Höhen-Normalisierung (0-100%)
     let maxY = Math.max(...kurve);
     let minY = Math.min(...kurve);
     let span = maxY - minY || 1;
@@ -50,8 +48,7 @@ function findePunkte(kurve, maxAnzahl, minAbstand, sensibilitaet, typ) {
         let isTal = true;
         
         for (let j = 1; j <= windowRange; j++) {
-            // FIX: Vorzeichen getauscht! 
-            // So erkennt der Algorithmus die grafischen Gipfel und Täler korrekt.
+            // FIX: Vorzeichen getauscht, damit Regler und optische Berge/Täler matchen
             if (kurve[i] < kurve[i-j] || kurve[i] < kurve[i+j]) isGipfel = false; 
             if (kurve[i] > kurve[i-j] || kurve[i] > kurve[i+j]) isTal = false;
         }
@@ -62,62 +59,12 @@ function findePunkte(kurve, maxAnzahl, minAbstand, sensibilitaet, typ) {
         }
     }
 
-    // Sortieren nach Prominenz
-    if (typ === 'gipfel') {
-        punkte.sort((a, b) => b.hoehe - a.hoehe); // Höchste Gipfel zuerst
-    } else {
-        punkte.sort((a, b) => a.hoehe - b.hoehe); // Tiefste Täler zuerst
-    }
-
-    // Filtern nach minimalem Pixel-Abstand (spacing)
-    let filtered = [];
-    for (let p of punkte) {
-        let tooClose = false;
-        for (let f of filtered) {
-            if (Math.abs(p.x - f.x) < minAbstand) {
-                tooClose = true; 
-                break;
-            }
-        }
-        if (!tooClose) filtered.push(p);
-        if (filtered.length >= maxAnzahl) break;
-    }
-    
-    return filtered;
-}
-
-    // Sortieren nach Prominenz
-    if (typ === 'gipfel') {
-        punkte.sort((a, b) => b.hoehe - a.hoehe); // Höchste Gipfel zuerst
-    } else {
-        punkte.sort((a, b) => a.hoehe - b.hoehe); // Tiefste Täler zuerst
-    }
-
-    // Filtern nach minimalem Pixel-Abstand (spacing)
-    let filtered = [];
-    for (let p of punkte) {
-        let tooClose = false;
-        for (let f of filtered) {
-            if (Math.abs(p.x - f.x) < minAbstand) {
-                tooClose = true; 
-                break;
-            }
-        }
-        if (!tooClose) filtered.push(p);
-        if (filtered.length >= maxAnzahl) break;
-    }
-    
-    return filtered;
-}
-
-    // Sortieren nach Prominenz: Gipfel absteigend (höchste zuerst), Täler aufsteigend (tiefste zuerst)
     if (typ === 'gipfel') {
         punkte.sort((a, b) => b.hoehe - a.hoehe);
     } else {
         punkte.sort((a, b) => a.hoehe - b.hoehe);
     }
 
-    // Filtern nach minimalem Pixel-Abstand (spacing)
     let filtered = [];
     for (let p of punkte) {
         let tooClose = false;
@@ -128,13 +75,11 @@ function findePunkte(kurve, maxAnzahl, minAbstand, sensibilitaet, typ) {
             }
         }
         if (!tooClose) filtered.push(p);
-        if (filtered.length >= maxAnzahl) break; // Stoppen, wenn Anzahl erreicht ist
+        if (filtered.length >= maxAnzahl) break;
     }
     
     return filtered;
 }
-
-// --------------------------------------------------------
 
 const map = L.map('map').setView([46.8182, 8.2275], 8);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
@@ -168,7 +113,6 @@ window.openLightbox = function(url) {
     document.getElementById('lightbox').style.display = 'flex';
 };
 
-// --- BENUTZERVERWALTUNG (Soft-Login) ---
 function getUserId() {
     let id = localStorage.getItem('pano_user_id');
     if (!id) {
@@ -180,8 +124,6 @@ function getUserId() {
 function getUserName() { return localStorage.getItem('pano_user_name'); }
 function setUserName(name) { localStorage.setItem('pano_user_name', name); }
 
-
-// --- COMMUNITY PRESETS ---
 window.togglePresets = function(panoId) {
     let el = document.getElementById(`preset-container-${panoId}`);
     let arrow = document.getElementById(`preset-arrow-${panoId}`);
@@ -256,7 +198,6 @@ window.savePreset = async function(panoId) {
     btn.innerText = "⏳";
     
     try {
-        // DER FIX FÜR GOOGLE: "no-cors" ignoriert die Sicherheitsblockade.
         await fetch(API_URL, { 
             method: 'POST', 
             mode: 'no-cors',
@@ -266,7 +207,6 @@ window.savePreset = async function(panoId) {
         
         alert(`Erfolg! "${presetName}" wurde gespeichert.`);
         
-        // Wir geben Google 1.5 Sekunden Zeit, um die Zeile ins Sheet zu schreiben, bevor wir neu laden
         setTimeout(() => {
             loadPresets(panoId);
         }, 1500);
@@ -292,8 +232,6 @@ window.deletePreset = async function(presetId, panoId) {
     } catch(e) { alert("Fehler beim Löschen."); }
 };
 
-
-// --- INITIALISIERUNG & KNOBS ---
 window.updateKnob = function(input, visualId) {
     let min = parseFloat(input.min) || 0; let max = parseFloat(input.max) || 100;
     let val = parseFloat(input.value);
@@ -477,7 +415,6 @@ function getPopupHTML(pano) {
     `;
 }
 
-// --- MULTI-PLAY AUDIO ENGINE ---
 window.getAudioCtx = function() {
     if (!window.audioCtx) { window.audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
     return window.audioCtx;
