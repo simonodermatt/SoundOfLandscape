@@ -1,4 +1,69 @@
-// ui.js - Karte, Canvas und GUI-Generierung
+// ui.js - Karte, Canvas, Vollbild-Modal und GUI-Generierung
+
+// CSS für das Fullscreen-Modal dynamisch einfügen
+const modalStyle = document.createElement('style');
+modalStyle.innerHTML = `
+.pano-modal-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    background: rgba(0, 0, 0, 0.85);
+    z-index: 10000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 10px;
+    box-sizing: border-box;
+    overflow-y: auto;
+}
+.pano-modal-content {
+    background: #1e1e1e;
+    color: #fff;
+    width: 100%;
+    max-width: 800px;
+    height: 95vh;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    overflow-y: auto;
+    padding: 20px;
+    box-sizing: border-box;
+}
+.pano-modal-close {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    background: #ff4d4d;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    font-size: 22px;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+}
+.pano-modal-content select, 
+.pano-modal-content button, 
+.pano-modal-content label {
+    font-size: 16px !important;
+}
+.pano-modal-content .knob-label, 
+.pano-modal-content .knob-value {
+    font-size: 14px !important;
+}
+.pano-modal-content input[type="range"] {
+    height: 25px;
+}
+`;
+document.head.appendChild(modalStyle);
+
 const map = L.map('map').setView([46.8182, 8.2275], 8);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
 window.markerClusterGroup = L.markerClusterGroup({ maxClusterRadius: 40, spiderfyOnMaxZoom: true });
@@ -20,19 +85,16 @@ window.changeLanguage = function(lang) {
     document.getElementById('opt-eu').innerText = text[lang].europa;
     document.getElementById('opt-world').innerText = text[lang].welt;
     
-    window.markerClusterGroup.eachLayer(layer => {
-        if (layer.panoId) {
-            const pano = window.panoramenDaten.find(p => p.id === layer.panoId);
-            if (pano && layer.getPopup() && layer.isPopupOpen()) {
-                layer.setPopupContent(window.getPopupHTML(pano));
-                setTimeout(() => {
-                    document.querySelectorAll('.hidden-range').forEach(input => { input.dispatchEvent(new Event('input')); });
-                    window.drawLines(pano.id);
-                    window.loadPresets(pano.id); 
-                }, 50);
-            }
-        }
-    });
+    // Falls ein Modal offen ist, Inhalt aktualisieren
+    let activeModal = document.getElementById('active-pano-modal');
+    if (activeModal && window.currentOpenPano) {
+        document.getElementById('pano-modal-body-container').innerHTML = window.getPopupHTML(window.currentOpenPano);
+        setTimeout(() => {
+            document.querySelectorAll('.hidden-range').forEach(input => { input.dispatchEvent(new Event('input')); });
+            window.drawLines(window.currentOpenPano.id);
+            window.loadPresets(window.currentOpenPano.id); 
+        }, 50);
+    }
 };
 
 window.openLightbox = function(url) {
@@ -106,6 +168,46 @@ window.updateKnob = function(input, visualId) {
     if(vis) vis.style.transform = `rotate(${degrees}deg)`;
 };
 
+window.openPanoModal = async function(pano) {
+    window.currentOpenPano = pano;
+    let existing = document.getElementById('active-pano-modal');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'active-pano-modal';
+    overlay.className = 'pano-modal-overlay';
+
+    overlay.innerHTML = `
+        <div class="pano-modal-content">
+            <button class="pano-modal-close" onclick="closePanoModal()">✕</button>
+            <div id="pano-modal-body-container" style="flex:1; display:flex; flex-direction:column; overflow-y:auto; padding-right:5px;">
+                ${window.getPopupHTML(pano)}
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    setTimeout(async () => {
+        document.querySelectorAll('.hidden-range').forEach(input => { input.dispatchEvent(new Event('input')); });
+        
+        if(!window.panoDataCache[pano.id]) {
+            try {
+                let r = await fetch(pano.arrayUrl);
+                window.panoDataCache[pano.id] = await r.json();
+            } catch(e) { console.error(e); }
+        }
+        window.drawLines(pano.id);
+        window.loadPresets(pano.id); 
+    }, 50);
+};
+
+window.closePanoModal = function() {
+    window.currentOpenPano = null;
+    let existing = document.getElementById('active-pano-modal');
+    if (existing) existing.remove();
+};
+
 window.getPopupHTML = function(pano) {
     const s = window.activeSynth[pano.id];
     const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
@@ -115,7 +217,7 @@ window.getPopupHTML = function(pano) {
             <div class="popup-header">
                 <h3>${pano.titel}</h3>
             </div>
-            <div style="font-size: 10px; color: #777; margin-bottom: 8px;">📅 ${pano.datum}</div>
+            <div style="font-size: 12px; color: #888; margin-bottom: 8px;">📅 ${pano.datum} | 📷 ${pano.kamera || 'Unbekannt'}</div>
             
             <div class="bild-container" onclick="window.openLightbox('${pano.bildUrl}')" title="${t.vergroessern || 'Vergrößern'}">
                 <img src="${pano.bildUrl}" class="popup-img" />
@@ -189,7 +291,36 @@ window.getPopupHTML = function(pano) {
     `;
 };
 
-// Start Setup (Wird als letztes ausgeführt)
+window.ladePanoramenAusSheet = async function() {
+    try {
+        const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Panoramen`;
+        const res = await fetch(url);
+        window.panoramenDaten = parseCSV(await res.text());
+        if(window.markerClusterGroup) window.markerClusterGroup.clearLayers();
+
+        window.panoramenDaten.forEach(pano => {
+            const coords = pano.position ? pano.position.split(',').map(c => parseFloat(c.trim())) : [46.8182, 8.2275];
+            const marker = L.marker(coords);
+            marker.panoId = pano.id;
+            
+            marker.on('click', function() {
+                window.openPanoModal(pano);
+            });
+
+            if(window.markerClusterGroup) window.markerClusterGroup.addLayer(marker);
+
+            window.activeSynth[pano.id] = {
+                peaks: parseInt(pano.peaks) || 4, valleys: parseInt(pano.valleys) || 2, spacing: parseInt(pano.spacing) || 35,
+                sensibilitaet: parseInt(pano.sensibilitaet) || 0, mode: pano.mode || 'chord', scale: pano.scale || 'lydian',
+                oktaven: parseInt(pano.oktaven) || 3, range: parseInt(pano.range) || 100, wave: pano.wave || 'darkpad',
+                volume: parseFloat(pano.volume) || 0.2, duration: parseFloat(pano.duration) || 5.0, attack: parseFloat(pano.attack) || 1.0,
+                release: parseFloat(pano.release) || 2.0, echo: parseFloat(pano.echo) || 0.3
+            };
+        });
+    } catch (e) { console.error(e); }
+};
+
+// Start Setup
 window.ladePanoramenAusSheet();
 document.addEventListener("DOMContentLoaded", () => {
     window.updateUserNameDisplay();
