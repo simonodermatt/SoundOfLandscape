@@ -37,7 +37,11 @@ html, body {
 .leaflet-popup-content { margin: 15px; width: 480px !important; }
 
 /* Verhindert horizontales Scrollen strikt */
-.popup-content { text-align: center; max-height: 85vh; overflow-x: hidden; overflow-y: auto; padding-right: 5px; width: 100%; }
+.popup-content { 
+    text-align: center; 
+    overflow: hidden; /* Zwingt den Popup-Scrollbalken weg */
+    width: 100%; 
+}
 .popup-content h3 { margin: 0; color: #fff; font-size: 16px; letter-spacing: 0.5px; }
 
 /* Header & Save Icon */
@@ -84,9 +88,9 @@ button.play-btn:hover { background: #fff; box-shadow: 0 0 10px rgba(255, 215, 0,
 /* Preset Bereich */
 /* Die neue, immer offene Preset-Liste mit Scrollbalken für max 5 Einträge */
 .preset-list-container {
-    max-height: 155px; /* Reicht für exakt 5 Einträge */
+    max-height: 120px; /* Etwas kompakter für ca. 3-4 sichtbare Einträge */
     overflow-y: auto;
-    border: 1px solid #444; /* Passt ins dunkle Theme */
+    border: 1px solid #444;
     border-radius: 4px;
     margin-top: 8px;
     background: rgba(0, 0, 0, 0.2);
@@ -105,8 +109,11 @@ button.play-btn:hover { background: #fff; box-shadow: 0 0 10px rgba(255, 215, 0,
 .multi-play-btn:hover { background: #fff !important; box-shadow: 0 0 10px rgba(0, 191, 255, 0.8) !important; }
 /* Optional: Damit das Popup selbst nicht aus dem Bildschirm ragt */
 .leaflet-popup-content-wrapper {
-    max-height: 90vh;
-    overflow-y: auto;
+    background: #1a1a1a; 
+    color: #ddd; 
+    border-radius: 8px; 
+    padding: 0;
+    overflow: hidden; /* Auch hier Scrollen strikt verbieten */
 }
 
 /* Vollbild Modus */
