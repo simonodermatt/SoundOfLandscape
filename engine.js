@@ -1,4 +1,5 @@
 // engine.js - Ausgelagerte Logik für den Panorama Synthesizer
+// HINWEIS: SHEET_ID und API_URL werden aus der config.js geladen!
 
 let currentLang = 'de';
 let panoramenDaten = [];
@@ -193,7 +194,6 @@ window.loadPresets = async function(panoId) {
                 }
             }
 
-            // XSS FIX: escapeHTML() schützt vor eingeschleustem Code
             html += `
             <div class="preset-item">
                 <input type="checkbox" class="preset-cb" value="${escapeHTML(p.preset_id)}">
@@ -223,7 +223,7 @@ window.loadSelectedPreset = function(panoId) {
     }
     
     let presetId = checkedBoxes[0].value;
-    let p = window.currentPresets.find(pr => pr.preset_id === presetId);
+    let p = window.currentPresets.find(pr => String(pr.preset_id) === String(presetId));
     
     if (p) {
         window.activeSynth[panoId] = {
@@ -290,6 +290,7 @@ window.savePreset = async function(panoId) {
         preset_name: presetName,
         user_name: name,
         user_id: getUserId(),
+        timestamp: new Date().toISOString(), // Zeitstempel für die Datenbank anhängen
         ...s
     };
 
@@ -321,7 +322,6 @@ window.savePreset = async function(panoId) {
     if (btn) { btn.innerText = "💾"; }
 };
 
-// --- FEHLENDE FUNKTION HINZUGEFÜGT ---
 window.deletePreset = async function(presetId, panoId) {
     if(!confirm("Möchtest du dieses Preset wirklich löschen?")) return;
     try {
@@ -556,14 +556,23 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
             if (checkedBoxes.length === 0) { alert("Bitte markiere mindestens ein Preset!"); return; }
             
             checkedBoxes.forEach(cb => {
-                let p = window.currentPresets.find(pr => pr.preset_id === cb.value);
+                let p = window.currentPresets.find(pr => String(pr.preset_id) === String(cb.value));
                 if(p) {
                     synthsToPlay.push({
-                        peaks: parseInt(p.peaks), valleys: parseInt(p.valleys), spacing: parseInt(p.spacing),
-                        sensibilitaet: parseInt(p.sensibilitaet), mode: p.mode, scale: p.scale,
-                        oktaven: parseInt(p.oktaven), range: parseInt(p.range), wave: p.wave,
-                        volume: parseFloat(p.volume), duration: parseFloat(p.duration), 
-                        attack: parseFloat(p.attack), release: parseFloat(p.release), echo: parseFloat(p.echo)
+                        peaks: parseInt(p.peaks) || 4, 
+                        valleys: parseInt(p.valleys) || 2, 
+                        spacing: parseInt(p.spacing) || 35,
+                        sensibilitaet: parseInt(p.sensibilitaet) || 0, 
+                        mode: p.mode ? String(p.mode).trim().toLowerCase() : 'chord', 
+                        scale: p.scale ? String(p.scale).trim().toLowerCase() : 'lydian',
+                        oktaven: parseInt(p.oktaven) || 3, 
+                        range: parseInt(p.range) || 100, 
+                        wave: p.wave ? String(p.wave).trim().toLowerCase() : 'darkpad',
+                        volume: parseFloat(p.volume) || 0.2, 
+                        duration: parseFloat(p.duration) || 5.0, 
+                        attack: parseFloat(p.attack) || 1.0, 
+                        release: parseFloat(p.release) || 2.0, 
+                        echo: parseFloat(p.echo) || 0.3
                     });
                 }
             });
@@ -576,7 +585,7 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
         
         let maxEcho = Math.max(...synthsToPlay.map(s => s.echo || 0));
         const feedbackGain = actx.createGain();
-        feedbackGain.gain.value = maxEcho; 
+        feedbackGain.gain.value = Math.min(maxEcho, 0.85); 
         
         delayNode.connect(feedbackGain);
         feedbackGain.connect(delayNode);
