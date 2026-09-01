@@ -1,6 +1,6 @@
 // ui.js - Karte, Canvas, Vollbild-Modal und GUI-Generierung
 
-// CSS für das Fullscreen-Modal dynamisch einfügen
+// CSS für das Fullscreen-Modal und saubere Regler-Anordnung
 const modalStyle = document.createElement('style');
 modalStyle.innerHTML = `
 .pano-modal-overlay {
@@ -12,24 +12,23 @@ modalStyle.innerHTML = `
     display: flex;
     justify-content: center;
     align-items: center;
-    padding: 10px;
+    padding: 15px;
     box-sizing: border-box;
-    overflow-y: auto;
 }
 .pano-modal-content {
     background: #1e1e1e;
     color: #fff;
     width: 100%;
-    max-width: 800px;
-    height: 95vh;
+    max-width: 850px;
+    max-height: 95vh;
     border-radius: 12px;
     display: flex;
     flex-direction: column;
     position: relative;
     box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-    overflow-y: auto;
-    padding: 20px;
+    padding: 25px 20px 20px 20px;
     box-sizing: border-box;
+    overflow: hidden;
 }
 .pano-modal-close {
     position: absolute;
@@ -41,25 +40,94 @@ modalStyle.innerHTML = `
     border-radius: 50%;
     width: 40px;
     height: 40px;
-    font-size: 22px;
+    font-size: 20px;
     font-weight: bold;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 10;
+    z-index: 20;
 }
-.pano-modal-content select, 
-.pano-modal-content button, 
-.pano-modal-content label {
-    font-size: 16px !important;
+#pano-modal-body-container {
+    overflow-y: auto;
+    flex: 1;
+    padding-right: 5px;
 }
-.pano-modal-content .knob-label, 
-.pano-modal-content .knob-value {
-    font-size: 14px !important;
+/* Sauberer Grid für Regler, damit nichts überlappt */
+.synth-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 10px;
+    margin: 15px 0;
 }
-.pano-modal-content input[type="range"] {
-    height: 25px;
+.knob-box {
+    background: #2a2a2a;
+    border-radius: 8px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+.knob-label {
+    font-size: 12px !important;
+    color: #ccc;
+    margin-bottom: 4px;
+}
+.knob-value {
+    font-size: 12px !important;
+    color: #fff;
+    margin-top: 4px;
+}
+.presets-section {
+    background: #252525;
+    padding: 12px;
+    border-radius: 8px;
+    margin-top: 15px;
+    margin-bottom: 10px;
+}
+.preset-list-container {
+    max-height: 160px;
+    overflow-y: auto;
+    margin-top: 8px;
+}
+.dropdown-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 10px 0;
+}
+.dropdown-box {
+    flex: 1;
+    min-width: 130px;
+    display: flex;
+    flex-direction: column;
+}
+.dropdown-box select {
+    padding: 6px;
+    background: #333;
+    color: #fff;
+    border: 1px: #565656;
+    border-radius: 4px;
+    font-size: 14px;
+}
+.action-btn-row {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin: 15px 0;
+}
+.icon-btn {
+    background: #444;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-size: 18px;
+    cursor: pointer;
+}
+.icon-btn:hover {
+    background: #555;
 }
 `;
 document.head.appendChild(modalStyle);
@@ -85,7 +153,6 @@ window.changeLanguage = function(lang) {
     document.getElementById('opt-eu').innerText = text[lang].europa;
     document.getElementById('opt-world').innerText = text[lang].welt;
     
-    // Falls ein Modal offen ist, Inhalt aktualisieren
     let activeModal = document.getElementById('active-pano-modal');
     if (activeModal && window.currentOpenPano) {
         document.getElementById('pano-modal-body-container').innerHTML = window.getPopupHTML(window.currentOpenPano);
@@ -100,12 +167,6 @@ window.changeLanguage = function(lang) {
 window.openLightbox = function(url) {
     document.getElementById('lightbox-img').src = url;
     document.getElementById('lightbox').style.display = 'flex';
-};
-
-window.togglePresets = function(panoId) {
-    let el = document.getElementById(`preset-container-${panoId}`);
-    if (el.style.display === 'none') el.style.display = 'block';
-    else el.style.display = 'none';
 };
 
 window.drawLines = function(panoId) {
@@ -180,7 +241,7 @@ window.openPanoModal = async function(pano) {
     overlay.innerHTML = `
         <div class="pano-modal-content">
             <button class="pano-modal-close" onclick="closePanoModal()">✕</button>
-            <div id="pano-modal-body-container" style="flex:1; display:flex; flex-direction:column; overflow-y:auto; padding-right:5px;">
+            <div id="pano-modal-body-container">
                 ${window.getPopupHTML(pano)}
             </div>
         </div>
@@ -215,13 +276,13 @@ window.getPopupHTML = function(pano) {
     return `
         <div class="popup-content">
             <div class="popup-header">
-                <h3>${pano.titel}</h3>
+                <h3 style="margin: 0 0 5px 0;">${pano.titel}</h3>
             </div>
-            <div style="font-size: 12px; color: #888; margin-bottom: 8px;">📅 ${pano.datum} | 📷 ${pano.kamera || 'Unbekannt'}</div>
+            <div style="font-size: 13px; color: #aaa; margin-bottom: 12px;">📅 ${pano.datum} | 📷 ${pano.kamera || 'Unbekannt'}</div>
             
-            <div class="bild-container" onclick="window.openLightbox('${pano.bildUrl}')" title="${t.vergroessern || 'Vergrößern'}">
-                <img src="${pano.bildUrl}" class="popup-img" />
-                <canvas id="canvas_${pano.id}" class="punktOverlay"></canvas>
+            <div class="bild-container" onclick="window.openLightbox('${pano.bildUrl}')" title="${t.vergroessern || 'Vergrößern'}" style="position:relative; cursor:pointer; text-align:center;">
+                <img src="${pano.bildUrl}" class="popup-img" style="width:100%; max-height:220px; object-fit:cover; border-radius:6px;" />
+                <canvas id="canvas_${pano.id}" class="punktOverlay" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;"></canvas>
             </div>
 
             <div class="dropdown-row">
@@ -282,7 +343,7 @@ window.getPopupHTML = function(pano) {
             </div>
 
             <div class="presets-section">
-                <div class="preset-header">Community Presets</div>
+                <div class="preset-header" style="font-weight:bold; margin-bottom:5px;">Community Presets</div>
                 <div id="preset-container-${pano.id}" class="preset-list-container">
                     <div id="preset-list-${pano.id}"></div>
                 </div>
