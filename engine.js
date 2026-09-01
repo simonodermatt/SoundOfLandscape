@@ -95,7 +95,7 @@ window.wechsleAnsicht = function(ansicht) {
     else if (ansicht === 'welt') map.flyTo([20.0, 0.0], 2);
 };
 
-indow.changeLanguage = function(lang) {
+window.changeLanguage = function(lang) {
     currentLang = lang;
     if(typeof text === "undefined") return;
     
