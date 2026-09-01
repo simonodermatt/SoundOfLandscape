@@ -14,7 +14,17 @@ const text = {
         hint_play_current: "Aktuelle Einstellungen abspielen",
         hint_play_sel: "Selektion abspielen (Markierte Presets)",
         hint_load_sel: "Selektierte Einstellungen laden",
-        hint_save: "Aktuelle Einstellungen speichern"
+        hint_save: "Aktuelle Einstellungen speichern",
+        prompt_welcome: "Willkommen! Unter welchem (Spitz-)Namen sollen deine Presets gespeichert werden?",
+        prompt_preset_name: "Hallo {name}, wie soll diese Klangeinstellung heissen?",
+        prompt_name_change: "Wie lautet dein (Spitz-)Name?",
+        alert_saved: "Erfolg! '{preset}' wurde gespeichert.",
+        alert_delete: "Möchtest du dieses Preset wirklich löschen?",
+        alert_load_empty: "Bitte markiere ein Preset zum Laden.",
+        alert_load_multi: "Zum Laden auf die Regler darf nur EIN Preset markiert sein.",
+        alert_no_points: "Mit diesen Einstellungen wurden keine Punkte gefunden!",
+        alert_net_error: "Netzwerkfehler beim Speichern."
+        
     },
     fr: {
         sprache: "Langue :", ausschnitt: "🌍 Vue :", schweiz: "Suisse", europa: "Europe", welt: "Monde",
@@ -26,7 +36,16 @@ const text = {
         lautstaerke: "Volume :", dauer: "Durée de base (s) :", attack: "Attack (Apparition) :", release: "Release (Disparition) :", echo: "Atmosphère (Écho) :",
         scale_major: "Majeur (Majestueux)", scale_minor: "Mineur (Mélancolique)", scale_lydian: "Lydien (Rêveur)", scale_dorian: "Dorien (Mystique)", scale_pentatonic: "Pentatonique (Harmonique)", scale_hirajoshi: "Hirajōshi (Méditatif)",
         wave_sine: "Sinusoïde (Pur)", wave_triangle: "Triangle (Doux)", wave_sawtooth: "Dent de scie (Tranchant)", wave_square: "Carré (Rétro)", wave_organ: "Orgue (Puissant)", wave_darkpad: "Dark Pad (Cinéma/Chaud)", wave_chime: "Carillon (Magique)",
-        hint_play_current: "Jouer les paramètres actuels", hint_play_sel: "Jouer la sélection", hint_load_sel: "Charger la sélection", hint_save: "Sauvegarder les paramètres"
+        hint_play_current: "Jouer les paramètres actuels", hint_play_sel: "Jouer la sélection", hint_load_sel: "Charger la sélection", hint_save: "Sauvegarder les paramètres",
+        prompt_welcome: "Bienvenue ! Sous quel nom (ou pseudo) tes préréglages doivent-ils être enregistrés ?",
+        prompt_preset_name: "Bonjour {name}, comment cette configuration sonore doit-elle s'appeler ?",
+        prompt_name_change: "Quel est ton nom (ou pseudo) ?",
+        alert_saved: "Succès ! '{preset}' a été enregistré.",
+        alert_delete: "Veux-tu vraiment supprimer ce préréglage ?",
+        alert_load_empty: "Sélectionne un préréglage à charger.",
+        alert_load_multi: "Pour charger sur les contrôleurs, un SEUL préréglage doit être sélectionné.",
+        alert_no_points: "Aucun point n'a été trouvé avec ces paramètres !",
+        alert_net_error: "Erreur réseau lors de l'enregistrement."      
     },
     it: {
         sprache: "Lingua:", ausschnitt: "🌍 Vista:", schweiz: "Svizzera", europa: "Europa", welt: "Mondo",
@@ -38,7 +57,16 @@ const text = {
         lautstaerke: "Volume:", dauer: "Durata base (s):", attack: "Attack (Ingresso):", release: "Release (Uscita):", echo: "Atmosfera (Eco):",
         scale_major: "Maggiore (Maestoso)", scale_minor: "Minore (Malinconico)", scale_lydian: "Lidio (Sognante)", scale_dorian: "Dorico (Mistico)", scale_pentatonic: "Pentatonico (Armonico)", scale_hirajoshi: "Hirajōshi (Meditativo)",
         wave_sine: "Sinusoidale (Puro)", wave_triangle: "Triangolare (Dolce)", wave_sawtooth: "Dente di sega (Tagliente)", wave_square: "Quadrata (Retro)", wave_organ: "Organo (Imponente)", wave_darkpad: "Dark Pad (Cinema/Caldo)", wave_chime: "Campanella (Magico)",
-        hint_play_current: "Riproduci impostazioni attuali", hint_play_sel: "Riproduci selezione", hint_load_sel: "Carica selezione", hint_save: "Salva impostazioni"
+        hint_play_current: "Riproduci impostazioni attuali", hint_play_sel: "Riproduci selezione", hint_load_sel: "Carica selezione", hint_save: "Salva impostazioni",
+        prompt_welcome: "Benvenuto! Con quale nome (o soprannome) devono essere salvati i tuoi preset?",
+        prompt_preset_name: "Ciao {name}, come vuoi chiamare questa impostazione audio?",
+        prompt_name_change: "Qual è il tuo nome (o soprannome)?",
+        alert_saved: "Successo! '{preset}' è stato salvato.",
+        alert_delete: "Vuoi davvero eliminare questo preset?",
+        alert_load_empty: "Seleziona un preset da caricare.",
+        alert_load_multi: "Per caricare sui cursori, deve essere selezionato un SOLO preset.",
+        alert_no_points: "Non è stato trovato alcun punto con queste impostazioni!",
+        alert_net_error: "Errore di rete durante il salvataggio."
     },
     en: {
         sprache: "Language:", ausschnitt: "🌍 View:", schweiz: "Switzerland", europa: "Europe", welt: "World",
@@ -50,7 +78,16 @@ const text = {
         lautstaerke: "Volume:", dauer: "Base Duration (s):", attack: "Attack (Fade In):", release: "Release (Fade Out):", echo: "Atmosphere (Echo):",
         scale_major: "Major (Majestic)", scale_minor: "Minor (Melancholic)", scale_lydian: "Lydian (Dreamy)", scale_dorian: "Dorian (Mystic)", scale_pentatonic: "Pentatonic (Harmonic)", scale_hirajoshi: "Hirajōshi (Meditative)",
         wave_sine: "Sine (Pure)", wave_triangle: "Triangle (Soft)", wave_sawtooth: "Sawtooth (Sharp)", wave_square: "Square (Retro)", wave_organ: "Church Organ (Massive)", wave_darkpad: "Dark Pad (Cinematic)", wave_chime: "Chime (Magic)",
-        hint_play_current: "Play current settings", hint_play_sel: "Play selection", hint_load_sel: "Load selected preset", hint_save: "Save current settings"
+        hint_play_current: "Play current settings", hint_play_sel: "Play selection", hint_load_sel: "Load selected preset", hint_save: "Save current settings",
+        prompt_welcome: "Welcome! Under what (nick)name should your presets be saved?",
+        prompt_preset_name: "Hello {name}, what should this sound setting be called?",
+        prompt_name_change: "What is your (nick)name?",
+        alert_saved: "Success! '{preset}' has been saved.",
+        alert_delete: "Are you sure you want to delete this preset?",
+        alert_load_empty: "Please select a preset to load.",
+        alert_load_multi: "Only ONE preset can be selected to load onto the sliders.",
+        alert_no_points: "No points were found with these settings!",
+        alert_net_error: "Network error while saving."
     },
     uk: {
         sprache: "Мова:", ausschnitt: "🌍 Вигляд:", schweiz: "Швейцарія", europa: "Європа", welt: "Світ",
@@ -62,7 +99,16 @@ const text = {
         lautstaerke: "Гучність:", dauer: "Тривалість (с):", attack: "Атака (Наростання):", release: "Спад (Загасання):", echo: "Атмосфера (Ехо):",
         scale_major: "Мажор (Величний)", scale_minor: "Мінор (Меланхолійний)", scale_lydian: "Лідійський (Мрійливий)", scale_dorian: "Дорійський (Містичний)", scale_pentatonic: "Пентатоніка (Гармонійний)", scale_hirajoshi: "Хірайоші (Медитативний)",
         wave_sine: "Синус (Чистий)", wave_triangle: "Трикутник (М'який)", wave_sawtooth: "Пилка (Різкий)", wave_square: "Квадрат (Ретро)", wave_organ: "Орган (Масивний)", wave_darkpad: "Dark Pad (Кіно/Теплий)", wave_chime: "Дзвіночок (Магічний)",
-        hint_play_current: "Відтворити поточні налаштування", hint_play_sel: "Відтворити вибране", hint_load_sel: "Завантажити вибране", hint_save: "Зберегти налаштування"
+        hint_play_current: "Відтворити поточні налаштування", hint_play_sel: "Відтворити вибране", hint_load_sel: "Завантажити вибране", hint_save: "Зберегти налаштування",
+        prompt_welcome: "Ласкаво просимо! Під яким ім'ям (або ніком) зберегти твої пресети?",
+        prompt_preset_name: "Привіт, {name}, як назвати це налаштування звуку?",
+        prompt_name_change: "Яке твоє ім'я (або нік)?",
+        alert_saved: "Успішно! '{preset}' збережено.",
+        alert_delete: "Ти дійсно хочеш видалити цей пресет?",
+        alert_load_empty: "Будь ласка, вибери пресет для завантаження.",
+        alert_load_multi: "Для завантаження на повзунки має бути вибраний лише ОДИН пресет.",
+        alert_no_points: "З цими налаштуваннями точки не знайдено!",
+        alert_net_error: "Помилка мережі під час збереження."
     },
     ru: {
         sprache: "Язык:", ausschnitt: "🌍 Вид:", schweiz: "Швейцария", europa: "Европа", welt: "Мир",
@@ -74,6 +120,15 @@ const text = {
         lautstaerke: "Громкость:", dauer: "Длительность (с):", attack: "Атака (Нарастание):", release: "Спад (Затухание):", echo: "Атмосфера (Эхо):",
         scale_major: "Мажор (Величественный)", scale_minor: "Минор (Меланхоличный)", scale_lydian: "Лидийский (Мечтательный)", scale_dorian: "Дорийский (Мистический)", scale_pentatonic: "Пентатоника (Гармоничный)", scale_hirajoshi: "Хираёси (Медитативный)",
         wave_sine: "Синус (Чистый)", wave_triangle: "Треугольник (Мягкий)", wave_sawtooth: "Пила (Резкий)", wave_square: "Квадрат (Ретро)", wave_organ: "Орган (Массивный)", wave_darkpad: "Dark Pad (Кино/Теплый)", wave_chime: "Колокольчик (Магический)",
-        hint_play_current: "Воспроизвести текущие настройки", hint_play_sel: "Воспроизвести выбранное", hint_load_sel: "Загрузить выбранное", hint_save: "Сохранить настройки"
+        hint_play_current: "Воспроизвести текущие настройки", hint_play_sel: "Воспроизвести выбранное", hint_load_sel: "Загрузить выбранное", hint_save: "Сохранить настройки",
+        prompt_welcome: "Добро пожаловать! Под каким именем (или ником) сохранить твои пресеты?",
+        prompt_preset_name: "Привет, {name}, как назвать эту настройку звука?",
+        prompt_name_change: "Какое у тебя имя (или ник)?",
+        alert_saved: "Успешно! '{preset}' сохранен.",
+        alert_delete: "Ты действительно хочешь удалить этот пресет?",
+        alert_load_empty: "Пожалуйста, выбери пресет для загрузки.",
+        alert_load_multi: "Для загрузки на ползунки должен быть выбран только ОДИН пресет.",
+        alert_no_points: "С этими настройками точки не найдены!",
+        alert_net_error: "Ошибка сети при сохранении."
     }
 };

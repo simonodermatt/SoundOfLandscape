@@ -1,6 +1,18 @@
 /* Grundgerüst & Globales Box-Sizing (verhindert Scrollbalken) */
-{ box-sizing: border-box; }
-body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #111; overflow: hidden; }
+* { box-sizing: border-box; }
+/* Verhindert den lästigen globalen Scrollbalken der Webseite */
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden; 
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 0;
+    background: #111;
+    overflow: hidden; 
+}
 #map { height: 100vh; width: 100vw; position: relative; }
 
 /* Kompaktes Dark-Menu oben rechts */
@@ -70,6 +82,15 @@ button.play-btn {
 button.play-btn:hover { background: #fff; box-shadow: 0 0 10px rgba(255, 215, 0, 0.5); }
 
 /* Preset Bereich */
+/* Die neue, immer offene Preset-Liste mit Scrollbalken für max 5 Einträge */
+.preset-list-container {
+    max-height: 155px; /* Reicht für exakt 5 Einträge */
+    overflow-y: auto;
+    border: 1px solid #444; /* Passt ins dunkle Theme */
+    border-radius: 4px;
+    margin-top: 8px;
+    background: rgba(0, 0, 0, 0.2);
+}
 .presets-section { background: #222; border: 1px solid #333; border-radius: 6px; padding: 10px; text-align: left; width: 100%; }
 .preset-header { cursor: pointer; color: #00BFFF; font-size: 12px; font-weight: bold; text-transform: uppercase; user-select: none; }
 .preset-header:hover { color: #fff; }
@@ -82,6 +103,11 @@ button.play-btn:hover { background: #fff; box-shadow: 0 0 10px rgba(255, 215, 0,
 .del-btn:hover { opacity: 1; color: red; }
 .multi-play-btn { background: #00BFFF !important; color: #111 !important; margin-top: 10px !important; margin-bottom: 0 !important; font-size: 12px !important;}
 .multi-play-btn:hover { background: #fff !important; box-shadow: 0 0 10px rgba(0, 191, 255, 0.8) !important; }
+/* Optional: Damit das Popup selbst nicht aus dem Bildschirm ragt */
+.leaflet-popup-content-wrapper {
+    max-height: 90vh;
+    overflow-y: auto;
+}
 
 /* Vollbild Modus */
 #lightbox { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.95); z-index: 9999; justify-content: center; align-items: center; cursor: zoom-out; }

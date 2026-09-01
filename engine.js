@@ -95,21 +95,32 @@ window.wechsleAnsicht = function(ansicht) {
     else if (ansicht === 'welt') map.flyTo([20.0, 0.0], 2);
 };
 
-window.changeLanguage = function(lang) {
+indow.changeLanguage = function(lang) {
     currentLang = lang;
     if(typeof text === "undefined") return;
+    
     document.getElementById('lbl-sprache').innerText = text[lang].sprache;
     document.getElementById('lbl-view').innerText = text[lang].ausschnitt;
     document.getElementById('opt-ch').innerText = text[lang].schweiz;
     document.getElementById('opt-eu').innerText = text[lang].europa;
     document.getElementById('opt-world').innerText = text[lang].welt;
+    
     markerClusterGroup.eachLayer(layer => {
         if (layer.panoId) {
             const pano = panoramenDaten.find(p => p.id === layer.panoId);
-            if (pano && layer.getPopup() && layer.isPopupOpen()) layer.setPopupContent(getPopupHTML(pano));
+            // Wenn das Popup offen ist, wird der Text getauscht UND das Canvas reanimiert
+            if (pano && layer.getPopup() && layer.isPopupOpen()) {
+                layer.setPopupContent(getPopupHTML(pano));
+                setTimeout(() => {
+                    document.querySelectorAll('.hidden-range').forEach(input => { input.dispatchEvent(new Event('input')); });
+                    drawLines(pano.id);
+                    loadPresets(pano.id); 
+                }, 50);
+            }
         }
     });
 };
+
 
 window.openLightbox = function(url) {
     document.getElementById('lightbox-img').src = url;
@@ -142,8 +153,9 @@ window.updateUserNameDisplay = function() {
 };
 
 window.changeUserName = function() {
+    const t = (typeof text !== 'undefined' && text[currentLang]) ? text[currentLang] : {};
     let current = getUserName() || "";
-    let newName = prompt("Wie lautet dein (Spitz-)Name?", current);
+    let newName = prompt(t.prompt_name_change || "Wie lautet dein (Spitz-)Name?", current);
     if (newName && newName.trim() !== "") {
         setUserName(newName.trim());
     }
@@ -213,14 +225,18 @@ window.loadPresets = async function(panoId) {
 window.loadSelectedPreset = function(panoId) {
     let checkedBoxes = document.querySelectorAll(`#preset-list-${panoId} .preset-cb:checked`);
     
+    // --- HIER IST DEIN NEUER ÜBERSETZUNGS-BLOCK ---
+    const t = (typeof text !== 'undefined' && text[currentLang]) ? text[currentLang] : {};
+    
     if (checkedBoxes.length === 0) {
-        alert("Bitte markiere ein Preset zum Laden.");
+        alert(t.alert_load_empty || "Bitte markiere ein Preset zum Laden.");
         return;
     }
     if (checkedBoxes.length > 1) {
-        alert("Zum Laden auf die Regler darf nur EIN Preset markiert sein.");
+        alert(t.alert_load_multi || "Zum Laden auf die Regler darf nur EIN Preset markiert sein.");
         return;
     }
+    // ----------------------------------------------
     
     let presetId = checkedBoxes[0].value;
     let p = window.currentPresets.find(pr => String(pr.preset_id) === String(presetId));
@@ -273,25 +289,23 @@ window.loadSelectedPreset = function(panoId) {
 };
 
 window.savePreset = async function(panoId) {
+    const t = (typeof text !== 'undefined' && text[currentLang]) ? text[currentLang] : {};
     let name = getUserName();
+    
     if (!name) {
-        name = prompt("Willkommen! Unter welchem (Spitz-)Namen sollen deine Presets gespeichert werden?");
+        name = prompt(t.prompt_welcome || "Willkommen! Unter welchem (Spitz-)Namen sollen deine Presets gespeichert werden?");
         if (!name) return;
         setUserName(name);
     }
     
-    let presetName = prompt(`Hallo ${name}, wie soll diese Klangeinstellung heissen?`);
+    let msg = (t.prompt_preset_name || "Hallo {name}, wie soll diese Klangeinstellung heissen?").replace('{name}', name);
+    let presetName = prompt(msg);
     if (!presetName) return;
 
     let s = window.activeSynth[panoId];
     let payload = {
-        action: "save",
-        pano_id: panoId,
-        preset_name: presetName,
-        user_name: name,
-        user_id: getUserId(),
-        timestamp: new Date().toISOString(), // Zeitstempel für die Datenbank anhängen
-        ...s
+        action: "save", pano_id: panoId, preset_name: presetName,
+        user_name: name, user_id: getUserId(), timestamp: new Date().toISOString(), ...s
     };
 
     let btn = document.getElementById(`save-btn-${panoId}`);
@@ -299,31 +313,23 @@ window.savePreset = async function(panoId) {
     
     try {
         await fetch(API_URL, { 
-            method: 'POST', 
-            mode: 'no-cors',
+            method: 'POST', mode: 'no-cors',
             headers: { 'Content-Type': 'text/plain' },
             body: JSON.stringify(payload) 
         });
         
-        alert(`Erfolg! "${presetName}" wurde gespeichert.`);
-        
-        setTimeout(() => {
-            loadPresets(panoId);
-        }, 1500);
-        
-        let container = document.getElementById(`preset-container-${panoId}`);
-        if (container) {
-            container.style.display = 'block';
-            document.getElementById(`preset-arrow-${panoId}`).innerText = '▼';
-        }
+        let successMsg = (t.alert_saved || "Erfolg! '{preset}' wurde gespeichert.").replace('{preset}', presetName);
+        alert(successMsg);
+        setTimeout(() => { loadPresets(panoId); }, 1500);
     } catch(e) { 
-        alert("Netzwerkfehler beim Speichern."); 
+        alert(t.alert_net_error || "Netzwerkfehler beim Speichern."); 
     }
     if (btn) { btn.innerText = "💾"; }
 };
 
 window.deletePreset = async function(presetId, panoId) {
-    if(!confirm("Möchtest du dieses Preset wirklich löschen?")) return;
+    const t = (typeof text !== 'undefined' && text[currentLang]) ? text[currentLang] : {};
+    if(!confirm(t.alert_delete || "Möchtest du dieses Preset wirklich löschen?")) return;
     try {
         await fetch(API_URL, { 
             method: 'POST', 
@@ -523,10 +529,9 @@ function getPopupHTML(pano) {
             </div>
 
             <div class="presets-section">
-                <div class="preset-header" onclick="togglePresets('${pano.id}')">
-                    <span id="preset-arrow-${pano.id}">▶</span> Community Presets
-                </div>
-                <div id="preset-container-${pano.id}" style="display:none; margin-top:8px;">
+                <div class="preset-header">Community Presets</div>
+                <!-- Die Container-Klasse steuert jetzt die 5-Elemente-Höhe und den Scrollbalken -->
+                <div id="preset-container-${pano.id}" class="preset-list-container">
                     <div id="preset-list-${pano.id}"></div>
                 </div>
             </div>
