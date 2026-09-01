@@ -39,35 +39,33 @@ function findePunkte(kurve, maxAnzahl, minAbstand, sensibilitaet, typ) {
     let punkte = [];
     let windowRange = Math.max(1, sensibilitaet);
     
-    // Canvas: minY ist ganz OBEN im Bild (höchster Berggipfel), maxY ist ganz UNTEN im Bild (tiefstes Tal)
     let maxY = Math.max(...kurve); 
     let minY = Math.min(...kurve);
     let span = maxY - minY || 1;
 
     for (let i = windowRange; i < kurve.length - windowRange; i++) {
-        let isPeak = true;   // Optischer Gipfel (kleinerer Y-Wert)
-        let isValley = true; // Optisches Tal (größerer Y-Wert)
+        let isPeak = true;   
+        let isValley = true; 
         
         for (let j = 1; j <= windowRange; j++) {
-            // Ein Punkt ist KEIN Gipfel, wenn ein Nachbar noch weiter oben ist (kleinerer Y-Wert)
-            if (kurve[i] > kurve[i-j] || kurve[i] > kurve[i+j]) isPeak = false; 
-            // Ein Punkt ist KEIN Tal, wenn ein Nachbar noch weiter unten ist (größerer Y-Wert)
-            if (kurve[i] < kurve[i-j] || kurve[i] < kurve[i+j]) isValley = false;
+            // Ein GIPFEL muss der lokal höchste Wert sein (größer als die Nachbarn)
+            if (kurve[i] < kurve[i-j] || kurve[i] < kurve[i+j]) isPeak = false; 
+            // Ein TAL muss der lokal tiefste Wert sein (kleiner als die Nachbarn)
+            if (kurve[i] > kurve[i-j] || kurve[i] > kurve[i+j]) isValley = false;
         }
         
-        // Zuweisung je nach übergebenem Typ ('gipfel' oder 'tal')
         if ((typ === 'gipfel' && isPeak) || (typ === 'tal' && isValley)) {
-            // Berechnung der Höhe in % (100% = minY = ganz oben im Bild)
-            let hoehe = 100 - ((kurve[i] - minY) / span) * 100;
+            // Höhe in % berechnen: Der größte Y-Wert ergibt jetzt 100% (hoher Ton)
+            let hoehe = ((kurve[i] - minY) / span) * 100;
             punkte.push({ x: i, y: kurve[i], hoehe: hoehe });
         }
     }
 
     // Sortieren nach Wichtigkeit
     if (typ === 'gipfel') {
-        punkte.sort((a, b) => b.hoehe - a.hoehe); // Die höchsten Gipfel (nahe 100%) zuerst
+        punkte.sort((a, b) => b.hoehe - a.hoehe); // Höchste Gipfel zuerst
     } else {
-        punkte.sort((a, b) => a.hoehe - b.hoehe); // Die tiefsten Täler (nahe 0%) zuerst
+        punkte.sort((a, b) => a.hoehe - b.hoehe); // Tiefste Täler zuerst
     }
 
     // Filtern nach minimalem Pixel-Abstand (spacing)
