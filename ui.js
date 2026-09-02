@@ -1,6 +1,6 @@
-// ui.js - Karte, Canvas, Vollbild-Modal und GUI-Generierung
+// ui.js - Karte, Canvas, Vollbild-Modal und GUI mit großen Drehknöpfen
 
-// CSS für das Fullscreen-Modal, skalierte Bilder und größere Regler
+// CSS für das Fullscreen-Modal und die großen Drehknöpfe
 const modalStyle = document.createElement('style');
 modalStyle.innerHTML = `
 .pano-modal-overlay {
@@ -53,7 +53,8 @@ modalStyle.innerHTML = `
     flex: 1;
     padding-right: 5px;
 }
-/* Bild-Container: Panorama wird im vollen Seitenverhältnis eingepasst */
+
+/* Bild-Container */
 .bild-container {
     position: relative;
     cursor: pointer;
@@ -76,23 +77,22 @@ modalStyle.innerHTML = `
 }
 .punktOverlay {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
     pointer-events: none;
 }
-/* Regler-Grid: Nutzt den Platz optimal aus */
+
+/* Drehknopf-Grid */
 .synth-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
     gap: 12px;
     margin: 15px 0;
 }
 .knob-box {
     background: #282828;
     border-radius: 8px;
-    padding: 10px;
+    padding: 10px 6px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -101,7 +101,7 @@ modalStyle.innerHTML = `
 }
 .knob-label {
     font-size: 13px !important;
-    font-weight: bold;
+    font-weight: 600;
     color: #ddd;
     margin-bottom: 6px;
 }
@@ -111,23 +111,48 @@ modalStyle.innerHTML = `
     margin-top: 6px;
     font-weight: bold;
 }
-.knob-container input[type="range"] {
-    width: 100%;
+
+/* Runder Drehknopf (Groß & Touch-optimiert) */
+.knob-container {
+    position: relative;
+    width: 58px;
+    height: 58px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.knob-visual {
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #3a3a3a 30%, #202020 90%);
+    border: 2px solid #555;
+    box-shadow: inset 0 2px 4px rgba(255,255,255,0.1), 0 3px 6px rgba(0,0,0,0.5);
+    position: relative;
+    transform: rotate(-135deg);
+    transition: transform 0.05s ease-out;
+}
+.knob-indicator {
+    width: 4px;
+    height: 14px;
+    background: #4da6ff;
+    border-radius: 2px;
+    position: absolute;
+    top: 4px;
+    left: calc(50% - 2px);
+    box-shadow: 0 0 6px #4da6ff;
+}
+.hidden-range {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    opacity: 0;
     cursor: pointer;
+    margin: 0;
+    z-index: 5;
 }
-.presets-section {
-    background: #252525;
-    padding: 12px;
-    border-radius: 8px;
-    margin-top: 15px;
-    margin-bottom: 10px;
-    border: 1px solid #333;
-}
-.preset-list-container {
-    max-height: 160px;
-    overflow-y: auto;
-    margin-top: 8px;
-}
+
+/* Dropdowns & Buttons */
 .dropdown-row {
     display: flex;
     gap: 12px;
@@ -163,14 +188,23 @@ modalStyle.innerHTML = `
     background: #3a3a3a;
     color: white;
     border: 1px solid #555;
-    padding: 10px 22px;
+    padding: 10px 20px;
     border-radius: 6px;
-    font-size: 18px;
+    font-size: 16px;
     cursor: pointer;
-    transition: background 0.2s;
 }
-.icon-btn:hover {
-    background: #4a4a4a;
+.icon-btn:hover { background: #4a4a4a; }
+.presets-section {
+    background: #252525;
+    padding: 12px;
+    border-radius: 8px;
+    margin-top: 15px;
+    border: 1px solid #333;
+}
+.preset-list-container {
+    max-height: 160px;
+    overflow-y: auto;
+    margin-top: 8px;
 }
 `;
 document.head.appendChild(modalStyle);
@@ -248,7 +282,8 @@ window.drawLines = function(panoId) {
 
 window.buildKnob = function(panoId, key, label, min, max, step, isInt, displayMult, unit = "") {
     let val = window.activeSynth[panoId][key];
-    let visId = `vis_${key}_${panoId}`; let valId = `val_${key}_${panoId}`;
+    let visId = `vis_${key}_${panoId}`; 
+    let valId = `val_${key}_${panoId}`;
     let triggerDraw = ['peaks', 'valleys', 'spacing', 'sensibilitaet'].includes(key) ? `window.drawLines('${panoId}');` : '';
     let jsAction = `window.updateKnob(this, '${visId}'); window.activeSynth['${panoId}'].${key} = ${isInt ? 'parseInt' : 'parseFloat'}(this.value); document.getElementById('${valId}').innerText = ${displayMult ? 'Math.round(this.value * '+displayMult+')' : 'this.value'} + '${unit}'; ${triggerDraw}`;
     
@@ -256,8 +291,8 @@ window.buildKnob = function(panoId, key, label, min, max, step, isInt, displayMu
     <div class="knob-box">
         <div class="knob-label">${label}</div>
         <div class="knob-container">
-            <div class="knob-visual" id="${visId}" style="display:none;"><div class="knob-indicator"></div></div>
-            <input type="range" id="range_${key}_${panoId}" min="${min}" max="${max}" step="${step}" value="${val}" oninput="${jsAction}">
+            <div class="knob-visual" id="${visId}"><div class="knob-indicator"></div></div>
+            <input type="range" id="range_${key}_${panoId}" class="hidden-range" min="${min}" max="${max}" step="${step}" value="${val}" oninput="${jsAction}">
         </div>
         <div class="knob-value" id="${valId}">${displayMult ? Math.round(val * displayMult) : val}${unit}</div>
     </div>`;
@@ -266,7 +301,8 @@ window.buildKnob = function(panoId, key, label, min, max, step, isInt, displayMu
 window.updateKnob = function(input, visualId) {
     let vis = document.getElementById(visualId);
     if(vis) {
-        let min = parseFloat(input.min) || 0; let max = parseFloat(input.max) || 100;
+        let min = parseFloat(input.min) || 0; 
+        let max = parseFloat(input.max) || 100;
         let val = parseFloat(input.value);
         let percent = (val - min) / (max - min);
         let degrees = -135 + (percent * 270); 
@@ -295,6 +331,8 @@ window.openPanoModal = async function(pano) {
     document.body.appendChild(overlay);
 
     setTimeout(async () => {
+        document.querySelectorAll('.hidden-range').forEach(input => { input.dispatchEvent(new Event('input')); });
+
         if(!window.panoDataCache[pano.id]) {
             try {
                 let r = await fetch(pano.arrayUrl);
