@@ -25,25 +25,30 @@ window.findePunkte = function(kurve, maxAnzahl, minAbstand, sensibilitaet, typ) 
     if (!kurve || kurve.length === 0) return [];
     
     let punkte = [];
-    let windowRange = Math.max(1, sensibilitaet);
+    let windowRange = Math.max(1, sensibilitaet + 2); // Etwas Puffer fürs Rauschen
     let maxY = Math.max(...kurve); 
     let minY = Math.min(...kurve);
     let span = maxY - minY || 1;
 
     for (let i = windowRange; i < kurve.length - windowRange; i++) {
-        let isPeak = true;   
-        let isValley = true; 
+        let isPeak = true;   // In Pixeln: Kleinster Wert ist oben (Gipfel)
+        let isValley = true; // In Pixeln: Größter Wert ist unten (Tal)
+        
         for (let j = 1; j <= windowRange; j++) {
-            if (kurve[i] < kurve[i-j] || kurve[i] < kurve[i+j]) isPeak = false; 
-            if (kurve[i] > kurve[i-j] || kurve[i] > kurve[i+j]) isValley = false;
+            // Umgekehrt: Gipfel = kleinerer Y-Wert als Nachbarn
+            if (kurve[i] > kurve[i-j] || kurve[i] > kurve[i+j]) isPeak = false;  
+            // Tal = größerer Y-Wert als Nachbarn
+            if (kurve[i] < kurve[i-j] || kurve[i] < kurve[i+j]) isValley = false;
         }
         
         if ((typ === 'gipfel' && isPeak) || (typ === 'tal' && isValley)) {
-            let hoehe = ((kurve[i] - minY) / span) * 100;
+            // Relativhöhe umkehren, damit ein Gipfel (kleines Y) die höchste relative "Höhe" (100%) bekommt
+            let hoehe = ((maxY - kurve[i]) / span) * 100;
             punkte.push({ x: i, y: kurve[i], hoehe: hoehe });
         }
     }
 
+    // Sortierung: Höchste Gipfel zuerst, tiefste Täler zuerst
     if (typ === 'gipfel') punkte.sort((a, b) => b.hoehe - a.hoehe); 
     else punkte.sort((a, b) => a.hoehe - b.hoehe); 
 
