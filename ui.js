@@ -116,8 +116,8 @@ modalStyle.innerHTML = `
 /* 50% grössere Drehknöpfe (88px statt 58px) */
 .knob-container {
     position: relative;
-    width: 88px;
-    height: 88px;
+    width: 108px;
+    height: 108px;
     display: flex;
     align-items: center;
     justify-content: center;
