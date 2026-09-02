@@ -1,6 +1,6 @@
-// ui.js - Karte, Canvas, Vollbild-Modal und GUI mit großen Drehknöpfen
+// ui.js - Karte, Canvas, Vollbild-Modal und angepasste UI
 
-// CSS für das Fullscreen-Modal und die großen Drehknöpfe
+// CSS für das Modal, skalierte Bilder und 50% größere Drehknöpfe
 const modalStyle = document.createElement('style');
 modalStyle.innerHTML = `
 .pano-modal-overlay {
@@ -19,7 +19,7 @@ modalStyle.innerHTML = `
     background: #1e1e1e;
     color: #fff;
     width: 100%;
-    max-width: 900px;
+    max-width: 950px;
     max-height: 96vh;
     border-radius: 12px;
     display: flex;
@@ -54,7 +54,7 @@ modalStyle.innerHTML = `
     padding-right: 5px;
 }
 
-/* Bild-Container */
+/* Bild-Container mit exakter Ausrichtung für Canvas & Bild */
 .bild-container {
     position: relative;
     cursor: pointer;
@@ -65,13 +65,13 @@ modalStyle.innerHTML = `
     display: flex;
     justify-content: center;
     align-items: center;
-    max-height: 280px;
+    max-height: 300px;
     border: 1px solid #333;
 }
 .popup-img {
     width: 100%;
     height: auto;
-    max-height: 280px;
+    max-height: 300px;
     object-fit: contain;
     display: block;
 }
@@ -79,20 +79,21 @@ modalStyle.innerHTML = `
     position: absolute;
     top: 0; left: 0;
     width: 100%; height: 100%;
+    object-fit: contain;
     pointer-events: none;
 }
 
 /* Drehknopf-Grid */
 .synth-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 14px;
     margin: 15px 0;
 }
 .knob-box {
     background: #282828;
     border-radius: 8px;
-    padding: 10px 6px;
+    padding: 12px 8px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -103,44 +104,44 @@ modalStyle.innerHTML = `
     font-size: 13px !important;
     font-weight: 600;
     color: #ddd;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
 }
 .knob-value {
     font-size: 13px !important;
     color: #4da6ff;
-    margin-top: 6px;
+    margin-top: 8px;
     font-weight: bold;
 }
 
-/* Runder Drehknopf (Groß & Touch-optimiert) */
+/* 50% grössere Drehknöpfe (88px statt 58px) */
 .knob-container {
     position: relative;
-    width: 58px;
-    height: 58px;
+    width: 88px;
+    height: 88px;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 .knob-visual {
-    width: 54px;
-    height: 54px;
+    width: 82px;
+    height: 82px;
     border-radius: 50%;
     background: radial-gradient(circle, #3a3a3a 30%, #202020 90%);
     border: 2px solid #555;
-    box-shadow: inset 0 2px 4px rgba(255,255,255,0.1), 0 3px 6px rgba(0,0,0,0.5);
+    box-shadow: inset 0 3px 6px rgba(255,255,255,0.1), 0 4px 8px rgba(0,0,0,0.5);
     position: relative;
     transform: rotate(-135deg);
     transition: transform 0.05s ease-out;
 }
 .knob-indicator {
-    width: 4px;
-    height: 14px;
+    width: 5px;
+    height: 20px;
     background: #4da6ff;
-    border-radius: 2px;
+    border-radius: 3px;
     position: absolute;
-    top: 4px;
-    left: calc(50% - 2px);
-    box-shadow: 0 0 6px #4da6ff;
+    top: 6px;
+    left: calc(50% - 2.5px);
+    box-shadow: 0 0 8px #4da6ff;
 }
 .hidden-range {
     position: absolute;
@@ -257,12 +258,13 @@ window.drawLines = function(panoId) {
     const canvas = document.getElementById(`canvas_${panoId}`);
     if (canvas) {
         const ctx = canvas.getContext('2d');
+        // Exakte Original-Dimensionen des Bildes für das Canvas setzen
         canvas.width = daten.bild_breite; 
         canvas.height = daten.bild_hoehe;
         ctx.clearRect(0, 0, canvas.width, canvas.height); 
-        ctx.lineWidth = 4;
+        ctx.lineWidth = Math.max(4, Math.round(daten.bild_breite / 600)); // Dynamische Linienstärke
         
-        ctx.strokeStyle = 'rgba(255, 215, 0, 0.8)';
+        ctx.strokeStyle = 'rgba(255, 215, 0, 0.9)';
         topGipfel.forEach(p => { 
             ctx.beginPath(); 
             ctx.moveTo(p.x, 0); 
@@ -270,7 +272,7 @@ window.drawLines = function(panoId) {
             ctx.stroke(); 
         });
         
-        ctx.strokeStyle = 'rgba(0, 191, 255, 0.8)';
+        ctx.strokeStyle = 'rgba(0, 191, 255, 0.9)';
         tiefeTaeler.forEach(p => { 
             ctx.beginPath(); 
             ctx.moveTo(p.x, 0); 
