@@ -1,6 +1,6 @@
 // ui.js - Karte, Canvas, Vollbild-Modal und GUI-Generierung
 
-// CSS für das Fullscreen-Modal und saubere Regler-Anordnung
+// CSS für das Fullscreen-Modal, skalierte Bilder und größere Regler
 const modalStyle = document.createElement('style');
 modalStyle.innerHTML = `
 .pano-modal-overlay {
@@ -19,13 +19,13 @@ modalStyle.innerHTML = `
     background: #1e1e1e;
     color: #fff;
     width: 100%;
-    max-width: 850px;
-    max-height: 95vh;
+    max-width: 900px;
+    max-height: 96vh;
     border-radius: 12px;
     display: flex;
     flex-direction: column;
     position: relative;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.6);
     padding: 25px 20px 20px 20px;
     box-sizing: border-box;
     overflow: hidden;
@@ -38,9 +38,9 @@ modalStyle.innerHTML = `
     color: white;
     border: none;
     border-radius: 50%;
-    width: 40px;
-    height: 40px;
-    font-size: 20px;
+    width: 42px;
+    height: 42px;
+    font-size: 22px;
     font-weight: bold;
     cursor: pointer;
     display: flex;
@@ -53,31 +53,67 @@ modalStyle.innerHTML = `
     flex: 1;
     padding-right: 5px;
 }
-/* Sauberer Grid für Regler, damit nichts überlappt */
+/* Bild-Container: Panorama wird im vollen Seitenverhältnis eingepasst */
+.bild-container {
+    position: relative;
+    cursor: pointer;
+    width: 100%;
+    background: #111;
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    max-height: 280px;
+    border: 1px solid #333;
+}
+.popup-img {
+    width: 100%;
+    height: auto;
+    max-height: 280px;
+    object-fit: contain;
+    display: block;
+}
+.punktOverlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+/* Regler-Grid: Nutzt den Platz optimal aus */
 .synth-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
     margin: 15px 0;
 }
 .knob-box {
-    background: #2a2a2a;
+    background: #282828;
     border-radius: 8px;
-    padding: 8px;
+    padding: 10px;
     display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
+    border: 1px solid #383838;
 }
 .knob-label {
-    font-size: 12px !important;
-    color: #ccc;
-    margin-bottom: 4px;
+    font-size: 13px !important;
+    font-weight: bold;
+    color: #ddd;
+    margin-bottom: 6px;
 }
 .knob-value {
-    font-size: 12px !important;
-    color: #fff;
-    margin-top: 4px;
+    font-size: 13px !important;
+    color: #4da6ff;
+    margin-top: 6px;
+    font-weight: bold;
+}
+.knob-container input[type="range"] {
+    width: 100%;
+    cursor: pointer;
 }
 .presets-section {
     background: #252525;
@@ -85,6 +121,7 @@ modalStyle.innerHTML = `
     border-radius: 8px;
     margin-top: 15px;
     margin-bottom: 10px;
+    border: 1px solid #333;
 }
 .preset-list-container {
     max-height: 160px;
@@ -93,41 +130,47 @@ modalStyle.innerHTML = `
 }
 .dropdown-row {
     display: flex;
-    gap: 10px;
+    gap: 12px;
     flex-wrap: wrap;
-    margin: 10px 0;
+    margin: 12px 0;
 }
 .dropdown-box {
     flex: 1;
-    min-width: 130px;
+    min-width: 140px;
     display: flex;
     flex-direction: column;
 }
+.dropdown-box label {
+    font-size: 13px;
+    color: #bbb;
+    margin-bottom: 4px;
+}
 .dropdown-box select {
-    padding: 6px;
+    padding: 8px;
     background: #333;
     color: #fff;
-    border: 1px: #565656;
-    border-radius: 4px;
-    font-size: 14px;
+    border: 1px solid #555;
+    border-radius: 6px;
+    font-size: 15px;
 }
 .action-btn-row {
     display: flex;
-    gap: 10px;
+    gap: 12px;
     justify-content: center;
     margin: 15px 0;
 }
 .icon-btn {
-    background: #444;
+    background: #3a3a3a;
     color: white;
-    border: none;
-    padding: 10px 20px;
+    border: 1px solid #555;
+    padding: 10px 22px;
     border-radius: 6px;
     font-size: 18px;
     cursor: pointer;
+    transition: background 0.2s;
 }
 .icon-btn:hover {
-    background: #555;
+    background: #4a4a4a;
 }
 `;
 document.head.appendChild(modalStyle);
@@ -213,20 +256,22 @@ window.buildKnob = function(panoId, key, label, min, max, step, isInt, displayMu
     <div class="knob-box">
         <div class="knob-label">${label}</div>
         <div class="knob-container">
-            <div class="knob-visual" id="${visId}"><div class="knob-indicator"></div></div>
-            <input type="range" id="range_${key}_${panoId}" class="hidden-range" min="${min}" max="${max}" step="${step}" value="${val}" oninput="${jsAction}">
+            <div class="knob-visual" id="${visId}" style="display:none;"><div class="knob-indicator"></div></div>
+            <input type="range" id="range_${key}_${panoId}" min="${min}" max="${max}" step="${step}" value="${val}" oninput="${jsAction}">
         </div>
         <div class="knob-value" id="${valId}">${displayMult ? Math.round(val * displayMult) : val}${unit}</div>
     </div>`;
 };
 
 window.updateKnob = function(input, visualId) {
-    let min = parseFloat(input.min) || 0; let max = parseFloat(input.max) || 100;
-    let val = parseFloat(input.value);
-    let percent = (val - min) / (max - min);
-    let degrees = -135 + (percent * 270); 
     let vis = document.getElementById(visualId);
-    if(vis) vis.style.transform = `rotate(${degrees}deg)`;
+    if(vis) {
+        let min = parseFloat(input.min) || 0; let max = parseFloat(input.max) || 100;
+        let val = parseFloat(input.value);
+        let percent = (val - min) / (max - min);
+        let degrees = -135 + (percent * 270); 
+        vis.style.transform = `rotate(${degrees}deg)`;
+    }
 };
 
 window.openPanoModal = async function(pano) {
@@ -250,8 +295,6 @@ window.openPanoModal = async function(pano) {
     document.body.appendChild(overlay);
 
     setTimeout(async () => {
-        document.querySelectorAll('.hidden-range').forEach(input => { input.dispatchEvent(new Event('input')); });
-        
         if(!window.panoDataCache[pano.id]) {
             try {
                 let r = await fetch(pano.arrayUrl);
@@ -276,13 +319,13 @@ window.getPopupHTML = function(pano) {
     return `
         <div class="popup-content">
             <div class="popup-header">
-                <h3 style="margin: 0 0 5px 0;">${pano.titel}</h3>
+                <h3 style="margin: 0 0 5px 0; font-size: 18px;">${pano.titel}</h3>
             </div>
-            <div style="font-size: 13px; color: #aaa; margin-bottom: 12px;">📅 ${pano.datum} | 📷 ${pano.kamera || 'Unbekannt'}</div>
+            <div style="font-size: 13px; color: #aaa; margin-bottom: 10px;">📅 ${pano.datum} | 📷 ${pano.kamera || 'Unbekannt'}</div>
             
-            <div class="bild-container" onclick="window.openLightbox('${pano.bildUrl}')" title="${t.vergroessern || 'Vergrößern'}" style="position:relative; cursor:pointer; text-align:center;">
-                <img src="${pano.bildUrl}" class="popup-img" style="width:100%; max-height:220px; object-fit:cover; border-radius:6px;" />
-                <canvas id="canvas_${pano.id}" class="punktOverlay" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;"></canvas>
+            <div class="bild-container" onclick="window.openLightbox('${pano.bildUrl}')" title="${t.vergroessern || 'Vergrößern (Vollbild)'}">
+                <img src="${pano.bildUrl}" class="popup-img" />
+                <canvas id="canvas_${pano.id}" class="punktOverlay"></canvas>
             </div>
 
             <div class="dropdown-row">
@@ -336,14 +379,14 @@ window.getPopupHTML = function(pano) {
             </div>
 
             <div class="action-btn-row">
-                <button class="icon-btn" title="${t.hint_play_current || 'Play'}" onclick="window.playMultiPanorama('${pano.id}', '${pano.arrayUrl}', false)">▶️</button>
-                <button class="icon-btn" title="${t.hint_play_sel || 'Play Selection'}" onclick="window.playMultiPanorama('${pano.id}', '${pano.arrayUrl}', true)">🎶</button>
-                <button class="icon-btn" title="${t.hint_load_sel || 'Load Preset'}" onclick="window.loadSelectedPreset('${pano.id}')">📂</button>
-                <button class="icon-btn" id="save-btn-${pano.id}" title="${t.hint_save || 'Save'}" onclick="window.savePreset('${pano.id}')">💾</button>
+                <button class="icon-btn" title="${t.hint_play_current || 'Play'}" onclick="window.playMultiPanorama('${pano.id}', '${pano.arrayUrl}', false)">▶️ Play</button>
+                <button class="icon-btn" title="${t.hint_play_sel || 'Play Selection'}" onclick="window.playMultiPanorama('${pano.id}', '${pano.arrayUrl}', true)">🎶 Sequenz</button>
+                <button class="icon-btn" title="${t.hint_load_sel || 'Load Preset'}" onclick="window.loadSelectedPreset('${pano.id}')">📂 Laden</button>
+                <button class="icon-btn" id="save-btn-${pano.id}" title="${t.hint_save || 'Save'}" onclick="window.savePreset('${pano.id}')">💾 Speichern</button>
             </div>
 
             <div class="presets-section">
-                <div class="preset-header" style="font-weight:bold; margin-bottom:5px;">Community Presets</div>
+                <div class="preset-header" style="font-weight:bold; margin-bottom:5px; font-size:14px;">Community Presets</div>
                 <div id="preset-container-${pano.id}" class="preset-list-container">
                     <div id="preset-list-${pano.id}"></div>
                 </div>
