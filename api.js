@@ -209,38 +209,49 @@ window.deletePreset = async function(presetId, panoId) {
     } catch(e) { alert("Fehler beim Löschen."); }
 };
 
-window.ladePanoramenAusSheet = async function() {
-    try {
-        const res = await fetch(`${API_URL}?action=panoramen`);
-        let data = await res.json();
-        
-        window.panoramenDaten = Array.isArray(data) ? data : [];
-        if(window.markerClusterGroup) window.markerClusterGroup.clearLayers();
 
-        window.panoramenDaten.forEach(pano => {
-            if (!pano.id) return;
-            const coords = pano.position ? pano.position.split(',').map(c => parseFloat(c.trim())) : [46.8182, 8.2275];
-            const marker = L.marker(coords);
-            marker.panoId = pano.id;
-            
-            marker.on('click', function() {
-                window.openPanoModal(pano);
+window.ladePanoramenAusSheet = function() {
+    // Wir nutzen hier wieder die GViz-Schnittstelle wie bei solargrafie.ch
+    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Panoramen`;
+    
+    // PapaParse übernimmt den Download via XMLHttpRequest, was strikte Firewalls oft eher durchlassen als fetch()
+    Papa.parse(url, {
+        download: true,
+        header: true,
+        skipEmptyLines: true,
+        complete: function(results) {
+            window.panoramenDaten = results.data;
+            if(window.markerClusterGroup) window.markerClusterGroup.clearLayers();
+
+            window.panoramenDaten.forEach(pano => {
+                // Leere Zeilen abfangen
+                if (!pano.id) return;
+
+                const coords = pano.position ? pano.position.split(',').map(c => parseFloat(c.trim())) : [46.8182, 8.2275];
+                const marker = L.marker(coords);
+                marker.panoId = pano.id;
+                
+                marker.on('click', function() {
+                    window.openPanoModal(pano);
+                });
+
+                if(window.markerClusterGroup) window.markerClusterGroup.addLayer(marker);
+
+                window.activeSynth[pano.id] = {
+                    peaks: parseInt(pano.peaks) || 4, valleys: parseInt(pano.valleys) || 2, spacing: parseInt(pano.spacing) || 35,
+                    sensibilitaet: parseInt(pano.sensibilitaet) || 0, mode: pano.mode || 'chord', scale: pano.scale || 'lydian',
+                    oktaven: parseInt(pano.oktaven) || 3, range: parseInt(pano.range) || 100, wave: pano.wave || 'darkpad',
+                    volume: parseFloat(pano.volume) || 0.2, duration: parseFloat(pano.duration) || 5.0, attack: parseFloat(pano.attack) || 1.0,
+                    release: parseFloat(pano.release) || 2.0, echo: parseFloat(pano.echo) || 0.3
+                };
             });
-
-            if(window.markerClusterGroup) window.markerClusterGroup.addLayer(marker);
-
-            window.activeSynth[pano.id] = {
-                peaks: parseInt(pano.peaks) || 4, valleys: parseInt(pano.valleys) || 2, spacing: parseInt(pano.spacing) || 35,
-                sensibilitaet: parseInt(pano.sensibilitaet) || 0, mode: pano.mode || 'chord', scale: pano.scale || 'lydian',
-                oktaven: parseInt(pano.oktaven) || 3, range: parseInt(pano.range) || 100, wave: pano.wave || 'darkpad',
-                volume: parseFloat(pano.volume) || 0.2, duration: parseFloat(pano.duration) || 5.0, attack: parseFloat(pano.attack) || 1.0,
-                release: parseFloat(pano.release) || 2.0, echo: parseFloat(pano.echo) || 0.3
-            };
-        });
-    } catch (e) { 
-        console.error("Fehler beim Laden über die API:", e); 
-    }
+        },
+        error: function(err) {
+            console.error("Fehler beim Abrufen der Tabellendaten über PapaParse:", err);
+        }
+    });
 };
+
 function parseCSV(textData) {
     const lines = textData.split("\n").map(l => l.trim()).filter(l => l.length > 0);
     if (lines.length < 2) return [];
