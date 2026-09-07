@@ -51,11 +51,14 @@ window.loadPresets = async function(panoId) {
     container.innerHTML = "<div style='font-size:11px; color:#888;'>Lade Community Presets...</div>";
     
     try {
-        let res = await fetch(`${API_URL}?pano_id=${panoId}`);
+        // HIER IST DER FIX: action=presets wurde hinzugefügt
+        let res = await fetch(`${API_URL}?action=presets&pano_id=${panoId}`);
         let presets = await res.json();
-        window.currentPresets = presets; 
         
-        if (presets.length === 0) {
+        // Sicherheits-Filter: Wir garantieren, dass nur Presets für DIESES Panorama bleiben
+        window.currentPresets = presets.filter(p => String(p.pano_id) === String(panoId)); 
+        
+        if (window.currentPresets.length === 0) {
             container.innerHTML = "<div style='font-size:11px; color:#888;'>Noch keine Presets vorhanden.</div>";
             return;
         }
@@ -63,7 +66,7 @@ window.loadPresets = async function(panoId) {
         let html = "";
         let myId = getUserId();
         
-        presets.forEach(p => {
+        window.currentPresets.forEach(p => {
             let isOwner = (myId === p.user_id);
             let timeStr = "";
             
@@ -82,8 +85,8 @@ window.loadPresets = async function(panoId) {
             <div class="preset-item">
                 <input type="checkbox" class="preset-cb" value="${escapeHTML(p.preset_id)}">
                 <div class="preset-info">
-                    <strong>${escapeHTML(p.preset_name)}</strong> 
-                    <span>von ${escapeHTML(p.user_name)}${timeStr}</span>
+                    <strong>${escapeHTML(p.preset_name || 'Ohne Namen')}</strong> 
+                    <span>von ${escapeHTML(p.user_name || 'Unbekannt')}${timeStr}</span>
                 </div>
                 ${isOwner ? `<button onclick="deletePreset('${escapeHTML(p.preset_id)}', '${escapeHTML(panoId)}')" class="del-btn" title="Löschen">🗑️</button>` : ''}
             </div>`;
