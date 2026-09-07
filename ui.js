@@ -434,10 +434,3 @@ window.getPopupHTML = function(pano) {
         </div>
     `;
 };
-
-
-// Start Setup
-window.ladePanoramenAusSheet();
-document.addEventListener("DOMContentLoaded", () => {
-    window.updateUserNameDisplay();
-});

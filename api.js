@@ -211,13 +211,10 @@ window.deletePreset = async function(presetId, panoId) {
 
 window.ladePanoramenAusSheet = async function() {
     try {
-        // Wir nutzen deine bestehende API_URL statt des direkten Sheets-Abrufs
-        const res = await fetch(`${API_URL}?action=get_panoramen`);
+        const res = await fetch(`${API_URL}?action=panoramen`);
         let data = await res.json();
         
-        // Fallback, falls die API ein Array oder Objekt liefert
-        window.panoramenDaten = Array.isArray(data) ? data : (data.panoramen || []);
-        
+        window.panoramenDaten = Array.isArray(data) ? data : [];
         if(window.markerClusterGroup) window.markerClusterGroup.clearLayers();
 
         window.panoramenDaten.forEach(pano => {
@@ -226,19 +223,8 @@ window.ladePanoramenAusSheet = async function() {
             const marker = L.marker(coords);
             marker.panoId = pano.id;
             
-            marker.bindPopup(() => window.getPopupHTML(pano));
-            
-            marker.on('popupopen', async function() {
-                document.querySelectorAll('.hidden-range').forEach(input => { input.dispatchEvent(new Event('input')); });
-                
-                if(!window.panoDataCache[pano.id]) {
-                    try {
-                        let r = await fetch(pano.arrayUrl);
-                        window.panoDataCache[pano.id] = await r.json();
-                    } catch(e) { console.error(e); }
-                }
-                window.drawLines(pano.id);
-                window.loadPresets(pano.id); 
+            marker.on('click', function() {
+                window.openPanoModal(pano);
             });
 
             if(window.markerClusterGroup) window.markerClusterGroup.addLayer(marker);
@@ -255,7 +241,6 @@ window.ladePanoramenAusSheet = async function() {
         console.error("Fehler beim Laden über die API:", e); 
     }
 };
-
 function parseCSV(textData) {
     const lines = textData.split("\n").map(l => l.trim()).filter(l => l.length > 0);
     if (lines.length < 2) return [];
