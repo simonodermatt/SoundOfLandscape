@@ -434,3 +434,15 @@ window.getPopupHTML = function(pano) {
         </div>
     `;
 };
+// --- START SETUP ---
+document.addEventListener("DOMContentLoaded", () => {
+    // 1. Benutzernamen oben rechts initialisieren
+    if (typeof window.updateUserNameDisplay === 'function') {
+        window.updateUserNameDisplay();
+    }
+    
+    // 2. Daten vom Google Sheet via Web-App abrufen und Karte füllen
+    if (typeof window.ladePanoramenAusSheet === 'function') {
+        window.ladePanoramenAusSheet();
+    }
+});
