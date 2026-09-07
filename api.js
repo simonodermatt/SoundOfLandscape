@@ -211,31 +211,13 @@ window.deletePreset = async function(presetId, panoId) {
 
 window.ladePanoramenAusSheet = async function() {
     try {
-        let rows = [];
-
-        // Optionaler REST-API Weg, falls GOOGLE_API_KEY in der config gesetzt ist
-        if (typeof GOOGLE_API_KEY !== 'undefined' && GOOGLE_API_KEY.trim() !== "") {
-            const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/Panoramen?key=${GOOGLE_API_KEY}`;
-            const res = await fetch(apiUrl);
-            const json = await res.json();
-            if (json.values && json.values.length > 1) {
-                const headers = json.values[0];
-                rows = json.values.slice(1).map(row => {
-                    let obj = {};
-                    headers.forEach((h, i) => { obj[h] = row[i] !== undefined ? row[i] : ""; });
-                    return obj;
-                });
-            }
-        }
-
-        // Standard GViz CSV Weg (CORS-frei, funktioniert im Normalfall ohne Key)
-        if (rows.length === 0) {
-            const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Panoramen`;
-            const res = await fetch(url);
-            rows = parseCSV(await res.text());
-        }
-
-        window.panoramenDaten = rows;
+        // Wir nutzen deine bestehende API_URL statt des direkten Sheets-Abrufs
+        const res = await fetch(`${API_URL}?action=get_panoramen`);
+        let data = await res.json();
+        
+        // Fallback, falls die API ein Array oder Objekt liefert
+        window.panoramenDaten = Array.isArray(data) ? data : (data.panoramen || []);
+        
         if(window.markerClusterGroup) window.markerClusterGroup.clearLayers();
 
         window.panoramenDaten.forEach(pano => {
@@ -269,7 +251,9 @@ window.ladePanoramenAusSheet = async function() {
                 release: parseFloat(pano.release) || 2.0, echo: parseFloat(pano.echo) || 0.3
             };
         });
-    } catch (e) { console.error("Fehler beim Laden aus dem Sheet:", e); }
+    } catch (e) { 
+        console.error("Fehler beim Laden über die API:", e); 
+    }
 };
 
 function parseCSV(textData) {
