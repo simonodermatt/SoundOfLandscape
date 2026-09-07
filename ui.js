@@ -435,39 +435,6 @@ window.getPopupHTML = function(pano) {
     `;
 };
 
-window.ladePanoramenAusSheet = async function() {
-    try {
-        // Direkter Aufruf deines Google Apps Script Endpunkts statt der blockierten GViz-URL
-        const res = await fetch(API_URL);
-        let data = await res.json();
-        
-        window.panoramenDaten = Array.isArray(data) ? data : (data.panoramen || []);
-        if(window.markerClusterGroup) window.markerClusterGroup.clearLayers();
-
-        window.panoramenDaten.forEach(pano => {
-            if (!pano.id) return;
-            const coords = pano.position ? pano.position.split(',').map(c => parseFloat(c.trim())) : [46.8182, 8.2275];
-            const marker = L.marker(coords);
-            marker.panoId = pano.id;
-            
-            marker.on('click', function() {
-                window.openPanoModal(pano);
-            });
-
-            if(window.markerClusterGroup) window.markerClusterGroup.addLayer(marker);
-
-            window.activeSynth[pano.id] = {
-                peaks: parseInt(pano.peaks) || 4, valleys: parseInt(pano.valleys) || 2, spacing: parseInt(pano.spacing) || 35,
-                sensibilitaet: parseInt(pano.sensibilitaet) || 0, mode: pano.mode || 'chord', scale: pano.scale || 'lydian',
-                oktaven: parseInt(pano.oktaven) || 3, range: parseInt(pano.range) || 100, wave: pano.wave || 'darkpad',
-                volume: parseFloat(pano.volume) || 0.2, duration: parseFloat(pano.duration) || 5.0, attack: parseFloat(pano.attack) || 1.0,
-                release: parseFloat(pano.release) || 2.0, echo: parseFloat(pano.echo) || 0.3
-            };
-        });
-    } catch (e) { 
-        console.error("Fehler beim Laden über die API:", e); 
-    }
-};
 
 // Start Setup
 window.ladePanoramenAusSheet();
