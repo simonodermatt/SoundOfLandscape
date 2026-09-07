@@ -437,12 +437,15 @@ window.getPopupHTML = function(pano) {
 
 window.ladePanoramenAusSheet = async function() {
     try {
-        const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Panoramen`;
-        const res = await fetch(url);
-        window.panoramenDaten = parseCSV(await res.text());
+        // Direkter Aufruf deines Google Apps Script Endpunkts statt der blockierten GViz-URL
+        const res = await fetch(API_URL);
+        let data = await res.json();
+        
+        window.panoramenDaten = Array.isArray(data) ? data : (data.panoramen || []);
         if(window.markerClusterGroup) window.markerClusterGroup.clearLayers();
 
         window.panoramenDaten.forEach(pano => {
+            if (!pano.id) return;
             const coords = pano.position ? pano.position.split(',').map(c => parseFloat(c.trim())) : [46.8182, 8.2275];
             const marker = L.marker(coords);
             marker.panoId = pano.id;
@@ -461,7 +464,9 @@ window.ladePanoramenAusSheet = async function() {
                 release: parseFloat(pano.release) || 2.0, echo: parseFloat(pano.echo) || 0.3
             };
         });
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+        console.error("Fehler beim Laden über die API:", e); 
+    }
 };
 
 // Start Setup
