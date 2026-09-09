@@ -283,16 +283,3 @@ window.ladePanoramenAusSheet = async function() {
     }
 };
 
-function parseCSV(textData) {
-    const lines = textData.split("\n").map(l => l.trim()).filter(l => l.length > 0);
-    if (lines.length < 2) return [];
-    const headers = lines[0].split(",").map(h => h.replace(/^["']|["']$/g, "").trim());
-    let result = [];
-    for (let i = 1; i < lines.length; i++) {
-        let currentline = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-        let obj = {};
-        headers.forEach((h, index) => { obj[h] = currentline[index] ? currentline[index].replace(/^["']|["']$/g, "").trim() : ""; });
-        result.push(obj);
-    }
-    return result;
-}
