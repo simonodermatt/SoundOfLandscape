@@ -213,46 +213,74 @@ window.deletePreset = async function(presetId, panoId) {
 };
 
 
-window.ladePanoramenAusSheet = function() {
-    // Wir nutzen hier wieder die GViz-Schnittstelle wie bei solargrafie.ch
-    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Panoramen`;
-    
-    // PapaParse übernimmt den Download via XMLHttpRequest, was strikte Firewalls oft eher durchlassen als fetch()
-    Papa.parse(url, {
-        download: true,
-        header: true,
-        skipEmptyLines: true,
-        complete: function(results) {
-            window.panoramenDaten = results.data;
-            if(window.markerClusterGroup) window.markerClusterGroup.clearLayers();
+function processPanoramaData(data) {
+    window.panoramenDaten = data;
+    if(window.markerClusterGroup) window.markerClusterGroup.clearLayers();
 
-            window.panoramenDaten.forEach(pano => {
-                // Leere Zeilen abfangen
-                if (!pano.id) return;
+    window.panoramenDaten.forEach(pano => {
+        // Leere Zeilen abfangen
+        if (!pano.id) return;
 
-                const coords = pano.position ? pano.position.split(',').map(c => parseFloat(c.trim())) : [46.8182, 8.2275];
-                const marker = L.marker(coords);
-                marker.panoId = pano.id;
-                
-                marker.on('click', function() {
-                    window.openPanoModal(pano);
-                });
+        const coords = pano.position ? pano.position.split(',').map(c => parseFloat(c.trim())) : [46.8182, 8.2275];
+        const marker = L.marker(coords);
+        marker.panoId = pano.id;
 
-                if(window.markerClusterGroup) window.markerClusterGroup.addLayer(marker);
+        marker.on('click', function() {
+            window.openPanoModal(pano);
+        });
 
-                window.activeSynth[pano.id] = {
-                    peaks: parseInt(pano.peaks) || 4, valleys: parseInt(pano.valleys) || 2, spacing: parseInt(pano.spacing) || 35,
-                    sensibilitaet: parseInt(pano.sensibilitaet) || 0, mode: pano.mode || 'chord', scale: pano.scale || 'lydian',
-                    oktaven: parseInt(pano.oktaven) || 3, range: parseInt(pano.range) || 100, wave: pano.wave || 'darkpad',
-                    volume: parseFloat(pano.volume) || 0.2, duration: parseFloat(pano.duration) || 5.0, attack: parseFloat(pano.attack) || 1.0,
-                    release: parseFloat(pano.release) || 2.0, echo: parseFloat(pano.echo) || 0.3
-                };
-            });
-        },
-        error: function(err) {
-            console.error("Fehler beim Abrufen der Tabellendaten über PapaParse:", err);
-        }
+        if(window.markerClusterGroup) window.markerClusterGroup.addLayer(marker);
+
+        window.activeSynth[pano.id] = {
+            peaks: parseInt(pano.peaks) || 4, valleys: parseInt(pano.valleys) || 2, spacing: parseInt(pano.spacing) || 35,
+            sensibilitaet: parseInt(pano.sensibilitaet) || 0, mode: pano.mode || 'chord', scale: pano.scale || 'lydian',
+            oktaven: parseInt(pano.oktaven) || 3, range: parseInt(pano.range) || 100, wave: pano.wave || 'darkpad',
+            volume: parseFloat(pano.volume) || 0.2, duration: parseFloat(pano.duration) || 5.0, attack: parseFloat(pano.attack) || 1.0,
+            release: parseFloat(pano.release) || 2.0, echo: parseFloat(pano.echo) || 0.3
+        };
     });
+}
+
+window.ladePanoramenAusSheet = async function() {
+    // Option: Google Sheets v4 REST API (mit API-Key)
+    if (typeof SHEET_ID !== 'undefined' && typeof GOOGLE_API_KEY !== 'undefined' && GOOGLE_API_KEY.trim() !== '') {
+        const range = encodeURIComponent('Panoramen');
+        const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${GOOGLE_API_KEY}`;
+        try {
+            const res = await fetch(apiUrl);
+            const json = await res.json();
+            if (json.values && json.values.length > 1) {
+                const headers = json.values[0];
+                const parsedData = json.values.slice(1).map(row => {
+                    const obj = {};
+                    headers.forEach((h, i) => { obj[h] = row[i] !== undefined ? row[i] : ''; });
+                    return obj;
+                });
+                processPanoramaData(parsedData);
+                return;
+            }
+        } catch (err) {
+            console.warn("Google REST API Aufruf fehlgeschlagen, wechsle auf GViz:", err);
+        }
+    }
+
+    // Fallback: Wir nutzen hier wieder die GViz-Schnittstelle wie bei solargrafie.ch
+    const url = `https://docs.google.com/spreadsheets/d/${typeof SHEET_ID !== 'undefined' ? SHEET_ID : ''}/gviz/tq?tqx=out:csv&sheet=Panoramen`;
+
+    // PapaParse übernimmt den Download via XMLHttpRequest, was strikte Firewalls oft eher durchlassen als fetch()
+    if (typeof Papa !== 'undefined') {
+        Papa.parse(url, {
+            download: true,
+            header: true,
+            skipEmptyLines: true,
+            complete: function(results) {
+                processPanoramaData(results.data);
+            },
+            error: function(err) {
+                console.error("Fehler beim Abrufen der Tabellendaten über PapaParse:", err);
+            }
+        });
+    }
 };
 
 function parseCSV(textData) {
