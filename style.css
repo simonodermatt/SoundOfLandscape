@@ -34,7 +34,8 @@ html, body {
 
 /* Teenage Engineering Style Map Filter */
 .leaflet-tile-pane {
-    filter: grayscale(1) sepia(0.8) contrast(1.2);
+    filter: grayscale(1) contrast(1.2);
+    mix-blend-mode: multiply;
 }
 
 /* Teenage Engineering Style Orange Map Markers */
