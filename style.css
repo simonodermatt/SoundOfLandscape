@@ -68,7 +68,7 @@ html, body {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
-    gap: 0;
+    gap: 20px 15px;
     margin: 20px 0;
     padding: 20px;
     background: #1a1a1a;
@@ -81,9 +81,8 @@ html, body {
     align-items: center;
     flex-direction: row;
     height: 140px;
-    gap: 0px;
+    gap: 8px;
     width: auto;
-    padding: 0;
 }
 
 .te-fader-label {
