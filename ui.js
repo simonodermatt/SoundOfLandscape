@@ -173,7 +173,7 @@ window.changeLanguage = function(lang) {
     if (activeModal && window.currentOpenPano) {
         document.getElementById('pano-modal-body-container').innerHTML = window.getPopupHTML(window.currentOpenPano);
         setTimeout(() => {
-            document.querySelectorAll('.te-slider').forEach(input => { input.dispatchEvent(new Event('input')); });
+            document.querySelectorAll('.te-fader').forEach(input => { input.dispatchEvent(new Event('input')); });
             window.drawLines(window.currentOpenPano.id);
             window.loadPresets(window.currentOpenPano.id); 
         }, 50);
@@ -226,13 +226,15 @@ window.buildKnob = function(panoId, key, label, min, max, step, isInt, displayMu
     let triggerDraw = ['peaks', 'valleys', 'spacing', 'sensibilitaet'].includes(key) ? `window.drawLines('${panoId}');` : '';
     let jsAction = `window.activeSynth['${panoId}'].${key} = ${isInt ? 'parseInt' : 'parseFloat'}(this.value); document.getElementById('${valId}').innerText = ${displayMult ? 'Math.round(this.value * '+displayMult+')' : 'this.value'} + '${unit}'; ${triggerDraw}`;
 
-    let upperLabel = `[ ${label.toUpperCase()} ]`;
+    let upperLabel = `${label.toUpperCase()}`;
     
     return `
-    <div class="te-slider-row">
-        <div class="te-slider-label">${upperLabel}</div>
-        <input type="range" id="range_${key}_${panoId}" class="te-slider" min="${min}" max="${max}" step="${step}" value="${val}" oninput="${jsAction}">
-        <div class="te-slider-value" id="${valId}">${displayMult ? Math.round(val * displayMult) : val}${unit}</div>
+    <div class="te-fader-container">
+        <div class="te-fader-label">${upperLabel}</div>
+        <div class="te-fader-track-wrapper">
+            <input type="range" id="range_${key}_${panoId}" class="te-fader" min="${min}" max="${max}" step="${step}" value="${val}" oninput="${jsAction}">
+        </div>
+        <div class="te-fader-value" id="${valId}">${displayMult ? Math.round(val * displayMult) : val}${unit}</div>
     </div>`;
 };
 
@@ -257,7 +259,7 @@ window.openPanoModal = async function(pano) {
     document.body.appendChild(overlay);
 
     setTimeout(async () => {
-        document.querySelectorAll('.te-slider').forEach(input => { input.dispatchEvent(new Event('input')); });
+        document.querySelectorAll('.te-fader').forEach(input => { input.dispatchEvent(new Event('input')); });
 
         if(!window.panoDataCache[pano.id]) {
             try {
