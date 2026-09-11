@@ -22,9 +22,9 @@ html, body {
         padding: 20px;
     }
 }
-#map {
-    height: 100%;
-    width: 100%;
+#map { 
+    height: 100%; 
+    width: 100%; 
     position: relative;
     border: 4px solid #000;
     border-radius: 0;
@@ -34,7 +34,8 @@ html, body {
 
 /* Teenage Engineering Style Map Filter */
 .leaflet-tile-pane {
-    filter: grayscale(1) sepia(0.8) contrast(1.2);
+    filter: grayscale(1) contrast(1.2);
+    mix-blend-mode: multiply;
 }
 
 /* Teenage Engineering Style Orange Map Markers */
