@@ -83,76 +83,6 @@ modalStyle.innerHTML = `
     pointer-events: none;
 }
 
-/* Drehknopf-Grid */
-.synth-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-    gap: 14px;
-    margin: 15px 0;
-}
-.knob-box {
-    background: #282828;
-    border-radius: 8px;
-    padding: 12px 8px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    border: 1px solid #383838;
-}
-.knob-label {
-    font-size: 13px !important;
-    font-weight: 600;
-    color: #ddd;
-    margin-bottom: 8px;
-}
-.knob-value {
-    font-size: 13px !important;
-    color: #4da6ff;
-    margin-top: 8px;
-    font-weight: bold;
-}
-
-/* 50% grössere Drehknöpfe (88px statt 58px) */
-.knob-container {
-    position: relative;
-    width: 108px;
-    height: 108px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-.knob-visual {
-    width: 82px;
-    height: 82px;
-    border-radius: 50%;
-    background: radial-gradient(circle, #3a3a3a 30%, #202020 90%);
-    border: 2px solid #555;
-    box-shadow: inset 0 3px 6px rgba(255,255,255,0.1), 0 4px 8px rgba(0,0,0,0.5);
-    position: relative;
-    transform: rotate(-135deg);
-    transition: transform 0.05s ease-out;
-}
-.knob-indicator {
-    width: 5px;
-    height: 20px;
-    background: #4da6ff;
-    border-radius: 3px;
-    position: absolute;
-    top: 6px;
-    left: calc(50% - 2.5px);
-    box-shadow: 0 0 8px #4da6ff;
-}
-.hidden-range {
-    position: absolute;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    opacity: 0;
-    cursor: pointer;
-    margin: 0;
-    z-index: 5;
-}
-
 /* Dropdowns & Buttons */
 .dropdown-row {
     display: flex;
@@ -179,22 +109,6 @@ modalStyle.innerHTML = `
     border-radius: 6px;
     font-size: 15px;
 }
-.action-btn-row {
-    display: flex;
-    gap: 12px;
-    justify-content: center;
-    margin: 15px 0;
-}
-.icon-btn {
-    background: #3a3a3a;
-    color: white;
-    border: 1px solid #555;
-    padding: 10px 20px;
-    border-radius: 6px;
-    font-size: 16px;
-    cursor: pointer;
-}
-.icon-btn:hover { background: #4a4a4a; }
 .presets-section {
     background: #252525;
     padding: 12px;
@@ -235,7 +149,7 @@ window.changeLanguage = function(lang) {
     if (activeModal && window.currentOpenPano) {
         document.getElementById('pano-modal-body-container').innerHTML = window.getPopupHTML(window.currentOpenPano);
         setTimeout(() => {
-            document.querySelectorAll('.hidden-range').forEach(input => { input.dispatchEvent(new Event('input')); });
+            document.querySelectorAll('.te-fader').forEach(input => { input.dispatchEvent(new Event('input')); });
             window.drawLines(window.currentOpenPano.id);
             window.loadPresets(window.currentOpenPano.id); 
         }, 50);
@@ -284,32 +198,23 @@ window.drawLines = function(panoId) {
 
 window.buildKnob = function(panoId, key, label, min, max, step, isInt, displayMult, unit = "") {
     let val = window.activeSynth[panoId][key];
-    let visId = `vis_${key}_${panoId}`; 
     let valId = `val_${key}_${panoId}`;
     let triggerDraw = ['peaks', 'valleys', 'spacing', 'sensibilitaet'].includes(key) ? `window.drawLines('${panoId}');` : '';
-    let jsAction = `window.updateKnob(this, '${visId}'); window.activeSynth['${panoId}'].${key} = ${isInt ? 'parseInt' : 'parseFloat'}(this.value); document.getElementById('${valId}').innerText = ${displayMult ? 'Math.round(this.value * '+displayMult+')' : 'this.value'} + '${unit}'; ${triggerDraw}`;
+    let jsAction = `window.activeSynth['${panoId}'].${key} = ${isInt ? 'parseInt' : 'parseFloat'}(this.value); document.getElementById('${valId}').innerText = ${displayMult ? 'Math.round(this.value * '+displayMult+')' : 'this.value'} + '${unit}'; ${triggerDraw}`;
     
-    return `
-    <div class="knob-box">
-        <div class="knob-label">${label}</div>
-        <div class="knob-container">
-            <div class="knob-visual" id="${visId}"><div class="knob-indicator"></div></div>
-            <input type="range" id="range_${key}_${panoId}" class="hidden-range" min="${min}" max="${max}" step="${step}" value="${val}" oninput="${jsAction}">
-        </div>
-        <div class="knob-value" id="${valId}">${displayMult ? Math.round(val * displayMult) : val}${unit}</div>
-    </div>`;
-};
+    // Convert label to uppercase
+    let formattedLabel = `${label.toUpperCase()}`;
 
-window.updateKnob = function(input, visualId) {
-    let vis = document.getElementById(visualId);
-    if(vis) {
-        let min = parseFloat(input.min) || 0; 
-        let max = parseFloat(input.max) || 100;
-        let val = parseFloat(input.value);
-        let percent = (val - min) / (max - min);
-        let degrees = -135 + (percent * 270); 
-        vis.style.transform = `rotate(${degrees}deg)`;
-    }
+    return `
+    <div class="fader-box">
+        <div class="fader-label-container">
+            <div class="fader-label">${formattedLabel}</div>
+            <div class="fader-value" id="${valId}">${displayMult ? Math.round(val * displayMult) : val}${unit}</div>
+        </div>
+        <div class="fader-container">
+            <input type="range" id="range_${key}_${panoId}" class="te-fader" min="${min}" max="${max}" step="${step}" value="${val}" oninput="${jsAction}">
+        </div>
+    </div>`;
 };
 
 window.openPanoModal = async function(pano) {
@@ -333,7 +238,7 @@ window.openPanoModal = async function(pano) {
     document.body.appendChild(overlay);
 
     setTimeout(async () => {
-        document.querySelectorAll('.hidden-range').forEach(input => { input.dispatchEvent(new Event('input')); });
+        document.querySelectorAll('.te-fader').forEach(input => { input.dispatchEvent(new Event('input')); });
 
         if(!window.panoDataCache[pano.id]) {
             try {
@@ -419,10 +324,10 @@ window.getPopupHTML = function(pano) {
             </div>
 
             <div class="action-btn-row">
-                <button class="icon-btn" title="${t.hint_play_current || 'Play'}" onclick="window.playMultiPanorama('${pano.id}', '${pano.arrayUrl}', false)">▶️ Play</button>
-                <button class="icon-btn" title="${t.hint_play_sel || 'Play Selection'}" onclick="window.playMultiPanorama('${pano.id}', '${pano.arrayUrl}', true)">🎶 Sequenz</button>
-                <button class="icon-btn" title="${t.hint_load_sel || 'Load Preset'}" onclick="window.loadSelectedPreset('${pano.id}')">📂 Laden</button>
-                <button class="icon-btn" id="save-btn-${pano.id}" title="${t.hint_save || 'Save'}" onclick="window.savePreset('${pano.id}')">💾 Speichern</button>
+                <button class="icon-btn" title="${t.hint_play_current || 'Play'}" onclick="window.playMultiPanorama('${pano.id}', '${pano.arrayUrl}', false)">▶</button>
+                <button class="icon-btn" title="${t.hint_play_sel || 'Play Selection'}" onclick="window.playMultiPanorama('${pano.id}', '${pano.arrayUrl}', true)">♫</button>
+                <button class="icon-btn" title="${t.hint_load_sel || 'Load Preset'}" onclick="window.loadSelectedPreset('${pano.id}')">⇪</button>
+                <button class="icon-btn" id="save-btn-${pano.id}" title="${t.hint_save || 'Save'}" onclick="window.savePreset('${pano.id}')">⚑</button>
             </div>
 
             <div class="presets-section">
