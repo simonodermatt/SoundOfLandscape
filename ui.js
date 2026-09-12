@@ -419,8 +419,8 @@ window.getPopupHTML = function(pano) {
             </div>
 
             <div class="action-btn-row">
-                <button class="icon-btn" title="${t.hint_play_current || 'Play'}" onclick="window.playMultiPanorama('${pano.id}', '${pano.arrayUrl}', false)">▶️ Play</button>
-                <button class="icon-btn" title="${t.hint_play_sel || 'Play Selection'}" onclick="window.playMultiPanorama('${pano.id}', '${pano.arrayUrl}', true)">🎶 Sequenz</button>
+                <button id="play-btn-${pano.id}" class="icon-btn" title="${t.hint_play_current || 'Play'}" onclick="window.playMultiPanorama('${pano.id}', '${pano.arrayUrl}', false, this)">▶️ Play</button>
+                <button id="seq-btn-${pano.id}" class="icon-btn" title="${t.hint_play_sel || 'Play Selection'}" onclick="window.playMultiPanorama('${pano.id}', '${pano.arrayUrl}', true, this)">🎶 Sequenz</button>
                 <button class="icon-btn" title="${t.hint_load_sel || 'Load Preset'}" onclick="window.loadSelectedPreset('${pano.id}')">📂 Laden</button>
                 <button class="icon-btn" id="save-btn-${pano.id}" title="${t.hint_save || 'Save'}" onclick="window.savePreset('${pano.id}')">💾 Speichern</button>
             </div>

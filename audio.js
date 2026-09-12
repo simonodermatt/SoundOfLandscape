@@ -69,7 +69,7 @@ window.getAudioCtx = function() {
     return window.audioCtx;
 };
 
-window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets) {
+window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets, btnElement) {
     const actx = window.getAudioCtx();
     if (actx.state === 'suspended') await actx.resume();
     const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
@@ -115,6 +115,11 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
 
         const now = actx.currentTime;
         let playedCount = 0;
+        let maxEndTime = now;
+
+        if (btnElement) {
+            btnElement.classList.add('is-playing');
+        }
 
         synthsToPlay.forEach((s) => {
             const tonleiter = generateScale(s.scale, s.oktaven);
@@ -176,10 +181,25 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
                     osc.connect(masterGain); oscs.push(osc);
                 }
                 oscs.forEach(o => { o.start(t0); o.stop(t3 + 0.2); });
+
+                if (t3 + 0.2 > maxEndTime) {
+                    maxEndTime = t3 + 0.2;
+                }
             });
         });
 
-        if (playedCount === 0) alert(t.alert_no_points || "Mit diesen Einstellungen wurden keine Punkte gefunden!");
+        if (playedCount === 0) {
+            alert(t.alert_no_points || "Mit diesen Einstellungen wurden keine Punkte gefunden!");
+            if (btnElement) btnElement.classList.remove('is-playing');
+        } else if (btnElement) {
+            const timeToWait = (maxEndTime - now) * 1000;
+            setTimeout(() => {
+                btnElement.classList.remove('is-playing');
+            }, timeToWait);
+        }
 
-    } catch (e) { alert("Audio-Fehler: " + e.message); }
+    } catch (e) {
+        alert("Audio-Fehler: " + e.message);
+        if (btnElement) btnElement.classList.remove('is-playing');
+    }
 };
