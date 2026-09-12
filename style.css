@@ -277,23 +277,21 @@ button.play-btn:hover { background: #fff; box-shadow: 0 0 10px rgba(255, 215, 0,
 /* Neue Icon-Button-Reihe (Teenage Engineering Style) */
 .action-btn-row {
     display: flex;
-    justify-content: space-between;
-    gap: 8px;
+    justify-content: center;
+    gap: 10px;
     margin-bottom: 15px;
     width: 100%;
 }
 
 .icon-btn {
-    flex: 1;
+    width: 60px;
+    height: 60px;
     background: #e5e0d8;
     border: 2px solid #1a1a1a;
     border-radius: 0;
     color: #1a1a1a;
-    font-size: 11px;
-    font-family: 'Space Mono', 'Courier New', Courier, monospace;
-    font-weight: bold;
-    text-transform: uppercase;
-    padding: 10px 5px;
+    font-size: 32px;
+    line-height: 1;
     cursor: pointer;
     display: flex;
     flex-direction: column;
@@ -301,8 +299,9 @@ button.play-btn:hover { background: #fff; box-shadow: 0 0 10px rgba(255, 215, 0,
     justify-content: center;
     box-shadow: 2px 2px 0px #1a1a1a;
     transition: none; /* No transition for a hard click feel */
-    aspect-ratio: 1 / 1; /* Quadratisch */
 }
+
+/* Remove filter since we'll use black monochrome unicode text instead of colorful emojis */
 
 .icon-btn:hover {
     background: #FF6600; /* Bright signal color for active/hover */
