@@ -1,4 +1,9 @@
 // audio.js - Web Audio API und Synthese
+
+window.activeOscillators = [];
+window.audioTimeouts = [];
+window.audioIntervals = [];
+
 const scales = {
     major: [2, 2, 1, 2, 2, 2, 1], minor: [2, 1, 2, 2, 1, 2, 2],
     lydian: [2, 2, 2, 1, 2, 2, 1], dorian: [2, 1, 2, 2, 2, 1, 2],
@@ -65,11 +70,47 @@ window.findePunkte = function(kurve, maxAnzahl, minAbstand, sensibilitaet, typ) 
 };
 
 window.getAudioCtx = function() {
-    if (!window.audioCtx) { window.audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    if (!window.audioCtx) {
+        window.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        window.masterCompressor = window.audioCtx.createDynamicsCompressor();
+        window.masterCompressor.threshold.setValueAtTime(-24, window.audioCtx.currentTime);
+        window.masterCompressor.knee.setValueAtTime(30, window.audioCtx.currentTime);
+        window.masterCompressor.ratio.setValueAtTime(12, window.audioCtx.currentTime);
+        window.masterCompressor.attack.setValueAtTime(0.003, window.audioCtx.currentTime);
+        window.masterCompressor.release.setValueAtTime(0.25, window.audioCtx.currentTime);
+
+        window.masterCompressor.connect(window.audioCtx.destination);
+    }
     return window.audioCtx;
 };
 
+window.stopAllAudio = function() {
+    if (window.activeOscillators) {
+        window.activeOscillators.forEach(osc => {
+            try {
+                osc.stop();
+                osc.disconnect();
+            } catch (e) {
+                // Ignore errors if oscillator already stopped or disconnected
+            }
+        });
+        window.activeOscillators = [];
+    }
+
+    if (window.audioTimeouts) {
+        window.audioTimeouts.forEach(t => clearTimeout(t));
+        window.audioTimeouts = [];
+    }
+
+    if (window.audioIntervals) {
+        window.audioIntervals.forEach(i => clearInterval(i));
+        window.audioIntervals = [];
+    }
+};
+
 window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets) {
+    window.stopAllAudio();
     const actx = window.getAudioCtx();
     if (actx.state === 'suspended') await actx.resume();
     const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
@@ -111,7 +152,7 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
         
         delayNode.connect(feedbackGain);
         feedbackGain.connect(delayNode);
-        delayNode.connect(actx.destination);
+        delayNode.connect(window.masterCompressor);
 
         const now = actx.currentTime;
         let playedCount = 0;
@@ -150,7 +191,7 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
                 masterGain.gain.linearRampToValueAtTime(0.0001, t3); 
 
                 masterGain.connect(panner);
-                panner.connect(actx.destination);
+                panner.connect(window.masterCompressor);
                 panner.connect(delayNode);
 
                 let oscs = [];
@@ -175,7 +216,11 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
                     let osc = actx.createOscillator(); osc.type = s.wave; osc.frequency.value = freq;
                     osc.connect(masterGain); oscs.push(osc);
                 }
-                oscs.forEach(o => { o.start(t0); o.stop(t3 + 0.2); });
+                oscs.forEach(o => {
+                    o.start(t0);
+                    o.stop(t3 + 0.2);
+                    window.activeOscillators.push(o);
+                });
             });
         });
 
