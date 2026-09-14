@@ -1,3 +1,18 @@
+
+const synthIcons = {
+    peaks: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>`,
+    valleys: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
+    spacing: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M21 12H3"/><path d="M18 9l3 3-3 3"/><path d="M6 9l-3 3 3 3"/></svg>`,
+    sensibilitaet: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>`,
+    oktaven: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M12 20V4"/><path d="M8 8l4-4 4 4"/><path d="M8 16l4 4 4-4"/></svg>`,
+    range: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M3 21h4v-4h4v-4h4v-4h4V5"/></svg>`,
+    duration: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M10 2h4"/></svg>`,
+    echo: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>`,
+    attack: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M3 20h6l12-14"/></svg>`,
+    release: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M3 6h6l12 14"/></svg>`,
+    volume: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`
+};
+
 // ui.js - Karte, Canvas, Vollbild-Modal und angepasste UI
 
 // CSS für das Modal, skalierte Bilder und 50% größere Drehknöpfe
@@ -200,16 +215,24 @@ window.buildKnob = function(panoId, key, label, min, max, step, isInt, displayMu
     let val = window.activeSynth[panoId][key];
     let valId = `val_${key}_${panoId}`;
     let triggerDraw = ['peaks', 'valleys', 'spacing', 'sensibilitaet'].includes(key) ? `window.drawLines('${panoId}');` : '';
-    let jsAction = `window.activeSynth['${panoId}'].${key} = ${isInt ? 'parseInt' : 'parseFloat'}(this.value); document.getElementById('${valId}').innerText = ${displayMult ? 'Math.round(this.value * '+displayMult+')' : 'this.value'} + '${unit}'; ${triggerDraw}`;
+    let displayVal = displayMult ? Math.round(val * displayMult) : val;
+    let jsAction = `
+        window.activeSynth['${panoId}'].${key} = ${isInt ? 'parseInt' : 'parseFloat'}(this.value);
+        let dVal = ${displayMult ? 'Math.round(this.value * '+displayMult+')' : 'this.value'};
+        let tooltip = document.getElementById('tt_${key}_${panoId}');
+        if(tooltip) {
+            tooltip.innerText = '${label}: ' + dVal + '${unit}';
+        }
+        ${triggerDraw}
+    `.replace(/\n/g, '').replace(/\s+/g, ' ');
     
-    // Convert label to uppercase
-    let formattedLabel = `${label.toUpperCase()}`;
+    let icon = synthIcons[key] || '';
 
     return `
-    <div class="fader-box">
-        <div class="fader-label-container">
-            <div class="fader-label">${formattedLabel}</div>
-            <div class="fader-value" id="${valId}">${displayMult ? Math.round(val * displayMult) : val}${unit}</div>
+    <div class="fader-box te-tooltip-container">
+        <div class="te-tooltip" id="tt_${key}_${panoId}">${label}: ${displayVal}${unit}</div>
+        <div class="fader-icon-container">
+            ${icon}
         </div>
         <div class="fader-container">
             <input type="range" id="range_${key}_${panoId}" class="te-fader" min="${min}" max="${max}" step="${step}" value="${val}" oninput="${jsAction}">

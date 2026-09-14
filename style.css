@@ -121,7 +121,7 @@ html, body {
 
 .fader-box {
     display: flex;
-    flex-direction: row;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     border-right: 1px solid #1a1a1a;
@@ -129,39 +129,23 @@ html, body {
     height: 120px;
     position: relative;
     box-sizing: border-box;
-    padding: 5px;
+    padding: 15px 5px;
     background: #e5e0d8;
 }
 
-.fader-label-container {
+.fader-icon-container {
     display: flex;
-    flex-direction: column;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
-    height: 100%;
-    margin-right: 2px;
+    width: 20px;
+    height: 20px;
+    margin-bottom: 8px;
+    color: #1a1a1a;
 }
 
-.fader-label {
-    font-size: 8px;
-    color: #1a1a1a;
-    text-transform: uppercase;
-    font-family: 'Space Mono', 'Courier New', Courier, monospace;
-    font-weight: bold;
-    writing-mode: vertical-rl;
-    text-orientation: upright;
-    letter-spacing: -1px;
-}
 
-.fader-value {
-    font-size: 8px;
-    color: #1a1a1a;
-    font-family: 'Space Mono', 'Courier New', Courier, monospace;
-    font-weight: bold;
-    writing-mode: vertical-rl;
-    text-orientation: upright;
-    margin-top: auto;
-}
+
+
 
 .fader-container {
     position: relative;
@@ -312,4 +296,55 @@ button.play-btn:hover { background: #fff; box-shadow: 0 0 10px rgba(255, 215, 0,
     transform: translateY(2px) translateX(2px);
     box-shadow: 0px 0px 0px #1a1a1a;
     background: #FF6600;
+}
+
+/* Teenage Engineering Style Tooltip */
+.te-tooltip-container {
+    position: relative;
+    cursor: pointer;
+}
+
+.te-tooltip {
+    visibility: hidden;
+    background-color: #1a1a1a;
+    color: #ffffff;
+    text-align: center;
+    padding: 4px 8px;
+    position: absolute;
+    z-index: 1000;
+    bottom: 105%;
+    left: 50%;
+    transform: translateX(-50%);
+    opacity: 0;
+    transition: opacity 0.2s, visibility 0.2s;
+    font-family: 'Space Mono', 'Courier New', Courier, monospace;
+    font-size: 10px;
+    font-weight: bold;
+    text-transform: uppercase;
+    white-space: nowrap;
+    border: none;
+    border-radius: 0;
+    box-shadow: 2px 2px 0px rgba(0,0,0,0.5);
+    pointer-events: none;
+}
+
+.te-tooltip::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -4px;
+    border-width: 4px;
+    border-style: solid;
+    border-color: #1a1a1a transparent transparent transparent;
+}
+
+.te-tooltip-container:hover .te-tooltip {
+    visibility: visible;
+    opacity: 1;
+}
+
+/* Ensure padding on mobile/touch */
+.fader-box {
+    padding: 10px 5px;
 }
