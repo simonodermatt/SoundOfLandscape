@@ -109,14 +109,14 @@ html, body {
 /* Vertical Faders Grid (Teenage Engineering Style) */
 .synth-grid { 
     display: grid;
-    grid-template-columns: repeat(11, 40px); justify-content: center;
+    grid-template-columns: repeat(11, 40px); justify-content: start;
     gap: 0;
     background: #e5e0d8;
     padding: 0;
     border: 2px solid #1a1a1a;
     border-radius: 0;
     margin-bottom: 10px;
-    width: 100%;
+    width: fit-content;
 }
 
 .fader-box {
@@ -126,7 +126,7 @@ html, body {
     justify-content: center;
     border-right: 1px solid #1a1a1a;
     border-bottom: 1px solid #1a1a1a;
-    height: 120px;
+    height: 140px;
     position: relative;
     box-sizing: border-box;
     padding: 15px 0;
@@ -139,7 +139,7 @@ html, body {
     align-items: center;
     width: 20px;
     height: 20px;
-    margin-bottom: 20px;
+    margin-bottom: 30px;
     color: #1a1a1a;
 }
 
@@ -345,3 +345,23 @@ button.play-btn:hover { background: #fff; box-shadow: 0 0 10px rgba(255, 215, 0,
 }
 
 /* Ensure padding on mobile/touch */
+
+
+.synth-layout-container {
+    display: flex;
+    flex-direction: row;
+    gap: 20px; flex-wrap: nowrap;
+    margin-bottom: 15px;
+    align-items: flex-start;
+}
+.synth-layout-left {
+    flex: 0 0 auto;
+}
+.synth-layout-right {
+    min-width: 150px;
+    max-width: 200px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
