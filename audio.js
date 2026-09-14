@@ -150,9 +150,11 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
         const feedbackGain = actx.createGain();
         feedbackGain.gain.value = Math.min(maxEcho, 0.85); 
         
-        delayNode.connect(feedbackGain);
-        feedbackGain.connect(delayNode);
-        delayNode.connect(window.masterCompressor);
+        if (maxEcho > 0) {
+            delayNode.connect(feedbackGain);
+            feedbackGain.connect(delayNode);
+            delayNode.connect(window.masterCompressor);
+        }
 
         const now = actx.currentTime;
         let playedCount = 0;
@@ -192,7 +194,9 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
 
                 masterGain.connect(panner);
                 panner.connect(window.masterCompressor);
-                panner.connect(delayNode);
+                if (maxEcho > 0) {
+                    panner.connect(delayNode);
+                }
 
                 let oscs = [];
                 if (s.wave === 'organ') {
@@ -212,10 +216,37 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
                     let g1 = actx.createGain(); g1.gain.value = 0.8; o1.connect(g1); g1.connect(masterGain); oscs.push(o1);
                     let o2 = actx.createOscillator(); o2.type = 'sine'; o2.frequency.value = freq * 2.76;
                     let g2 = actx.createGain(); g2.gain.value = 0.4; o2.connect(g2); g2.connect(masterGain); oscs.push(o2);
+                } else if (s.wave === 'detuned_saw') {
+                    let o1 = actx.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = freq;
+                    let g1 = actx.createGain(); g1.gain.value = 0.6; o1.connect(g1); g1.connect(masterGain); oscs.push(o1);
+                    let o2 = actx.createOscillator(); o2.type = 'sawtooth'; o2.frequency.value = freq * 1.015; // leichte Verstimmung
+                    let g2 = actx.createGain(); g2.gain.value = 0.6; o2.connect(g2); g2.connect(masterGain); oscs.push(o2);
+                } else if (s.wave === 'noise') {
+                    // Generiere Rauschen
+                    let bufferSize = actx.sampleRate * Math.max(0.1, (t3 - t0 + 0.2));
+                    let buffer = actx.createBuffer(1, bufferSize, actx.sampleRate);
+                    let data = buffer.getChannelData(0);
+                    for (let i = 0; i < bufferSize; i++) {
+                        data[i] = Math.random() * 2 - 1;
+                    }
+                    let noiseNode = actx.createBufferSource();
+                    noiseNode.buffer = buffer;
+
+                    let filter = actx.createBiquadFilter();
+                    filter.type = 'bandpass';
+                    filter.frequency.value = freq; // Filter das Rauschen um die Grundfrequenz
+                    filter.Q.value = 1.5;
+
+                    noiseNode.connect(filter);
+                    filter.connect(masterGain);
+
+                    // BufferSourceNodes haben eine ähnliche API wie Oszillatoren
+                    oscs.push(noiseNode);
                 } else {
                     let osc = actx.createOscillator(); osc.type = s.wave; osc.frequency.value = freq;
                     osc.connect(masterGain); oscs.push(osc);
                 }
+
                 oscs.forEach(o => {
                     o.start(t0);
                     o.stop(t3 + 0.2);
