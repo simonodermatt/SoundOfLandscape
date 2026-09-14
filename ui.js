@@ -33,8 +33,8 @@ modalStyle.innerHTML = `
 .pano-modal-content {
     background: #1e1e1e;
     color: #fff;
-    width: 100%;
-    max-width: 950px;
+    width: fit-content;
+    max-width: 96vw;
     max-height: 96vh;
     border-radius: 12px;
     display: flex;
@@ -314,7 +314,7 @@ window.getPopupHTML = function(pano) {
                 </div>
                 <div class="synth-layout-right">
                     <div class="dropdown-box">
-                        <label>${t.modus || "Modus"}</label>
+
                         <select id="sel_mode_${pano.id}" onchange="window.activeSynth['${pano.id}'].mode = this.value;">
                             <option value="chord" ${s.mode === 'chord' ? 'selected' : ''}>${t.mod_gleich || "Akkord"}</option>
                             <option value="lr" ${s.mode === 'lr' ? 'selected' : ''}>${t.mod_lr || "L -> R"}</option>
@@ -322,7 +322,7 @@ window.getPopupHTML = function(pano) {
                         </select>
                     </div>
                     <div class="dropdown-box">
-                        <label>${t.tonart || "Tonart"}</label>
+
                         <select id="sel_scale_${pano.id}" onchange="window.activeSynth['${pano.id}'].scale = this.value;">
                             <option value="major" ${s.scale === 'major' ? 'selected' : ''}>${t.scale_major || "Dur"}</option>
                             <option value="minor" ${s.scale === 'minor' ? 'selected' : ''}>${t.scale_minor || "Moll"}</option>
@@ -333,7 +333,7 @@ window.getPopupHTML = function(pano) {
                         </select>
                     </div>
                     <div class="dropdown-box">
-                        <label>${t.wellenform || "Patch"}</label>
+
                         <select id="sel_wave_${pano.id}" onchange="window.activeSynth['${pano.id}'].wave = this.value;">
                             <option value="sine" ${s.wave === 'sine' ? 'selected' : ''}>${t.wave_sine || "Sinus"}</option>
                             <option value="triangle" ${s.wave === 'triangle' ? 'selected' : ''}>${t.wave_triangle || "Dreieck"}</option>
