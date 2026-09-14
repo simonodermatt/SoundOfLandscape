@@ -1,7 +1,7 @@
 
 const synthIcons = {
-    peaks: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>`,
-    valleys: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
+    peaks: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M12 3l7 12H5z"/><path d="M12 18V8"/><path d="M9 11l3-3 3 3"/></svg>`,
+    valleys: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M12 21L5 9h14z"/><path d="M12 6v10"/><path d="M9 13l3 3 3-3"/></svg>`,
     spacing: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M21 12H3"/><path d="M18 9l3 3-3 3"/><path d="M6 9l-3 3 3 3"/></svg>`,
     sensibilitaet: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>`,
     oktaven: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M12 20V4"/><path d="M8 8l4-4 4 4"/><path d="M8 16l4 4 4-4"/></svg>`,
@@ -212,17 +212,14 @@ window.drawLines = function(panoId) {
 };
 
 window.buildKnob = function(panoId, key, label, min, max, step, isInt, displayMult, unit = "") {
-    let val = window.activeSynth[panoId][key];
+    let val = (window.activeSynth && window.activeSynth[panoId] && window.activeSynth[panoId][key]) !== undefined ? window.activeSynth[panoId][key] : min;
     let valId = `val_${key}_${panoId}`;
     let triggerDraw = ['peaks', 'valleys', 'spacing', 'sensibilitaet'].includes(key) ? `window.drawLines('${panoId}');` : '';
     let displayVal = displayMult ? Math.round(val * displayMult) : val;
     let jsAction = `
         window.activeSynth['${panoId}'].${key} = ${isInt ? 'parseInt' : 'parseFloat'}(this.value);
         let dVal = ${displayMult ? 'Math.round(this.value * '+displayMult+')' : 'this.value'};
-        let tooltip = document.getElementById('tt_${key}_${panoId}');
-        if(tooltip) {
-            tooltip.innerText = '${label}: ' + dVal + '${unit}';
-        }
+        let tooltip = document.getElementById('tt_val_${key}_${panoId}'); if(tooltip) { tooltip.innerText = dVal; }
         ${triggerDraw}
     `.replace(/\n/g, '').replace(/\s+/g, ' ');
     
@@ -230,7 +227,7 @@ window.buildKnob = function(panoId, key, label, min, max, step, isInt, displayMu
 
     return `
     <div class="fader-box te-tooltip-container">
-        <div class="te-tooltip" id="tt_${key}_${panoId}">${label}: ${displayVal}${unit}</div>
+        <div class="te-tooltip" id="tt_${key}_${panoId}"><span class="tt-label">${label}: </span><span id="tt_val_${key}_${panoId}">${displayVal}</span><span class="tt-unit">${unit}</span></div>
         <div class="fader-icon-container">
             ${icon}
         </div>
@@ -281,7 +278,7 @@ window.closePanoModal = function() {
 };
 
 window.getPopupHTML = function(pano) {
-    const s = window.activeSynth[pano.id];
+    const s = window.activeSynth && window.activeSynth[pano.id] ? window.activeSynth[pano.id] : { mode: 'chord', scale: 'lydian', waveform: 'sine' };
     const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
     
     return `
