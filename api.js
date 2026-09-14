@@ -181,7 +181,7 @@ window.savePreset = async function(panoId) {
     };
 
     let btn = document.getElementById(`save-btn-${panoId}`);
-    if (btn) { btn.innerText = "⏳"; }
+    if (btn) { btn.innerText = "⧗"; }
     
     try {
         await fetch(API_URL, { 
@@ -196,7 +196,7 @@ window.savePreset = async function(panoId) {
     } catch(e) { 
         alert(t.alert_net_error || "Netzwerkfehler beim Speichern."); 
     }
-    if (btn) { btn.innerText = "💾"; }
+    if (btn) { btn.innerText = "⚑"; }
 };
 
 window.deletePreset = async function(presetId, panoId) {
