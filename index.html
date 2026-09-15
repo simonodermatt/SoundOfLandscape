@@ -50,6 +50,11 @@
 <div id="map-container">
     <div id="map"></div>
     <div id="map-label">[ MAP_DATA ]</div>
+
+    <div id="map-overlay-fullscreen" style="display: none;">
+        <button id="map-overlay-close" onclick="window.closeMapOverlay()">✕</button>
+        <div id="map-overlay-content"></div>
+    </div>
 </div>
 <div id="lightbox" onclick="this.style.display='none'"><img id="lightbox-img" src="" alt=""></div>
 
