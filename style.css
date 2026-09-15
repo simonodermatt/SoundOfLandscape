@@ -98,6 +98,10 @@ html, body {
     width: fit-content;
 }
 
+#vinyl-presets-list {
+    width: 100%;
+}
+
 #vinyl-canvas-container {
     width: 100%;
     aspect-ratio: 1/1;
