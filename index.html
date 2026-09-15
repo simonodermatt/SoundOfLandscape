@@ -42,9 +42,26 @@
         <option id="opt-world" value="welt">Welt</option>
     </select>
     <div class="menu-divider"></div>
+    <button id="btn-vinyl-mode" onclick="toggleVinylMode()">Vinyl</button>
+    <div class="menu-divider"></div>
     <span id="user-display" style="color: #00BFFF; font-size: 11px; cursor: pointer; text-transform: uppercase; margin-right: 8px;" onclick="changeUserName()" title="Namen ändern">👤 Gast</span>    
     <div class="menu-divider"></div>
     <a href="datenschutz.html" target="_blank" style="color: #888; font-size: 11px; text-decoration: none; margin-left: 4px; text-transform: uppercase;">Datenschutz</a>    
+</div>
+
+<div id="vinyl-menu" style="display: none;">
+    <div id="vinyl-canvas-container">
+        <canvas id="vinyl-canvas" width="200" height="200"></canvas>
+    </div>
+
+    <div id="vinyl-controls">
+        <button class="icon-btn" id="btn-vinyl-generate" onclick="generateVinyl()" title="Generieren">⚄</button>
+        <button class="icon-btn" id="btn-vinyl-play" onclick="playVinyl()" title="Abspielen">▶</button>
+        <button class="icon-btn" id="btn-vinyl-save" onclick="saveVinyl()" title="Speichern">⚑</button>
+        <button class="icon-btn" id="btn-vinyl-load" onclick="loadVinyl()" title="Laden">⇪</button>
+    </div>
+
+    <div id="vinyl-presets-list" style="margin-top: 10px; max-height: 100px; overflow-y: auto;"></div>
 </div>
 
 <div id="map-container">
