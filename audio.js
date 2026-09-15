@@ -107,6 +107,10 @@ window.stopAllAudio = function() {
         window.audioIntervals.forEach(i => clearInterval(i));
         window.audioIntervals = [];
     }
+
+    if (typeof window.stopVinylRotation === 'function') {
+        window.stopVinylRotation();
+    }
 };
 
 window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets) {
@@ -258,4 +262,163 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
         if (playedCount === 0) alert(t.alert_no_points || "Mit diesen Einstellungen wurden keine Punkte gefunden!");
 
     } catch (e) { alert("Audio-Fehler: " + e.message); }
+};
+
+
+window.playVinylAudio = async function(vinylArray) {
+    const actx = window.getAudioCtx();
+
+    let synthSettings = {
+        mode: 'lr',
+        scale: document.getElementById('sel_vinyl_scale')?.value || 'pentatonic',
+        oktaven: parseInt(document.getElementById('sel_vinyl_octaves')?.value) || 4,
+        range: 100,
+        wave: document.getElementById('sel_vinyl_wave')?.value || 'chime',
+        volume: 0.2,
+        duration: parseFloat(document.getElementById('range_vinyl_speed')?.value || 15),
+        attack: 0.1,
+        release: 0.5,
+        echo: 0.4
+    };
+
+    let baseFreqs = generateScale(synthSettings.scale, synthSettings.oktaven);
+
+    // Smooth the array heavily so it's not crazy noisy for every pixel
+    let stepSize = 30; // Read a value every N pixels
+    let smoothArray = [];
+    for (let i = 0; i < vinylArray.length; i += stepSize) {
+        smoothArray.push(vinylArray[i]);
+    }
+
+    if (smoothArray.length === 0) return;
+
+    let maxY = Math.max(...smoothArray);
+    let minY = Math.min(...smoothArray);
+    let span = maxY - minY || 1;
+
+    let points = smoothArray.map((y, idx) => {
+        let h = 1.0 - ((y - minY) / span); // Invert Y
+        return { relativeHoehe: h, x: idx };
+    });
+
+    // Determine timing
+    // Total playback time e.g. 15 seconds
+    let totalTime = synthSettings.duration;
+    let timePerPoint = totalTime / points.length;
+
+    const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
+
+    if(actx.state === 'suspended') await actx.resume();
+    let startTime = actx.currentTime;
+
+    const osc = actx.createOscillator();
+    const gain = actx.createGain();
+    const panner = actx.createStereoPanner();
+    let filter = null;
+    let osc2 = null;
+    let noise = null;
+
+    if (synthSettings.wave === 'darkpad') {
+        osc.type = 'sawtooth';
+        filter = actx.createBiquadFilter();
+        filter.type = 'lowpass'; filter.frequency.value = 800;
+        osc.connect(filter); filter.connect(gain);
+    } else if (synthSettings.wave === 'chime') {
+        osc.type = 'sine';
+        osc2 = actx.createOscillator();
+        osc2.type = 'triangle';
+        osc2.connect(gain);
+        window.activeOscillators.push(osc2);
+        osc.connect(gain);
+    } else if (synthSettings.wave === 'noise') {
+        const bufferSize = actx.sampleRate * 2.0;
+        const buffer = actx.createBuffer(1, bufferSize, actx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let j = 0; j < bufferSize; j++) { data[j] = Math.random() * 2 - 1; }
+        noise = actx.createBufferSource();
+        noise.buffer = buffer;
+        noise.loop = true;
+        filter = actx.createBiquadFilter();
+        filter.type = 'bandpass'; filter.Q.value = 10;
+        noise.connect(filter); filter.connect(gain);
+        window.activeOscillators.push(noise);
+    } else if (synthSettings.wave === 'detuned_saw') {
+        osc.type = 'sawtooth';
+        osc2 = actx.createOscillator();
+        osc2.type = 'sawtooth';
+        osc2.connect(gain);
+        window.activeOscillators.push(osc2);
+        osc.connect(gain);
+    } else {
+        osc.type = synthSettings.wave || 'sine';
+        osc.connect(gain);
+    }
+
+    if (synthSettings.echo > 0) {
+        const delayNode = actx.createDelay();
+        delayNode.delayTime.value = synthSettings.echo;
+        const feedback = actx.createGain();
+        feedback.gain.value = 0.4;
+        gain.connect(delayNode);
+        delayNode.connect(feedback);
+        feedback.connect(delayNode);
+        delayNode.connect(panner);
+    } else {
+        gain.connect(panner);
+    }
+
+    panner.connect(window.masterCompressor);
+
+    // Initial values
+    gain.gain.setValueAtTime(0, startTime);
+    gain.gain.linearRampToValueAtTime(synthSettings.volume, startTime + 0.1);
+
+    for (let i = 0; i < points.length; i++) {
+        let p = points[i];
+        let delay = i * timePerPoint;
+        let index = Math.floor(p.relativeHoehe * (synthSettings.range / 100) * (baseFreqs.length - 1));
+        index = Math.max(0, Math.min(index, baseFreqs.length - 1));
+        let freq = baseFreqs[index];
+
+        let panValue = -0.5 + (i / points.length);
+        let noteStartTime = startTime + delay;
+
+        panner.pan.setValueAtTime(panValue, noteStartTime);
+
+        if (synthSettings.wave === 'noise' && filter) {
+            filter.frequency.setValueAtTime(freq, noteStartTime);
+        } else {
+            osc.frequency.setValueAtTime(freq, noteStartTime);
+            if (osc2 && synthSettings.wave === 'chime') {
+                osc2.frequency.setValueAtTime(freq * 2.01, noteStartTime);
+            } else if (osc2 && synthSettings.wave === 'detuned_saw') {
+                osc2.frequency.setValueAtTime(freq * 1.02, noteStartTime);
+            }
+        }
+    }
+
+    // Fade out at the end
+    gain.gain.setValueAtTime(synthSettings.volume, startTime + totalTime - 0.5);
+    gain.gain.linearRampToValueAtTime(0.01, startTime + totalTime);
+
+    osc.start(startTime);
+    osc.stop(startTime + totalTime);
+    window.activeOscillators.push(osc);
+
+    if (osc2) {
+        osc2.start(startTime);
+        osc2.stop(startTime + totalTime);
+    }
+    if (noise) {
+        noise.start(startTime);
+        noise.stop(startTime + totalTime);
+    }
+
+    // Automatically stop rotation when audio finishes
+    let stopTimeoutId = setTimeout(() => {
+        if (typeof window.stopVinylRotation === 'function') {
+            window.stopVinylRotation();
+        }
+    }, totalTime * 1000);
+    window.audioTimeouts.push(stopTimeoutId);
 };

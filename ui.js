@@ -160,6 +160,18 @@ window.changeLanguage = function(lang) {
     document.getElementById('opt-eu').innerText = text[lang].europa;
     document.getElementById('opt-world').innerText = text[lang].welt;
     
+    let btnVinylMode = document.getElementById('btn-vinyl-mode');
+    if (btnVinylMode) btnVinylMode.innerText = text[lang].vinyl_mode || "Vinyl";
+
+    let btnGen = document.getElementById('btn-vinyl-generate');
+    if (btnGen) btnGen.title = text[lang].vinyl_generate || "Generate";
+    let btnPlay = document.getElementById('btn-vinyl-play');
+    if (btnPlay) btnPlay.title = text[lang].vinyl_play || "Play";
+    let btnSave = document.getElementById('btn-vinyl-save');
+    if (btnSave) btnSave.title = text[lang].vinyl_save || "Save";
+    let btnLoad = document.getElementById('btn-vinyl-load');
+    if (btnLoad) btnLoad.title = text[lang].vinyl_load || "Load";
+
     let activeModal = document.getElementById('active-pano-modal');
     if (activeModal && window.currentOpenPano) {
         document.getElementById('pano-modal-body-container').innerHTML = window.getPopupHTML(window.currentOpenPano);
@@ -524,6 +536,292 @@ window.getPopupHTML = function(pano) {
         </div>
     `;
 };
+
+// --- VINYL MODUS ---
+window.vinylArray = [];
+window.isVinylGenerating = false;
+window.vinylRotationInterval = null;
+window.vinylRotationAngle = 0;
+
+window.toggleVinylMode = function() {
+    let menu = document.getElementById('vinyl-menu');
+    if (menu.style.display === 'none' || menu.style.display === '') {
+        menu.style.display = 'flex';
+        window.drawVinylCanvas();
+        if (typeof window.loadVinylPresets === 'function') {
+            window.loadVinylPresets();
+        }
+    } else {
+        menu.style.display = 'none';
+        if (window.vinylRotationInterval) {
+            clearInterval(window.vinylRotationInterval);
+            window.vinylRotationInterval = null;
+        }
+        if (typeof window.stopAllAudio === 'function') {
+            window.stopAllAudio();
+        }
+    }
+};
+
+window.generateVinyl = async function() {
+    if (window.isVinylGenerating) return;
+    window.isVinylGenerating = true;
+    window.vinylArray = [];
+
+    let btnGen = document.getElementById('btn-vinyl-generate');
+    let originalText = btnGen.innerHTML;
+    btnGen.innerHTML = "⏳";
+
+    // Scratching animation
+    window.vinylRotationInterval = setInterval(() => {
+        window.vinylRotationAngle += 15;
+        let canvas = document.getElementById('vinyl-canvas');
+        if (canvas) {
+            canvas.style.transform = `rotate(${window.vinylRotationAngle}deg)`;
+        }
+    }, 50);
+
+    // Randomize panoramas
+    let shuffledPanos = [...window.panoramenDaten].sort(() => Math.random() - 0.5);
+
+    for (let i = 0; i < shuffledPanos.length; i++) {
+        let pano = shuffledPanos[i];
+        if (!pano || !pano.id || !pano.arrayUrl) continue;
+
+        if (!window.panoDataCache[pano.id]) {
+            try {
+                let res = await fetch(pano.arrayUrl);
+                window.panoDataCache[pano.id] = await res.json();
+            } catch(e) {
+                console.error("Error fetching data for", pano.id);
+            }
+        }
+
+        if (window.panoDataCache[pano.id] && window.panoDataCache[pano.id].kurve_y) {
+            // Append data
+            // Use concat or loop to avoid RangeError: Maximum call stack size exceeded with spread operator
+            window.vinylArray = window.vinylArray.concat(window.panoDataCache[pano.id].kurve_y);
+        }
+    }
+
+    clearInterval(window.vinylRotationInterval);
+    window.vinylRotationInterval = null;
+    let canvas = document.getElementById('vinyl-canvas');
+    if (canvas) {
+        canvas.style.transform = `rotate(0deg)`;
+    }
+
+    btnGen.innerHTML = originalText;
+    window.isVinylGenerating = false;
+    window.drawVinylCanvas();
+};
+
+window.drawVinylCanvas = function() {
+    let canvas = document.getElementById('vinyl-canvas');
+    if (!canvas) return;
+    let ctx = canvas.getContext('2d');
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw record base
+    ctx.beginPath();
+    ctx.arc(canvas.width / 2, canvas.height / 2, canvas.width / 2, 0, 2 * Math.PI);
+    ctx.fillStyle = '#222';
+    ctx.fill();
+
+    // Draw record label
+    ctx.beginPath();
+    ctx.arc(canvas.width / 2, canvas.height / 2, canvas.width / 6, 0, 2 * Math.PI);
+    ctx.fillStyle = '#1e1e1e';
+    ctx.fill();
+    ctx.strokeStyle = '#444';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Draw center hole
+    ctx.beginPath();
+    ctx.arc(canvas.width / 2, canvas.height / 2, 4, 0, 2 * Math.PI);
+    ctx.fillStyle = '#000';
+    ctx.fill();
+
+    if (window.vinylArray && window.vinylArray.length > 0) {
+        let cx = canvas.width / 2;
+        let cy = canvas.height / 2;
+        let maxRadius = (canvas.width / 2) - 10;
+        let minRadius = (canvas.width / 6) + 10;
+
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.lineWidth = 0.5;
+
+        // Spiral drawing logic
+        let totalPoints = window.vinylArray.length;
+        let rotations = 20; // Number of spirals
+
+        // Find min/max for normalization (safe for large arrays)
+        let maxY = -Infinity;
+        let minY = Infinity;
+        for (let i = 0; i < window.vinylArray.length; i++) {
+            let val = window.vinylArray[i];
+            if (val > maxY) maxY = val;
+            if (val < minY) minY = val;
+        }
+        let rangeY = maxY - minY || 1;
+
+        for (let i = 0; i < totalPoints; i++) {
+            let progress = i / totalPoints;
+            let currentRadius = maxRadius - (progress * (maxRadius - minRadius));
+            let angle = progress * rotations * 2 * Math.PI;
+
+            // Add slight variation based on data
+            let normalizedY = (window.vinylArray[i] - minY) / rangeY;
+            let variation = (normalizedY - 0.5) * 4; // +/- 2px variation
+            currentRadius += variation;
+
+            let x = cx + currentRadius * Math.cos(angle);
+            let y = cy + currentRadius * Math.sin(angle);
+
+            if (i === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        }
+        ctx.stroke();
+    }
+};
+
+window.vinylIsPlaying = false;
+window.vinylDotAnimationReq = null;
+
+window.startVinylDotAnimation = function() {
+    let overlayCanvas = document.getElementById('vinyl-overlay-canvas');
+    if (!overlayCanvas) return;
+    let ctx = overlayCanvas.getContext('2d');
+
+    let totalPoints = window.vinylArray.length;
+    let duration = parseFloat(document.getElementById('range_vinyl_speed')?.value || 15) * 1000;
+
+    // We already have max/min and rotations from drawVinylCanvas logic
+    let rotations = 20;
+    let maxRadius = (overlayCanvas.width / 2) - 10;
+    let minRadius = (overlayCanvas.width / 6) + 10;
+    let cx = overlayCanvas.width / 2;
+    let cy = overlayCanvas.height / 2;
+
+    let maxY = -Infinity;
+    let minY = Infinity;
+    for (let i = 0; i < window.vinylArray.length; i++) {
+        let val = window.vinylArray[i];
+        if (val > maxY) maxY = val;
+        if (val < minY) minY = val;
+    }
+    let rangeY = maxY - minY || 1;
+
+    let startTime = performance.now();
+
+    function drawDot(time) {
+        ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+        let elapsed = time - startTime;
+        let progress = Math.min(elapsed / duration, 1.0);
+
+        if (progress < 1.0 && window.vinylIsPlaying) {
+            let index = Math.floor(progress * totalPoints);
+            if (index >= totalPoints) index = totalPoints - 1;
+
+            let currentRadius = maxRadius - (progress * (maxRadius - minRadius));
+            let angle = progress * rotations * 2 * Math.PI;
+
+            // Reapply rotation from the spinning vinyl base to keep the dot synced on the groove
+            // BUT wait, the base canvas spins.
+            // So if we draw the dot here on the static overlay, we just need to place it
+            // where the needle WOULD be if it wasn't spinning, then add the global vinylRotationAngle.
+            let globalAngleRad = (window.vinylRotationAngle || 0) * (Math.PI / 180);
+
+            let normalizedY = (window.vinylArray[index] - minY) / rangeY;
+            let variation = (normalizedY - 0.5) * 4;
+            currentRadius += variation;
+
+            let totalAngle = angle + globalAngleRad;
+            let x = cx + currentRadius * Math.cos(totalAngle);
+            let y = cy + currentRadius * Math.sin(totalAngle);
+
+            ctx.beginPath();
+            ctx.arc(x, y, 4, 0, 2 * Math.PI);
+            ctx.fillStyle = '#FF6600'; // Orange Needle Point
+            ctx.fill();
+
+            window.vinylDotAnimationReq = requestAnimationFrame(drawDot);
+        } else {
+            ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        }
+    }
+
+    window.vinylDotAnimationReq = requestAnimationFrame(drawDot);
+};
+
+window.stopVinylRotation = function() {
+    if (window.vinylRotationInterval) {
+        clearInterval(window.vinylRotationInterval);
+        window.vinylRotationInterval = null;
+    }
+    if (window.vinylDotAnimationReq) {
+        cancelAnimationFrame(window.vinylDotAnimationReq);
+        window.vinylDotAnimationReq = null;
+        let overlayCanvas = document.getElementById('vinyl-overlay-canvas');
+        if (overlayCanvas) overlayCanvas.getContext('2d').clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
+    }
+
+    let btnPlay = document.getElementById('btn-vinyl-play');
+    if (btnPlay) {
+        btnPlay.style.background = '';
+        btnPlay.style.color = '';
+    }
+    window.vinylIsPlaying = false;
+};
+
+window.playVinyl = function() {
+    if (!window.vinylArray || window.vinylArray.length === 0) {
+        alert("Bitte generiere zuerst das Vinyl-Array!");
+        return;
+    }
+
+    let btnPlay = document.getElementById('btn-vinyl-play');
+
+    if (window.vinylIsPlaying) {
+        window.stopVinylRotation();
+        if (typeof window.stopAllAudio === 'function') {
+            window.stopAllAudio();
+        }
+        return;
+    }
+
+    window.vinylIsPlaying = true;
+    if (btnPlay) {
+        btnPlay.style.background = '#FF6600';
+        btnPlay.style.color = '#1a1a1a';
+    }
+
+    if (typeof window.playVinylAudio === 'function') {
+        window.playVinylAudio(window.vinylArray);
+    }
+
+    let canvas = document.getElementById('vinyl-canvas');
+    if (canvas) {
+        let angle = window.vinylRotationAngle || 0;
+        if (window.vinylRotationInterval) clearInterval(window.vinylRotationInterval);
+        window.vinylRotationInterval = setInterval(() => {
+            angle += 1;
+            window.vinylRotationAngle = angle;
+            canvas.style.transform = `rotate(${angle}deg)`;
+        }, 30);
+    }
+
+    window.startVinylDotAnimation();
+};
+
+
 // --- START SETUP ---
 document.addEventListener("DOMContentLoaded", () => {
     // 1. Benutzernamen oben rechts initialisieren
