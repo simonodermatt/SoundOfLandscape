@@ -409,7 +409,23 @@ window.loadVinyl = function() {
 
     if (p && p.vinyl_array) {
         try {
-            let arr = JSON.parse(p.vinyl_array);
+            let arr;
+            try {
+                arr = typeof p.vinyl_array === 'string' ? JSON.parse(p.vinyl_array) : p.vinyl_array;
+            } catch (err) {
+                // Try parsing if it's somehow double stringified or malformed
+                arr = JSON.parse(p.vinyl_array.replace(/'/g, '"'));
+            }
+
+            // Handle if arr is a string after parsing (double JSON encoded)
+            if (typeof arr === 'string') {
+                arr = JSON.parse(arr);
+            }
+
+            if (!Array.isArray(arr)) {
+                throw new Error("Parsed vinyl_array is not an array");
+            }
+
             // Re-interpolate if we compressed it
             let expandedArray = [];
             for (let i = 0; i < arr.length - 1; i++) {
@@ -420,10 +436,16 @@ window.loadVinyl = function() {
                     expandedArray.push(current + (next - current) * (j / steps));
                 }
             }
+            // Add the last element to the expanded array
+            if (arr.length > 0) {
+                 expandedArray.push(arr[arr.length - 1]);
+            }
+
             window.vinylArray = expandedArray;
             window.drawVinylCanvas();
             alert("Vinyl geladen!");
         } catch(e) {
+            console.error("Vinyl Parse Error:", e, "Raw data:", p.vinyl_array);
             alert("Fehler beim Parsen der Vinyl-Daten.");
         }
     }
