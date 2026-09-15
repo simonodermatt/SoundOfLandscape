@@ -380,7 +380,7 @@ window.loadVinylPresets = async function() {
             }
 
             html += `
-            <div class="preset-item" style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding:4px 0;">
+            <div class="preset-item" style="box-sizing: border-box; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding:4px 5px; width:100%;">
                 <div style="display:flex; align-items:center; gap:8px;">
                     <input type="radio" name="vinyl_preset_rb" class="preset-cb" value="${escapeHTML(p.preset_id)}">
                     <div class="preset-info" style="font-size:11px;">
@@ -388,7 +388,7 @@ window.loadVinylPresets = async function() {
                         <span style="color:#aaa;">von ${escapeHTML(p.user_name || 'Unbekannt')}${timeStr}</span>
                     </div>
                 </div>
-                ${isOwner ? `<button onclick="deleteVinylPreset('${escapeHTML(p.preset_id)}')" class="del-btn" title="Löschen" style="background:transparent; border:none; color:#ff4d4d; cursor:pointer;">🗑️</button>` : ''}
+                ${isOwner ? `<button onclick="deleteVinylPreset('${escapeHTML(p.preset_id)}')" class="del-btn" title="Löschen" style="background:transparent; border:none; color:#ff4d4d; cursor:pointer; padding-right:10px;">🗑️</button>` : ''}
             </div>`;
         });
         container.innerHTML = html;

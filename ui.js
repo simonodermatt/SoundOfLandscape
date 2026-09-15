@@ -581,8 +581,11 @@ window.generateVinyl = async function() {
         }
     }, 50);
 
-    for (let i = 0; i < window.panoramenDaten.length; i++) {
-        let pano = window.panoramenDaten[i];
+    // Randomize panoramas
+    let shuffledPanos = [...window.panoramenDaten].sort(() => Math.random() - 0.5);
+
+    for (let i = 0; i < shuffledPanos.length; i++) {
+        let pano = shuffledPanos[i];
         if (!pano || !pano.id || !pano.arrayUrl) continue;
 
         if (!window.panoDataCache[pano.id]) {
