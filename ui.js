@@ -596,7 +596,8 @@ window.generateVinyl = async function() {
 
         if (window.panoDataCache[pano.id] && window.panoDataCache[pano.id].kurve_y) {
             // Append data
-            window.vinylArray.push(...window.panoDataCache[pano.id].kurve_y);
+            // Use concat or loop to avoid RangeError: Maximum call stack size exceeded with spread operator
+            window.vinylArray = window.vinylArray.concat(window.panoDataCache[pano.id].kurve_y);
         }
     }
 
