@@ -342,6 +342,8 @@ window.getPopupHTML = function(pano) {
                             <option value="organ" ${s.wave === 'organ' ? 'selected' : ''}>${t.wave_organ || "Orgel"}</option>
                             <option value="darkpad" ${s.wave === 'darkpad' ? 'selected' : ''}>${t.wave_darkpad || "Dark Pad"}</option>
                             <option value="chime" ${s.wave === 'chime' ? 'selected' : ''}>${t.wave_chime || "Glöckchen"}</option>
+                            <option value="detuned_saw" ${s.wave === 'detuned_saw' ? 'selected' : ''}>${t.wave_detuned_saw || "Verstimmte Säge"}</option>
+                            <option value="noise" ${s.wave === 'noise' ? 'selected' : ''}>${t.wave_noise || "Rauschen"}</option>
                         </select>
                     </div>
                 </div>
