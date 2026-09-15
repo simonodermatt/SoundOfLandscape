@@ -176,6 +176,128 @@ window.openLightbox = function(url) {
     document.getElementById('lightbox').style.display = 'flex';
 };
 
+window.openMapOverlay = function(panoId, url) {
+    const overlay = document.getElementById('map-overlay-fullscreen');
+    const content = document.getElementById('map-overlay-content');
+    const origContainer = document.getElementById(`bild-container-${panoId}`);
+
+    if (origContainer) {
+        // Clone the container to show it full map size
+        const cloned = origContainer.cloneNode(true);
+        cloned.id = `bild-container-${panoId}-fullscreen`;
+        // Ensure click doesn't re-trigger
+        cloned.onclick = null;
+        cloned.style.cursor = 'default';
+
+        // We need to redraw the canvas on the cloned container
+        content.innerHTML = '';
+        content.appendChild(cloned);
+        overlay.style.display = 'flex';
+
+        // Redraw canvas in full resolution
+        setTimeout(() => {
+            // Re-draw onto the cloned canvas by faking a drawLines call
+            const clonedCanvas = cloned.querySelector('canvas');
+            if (clonedCanvas) {
+                clonedCanvas.id = `canvas_${panoId}_fullscreen`;
+                // Briefly override the id reference in drawLines to draw to fullscreen canvas
+                const origDrawLines = window.drawLines;
+                const tempCanvasId = `canvas_${panoId}_fullscreen`;
+
+                // Helper to draw to the fullscreen canvas
+                const daten = window.panoDataCache[panoId];
+                if(daten) {
+                    const s = window.activeSynth[panoId];
+                    const topGipfel = window.findePunkte(daten.kurve_y, s.peaks, s.spacing, s.sensibilitaet, 'gipfel');
+                    const tiefeTaeler = window.findePunkte(daten.kurve_y, s.valleys, s.spacing, s.sensibilitaet, 'tal');
+
+                    const ctx = clonedCanvas.getContext('2d');
+                    clonedCanvas.width = daten.bild_breite;
+                    clonedCanvas.height = daten.bild_hoehe;
+                    ctx.clearRect(0, 0, clonedCanvas.width, clonedCanvas.height);
+                    ctx.lineWidth = Math.max(4, Math.round(daten.bild_breite / 600));
+
+                    const isRaster = cloned.classList.contains('raster-mode');
+
+                    if (isRaster && daten.kurve_y && daten.kurve_y.length > 0) {
+                        ctx.beginPath();
+                        ctx.moveTo(0, daten.kurve_y[0]);
+                        for(let i=1; i<daten.kurve_y.length; i++) {
+                            ctx.lineTo(i, daten.kurve_y[i]);
+                        }
+                        ctx.strokeStyle = '#1a1a1a';
+                        ctx.stroke();
+                    }
+
+                    ctx.strokeStyle = 'rgba(255, 215, 0, 0.9)';
+                    if (isRaster) {
+                        ctx.fillStyle = 'rgba(255, 215, 0, 0.9)';
+                    }
+                    topGipfel.forEach(p => {
+                        ctx.beginPath();
+                        ctx.moveTo(p.x, 0);
+                        ctx.lineTo(p.x, clonedCanvas.height);
+                        ctx.stroke();
+                        if (isRaster) {
+                            ctx.beginPath();
+                            ctx.arc(p.x, p.y, ctx.lineWidth * 2, 0, 2 * Math.PI);
+                            ctx.fill();
+                        }
+                    });
+
+                    ctx.strokeStyle = 'rgba(0, 191, 255, 0.9)';
+                    if (isRaster) {
+                        ctx.fillStyle = 'rgba(0, 191, 255, 0.9)';
+                    }
+                    tiefeTaeler.forEach(p => {
+                        ctx.beginPath();
+                        ctx.moveTo(p.x, 0);
+                        ctx.lineTo(p.x, clonedCanvas.height);
+                        ctx.stroke();
+                        if (isRaster) {
+                            ctx.beginPath();
+                            ctx.arc(p.x, p.y, ctx.lineWidth * 2, 0, 2 * Math.PI);
+                            ctx.fill();
+                        }
+                    });
+                }
+            }
+        }, 50);
+
+        // Hide modal
+        let modal = document.getElementById('active-pano-modal');
+        if (modal) modal.style.display = 'none';
+    }
+};
+
+window.closeMapOverlay = function() {
+    const overlay = document.getElementById('map-overlay-fullscreen');
+    const content = document.getElementById('map-overlay-content');
+
+    overlay.style.display = 'none';
+    content.innerHTML = '';
+
+    // Show modal again
+    let modal = document.getElementById('active-pano-modal');
+    if (modal) modal.style.display = 'flex';
+};
+
+window.toggleViewMode = function(panoId, isRaster) {
+    const img = document.getElementById(`popup-img-${panoId}`);
+    const container = document.getElementById(`bild-container-${panoId}`);
+    if (!img || !container) return;
+
+    if (isRaster) {
+        img.style.opacity = '0';
+        container.classList.add('raster-mode');
+    } else {
+        img.style.opacity = '1';
+        container.classList.remove('raster-mode');
+    }
+    // Redraw lines to handle the curve drawing logic depending on the mode
+    window.drawLines(panoId);
+};
+
 window.drawLines = function(panoId) {
     const daten = window.panoDataCache[panoId];
     if(!daten) return; 
@@ -193,20 +315,49 @@ window.drawLines = function(panoId) {
         ctx.clearRect(0, 0, canvas.width, canvas.height); 
         ctx.lineWidth = Math.max(4, Math.round(daten.bild_breite / 600)); // Dynamische Linienstärke
         
+        const container = document.getElementById(`bild-container-${panoId}`);
+        const isRaster = container && container.classList.contains('raster-mode');
+
+        if (isRaster && daten.kurve_y && daten.kurve_y.length > 0) {
+            ctx.beginPath();
+            ctx.moveTo(0, daten.kurve_y[0]);
+            for(let i=1; i<daten.kurve_y.length; i++) {
+                ctx.lineTo(i, daten.kurve_y[i]);
+            }
+            ctx.strokeStyle = '#1a1a1a';
+            ctx.stroke();
+        }
+
         ctx.strokeStyle = 'rgba(255, 215, 0, 0.9)';
+        if (isRaster) {
+            ctx.fillStyle = 'rgba(255, 215, 0, 0.9)';
+        }
         topGipfel.forEach(p => { 
             ctx.beginPath(); 
             ctx.moveTo(p.x, 0); 
             ctx.lineTo(p.x, canvas.height); 
             ctx.stroke(); 
+            if (isRaster) {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, ctx.lineWidth * 2, 0, 2 * Math.PI);
+                ctx.fill();
+            }
         });
         
         ctx.strokeStyle = 'rgba(0, 191, 255, 0.9)';
+        if (isRaster) {
+            ctx.fillStyle = 'rgba(0, 191, 255, 0.9)';
+        }
         tiefeTaeler.forEach(p => { 
             ctx.beginPath(); 
             ctx.moveTo(p.x, 0); 
             ctx.lineTo(p.x, canvas.height); 
             ctx.stroke(); 
+            if (isRaster) {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, ctx.lineWidth * 2, 0, 2 * Math.PI);
+                ctx.fill();
+            }
         });
     }
 };
@@ -288,9 +439,17 @@ window.getPopupHTML = function(pano) {
             </div>
             <div style="font-size: 13px; color: #aaa; margin-bottom: 10px;">📅 ${pano.datum} | 📷 ${pano.kamera || 'Unbekannt'}</div>
             
-            <div class="bild-container" onclick="window.openLightbox('${pano.bildUrl}')" title="${t.vergroessern || 'Vergrößern (Vollbild)'}">
-                <img src="${pano.bildUrl}" class="popup-img" />
+            <div id="bild-container-${pano.id}" class="bild-container" onclick="window.openMapOverlay('${pano.id}', '${pano.bildUrl}')" title="${t.vergroessern || 'Vergrößern (Vollbild)'}">
+                <img id="popup-img-${pano.id}" src="${pano.bildUrl}" class="popup-img" />
                 <canvas id="canvas_${pano.id}" class="punktOverlay"></canvas>
+            </div>
+
+            <div class="view-toggle-container">
+                <label class="te-switch">
+                    <input type="checkbox" id="view-toggle-${pano.id}" onchange="window.toggleViewMode('${pano.id}', this.checked)">
+                    <span class="te-slider"></span>
+                </label>
+                <span class="te-switch-label" id="lbl-view-toggle-${pano.id}">${t.raster_view || 'Raster'}</span>
             </div>
 
 
