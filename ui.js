@@ -655,9 +655,14 @@ window.drawVinylCanvas = function() {
         let totalPoints = window.vinylArray.length;
         let rotations = 20; // Number of spirals
 
-        // Find min/max for normalization
-        let maxY = Math.max(...window.vinylArray);
-        let minY = Math.min(...window.vinylArray);
+        // Find min/max for normalization (safe for large arrays)
+        let maxY = -Infinity;
+        let minY = Infinity;
+        for (let i = 0; i < window.vinylArray.length; i++) {
+            let val = window.vinylArray[i];
+            if (val > maxY) maxY = val;
+            if (val < minY) minY = val;
+        }
         let rangeY = maxY - minY || 1;
 
         for (let i = 0; i < totalPoints; i++) {
