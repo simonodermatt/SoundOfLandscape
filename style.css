@@ -99,8 +99,8 @@ html, body {
 }
 
 #vinyl-canvas-container {
-    width: 200px;
-    height: 200px;
+    width: 100%;
+    aspect-ratio: 1/1;
     background: #111;
     border-radius: 50%;
     border: 1px solid #333;

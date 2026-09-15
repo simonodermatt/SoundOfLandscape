@@ -388,7 +388,7 @@ window.loadVinylPresets = async function() {
                         <span style="color:#aaa;">von ${escapeHTML(p.user_name || 'Unbekannt')}${timeStr}</span>
                     </div>
                 </div>
-                ${isOwner ? `<button onclick="deleteVinylPreset('${escapeHTML(p.preset_id)}')"" class="del-btn" title="Löschen" style="background:transparent; border:none; color:#ff4d4d; cursor:pointer;">🗑️</button>` : ''}
+                ${isOwner ? `<button onclick="deleteVinylPreset('${escapeHTML(p.preset_id)}')" class="del-btn" title="Löschen" style="background:transparent; border:none; color:#ff4d4d; cursor:pointer;">🗑️</button>` : ''}
             </div>`;
         });
         container.innerHTML = html;
