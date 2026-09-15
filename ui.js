@@ -692,12 +692,87 @@ window.drawVinylCanvas = function() {
 };
 
 window.vinylIsPlaying = false;
+window.vinylDotAnimationReq = null;
+
+window.startVinylDotAnimation = function() {
+    let overlayCanvas = document.getElementById('vinyl-overlay-canvas');
+    if (!overlayCanvas) return;
+    let ctx = overlayCanvas.getContext('2d');
+
+    let totalPoints = window.vinylArray.length;
+    let duration = parseFloat(document.getElementById('range_vinyl_speed')?.value || 15) * 1000;
+
+    // We already have max/min and rotations from drawVinylCanvas logic
+    let rotations = 20;
+    let maxRadius = (overlayCanvas.width / 2) - 10;
+    let minRadius = (overlayCanvas.width / 6) + 10;
+    let cx = overlayCanvas.width / 2;
+    let cy = overlayCanvas.height / 2;
+
+    let maxY = -Infinity;
+    let minY = Infinity;
+    for (let i = 0; i < window.vinylArray.length; i++) {
+        let val = window.vinylArray[i];
+        if (val > maxY) maxY = val;
+        if (val < minY) minY = val;
+    }
+    let rangeY = maxY - minY || 1;
+
+    let startTime = performance.now();
+
+    function drawDot(time) {
+        ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+        let elapsed = time - startTime;
+        let progress = Math.min(elapsed / duration, 1.0);
+
+        if (progress < 1.0 && window.vinylIsPlaying) {
+            let index = Math.floor(progress * totalPoints);
+            if (index >= totalPoints) index = totalPoints - 1;
+
+            let currentRadius = maxRadius - (progress * (maxRadius - minRadius));
+            let angle = progress * rotations * 2 * Math.PI;
+
+            // Reapply rotation from the spinning vinyl base to keep the dot synced on the groove
+            // BUT wait, the base canvas spins.
+            // So if we draw the dot here on the static overlay, we just need to place it
+            // where the needle WOULD be if it wasn't spinning, then add the global vinylRotationAngle.
+            let globalAngleRad = (window.vinylRotationAngle || 0) * (Math.PI / 180);
+
+            let normalizedY = (window.vinylArray[index] - minY) / rangeY;
+            let variation = (normalizedY - 0.5) * 4;
+            currentRadius += variation;
+
+            let totalAngle = angle + globalAngleRad;
+            let x = cx + currentRadius * Math.cos(totalAngle);
+            let y = cy + currentRadius * Math.sin(totalAngle);
+
+            ctx.beginPath();
+            ctx.arc(x, y, 4, 0, 2 * Math.PI);
+            ctx.fillStyle = '#FF6600'; // Orange Needle Point
+            ctx.fill();
+
+            window.vinylDotAnimationReq = requestAnimationFrame(drawDot);
+        } else {
+            ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        }
+    }
+
+    window.vinylDotAnimationReq = requestAnimationFrame(drawDot);
+};
 
 window.stopVinylRotation = function() {
     if (window.vinylRotationInterval) {
         clearInterval(window.vinylRotationInterval);
         window.vinylRotationInterval = null;
     }
+    if (window.vinylDotAnimationReq) {
+        cancelAnimationFrame(window.vinylDotAnimationReq);
+        window.vinylDotAnimationReq = null;
+        let overlayCanvas = document.getElementById('vinyl-overlay-canvas');
+        if (overlayCanvas) overlayCanvas.getContext('2d').clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
+    }
+
     let btnPlay = document.getElementById('btn-vinyl-play');
     if (btnPlay) {
         btnPlay.style.background = '';
@@ -728,6 +803,10 @@ window.playVinyl = function() {
         btnPlay.style.color = '#1a1a1a';
     }
 
+    if (typeof window.playVinylAudio === 'function') {
+        window.playVinylAudio(window.vinylArray);
+    }
+
     let canvas = document.getElementById('vinyl-canvas');
     if (canvas) {
         let angle = window.vinylRotationAngle || 0;
@@ -739,9 +818,7 @@ window.playVinyl = function() {
         }, 30);
     }
 
-    if (typeof window.playVinylAudio === 'function') {
-        window.playVinylAudio(window.vinylArray);
-    }
+    window.startVinylDotAnimation();
 };
 
 

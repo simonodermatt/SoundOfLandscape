@@ -321,9 +321,13 @@ window.saveVinyl = async function() {
         timestamp: new Date().toISOString(),
         is_vinyl: true,
         vinyl_array: arrayString,
+        scale: document.getElementById('sel_vinyl_scale')?.value || 'pentatonic',
+        wave: document.getElementById('sel_vinyl_wave')?.value || 'chime',
+        duration: parseFloat(document.getElementById('range_vinyl_speed')?.value || 15),
+        oktaven: parseInt(document.getElementById('sel_vinyl_octaves')?.value) || 4,
         // dummy values for required fields
-        peaks: 0, valleys: 0, spacing: 0, sensibilitaet: 0, mode: 'chord', scale: 'major',
-        oktaven: 0, range: 0, wave: 'sine', volume: 0, duration: 0, attack: 0, release: 0, echo: 0
+        peaks: 0, valleys: 0, spacing: 0, sensibilitaet: 0, mode: 'chord',
+        range: 0, volume: 0, attack: 0, release: 0, echo: 0
     };
 
     let btn = document.getElementById(`btn-vinyl-save`);
@@ -442,6 +446,24 @@ window.loadVinyl = function() {
             }
 
             window.vinylArray = expandedArray;
+
+            if (p.scale) {
+                let selScale = document.getElementById('sel_vinyl_scale');
+                if (selScale) selScale.value = p.scale;
+            }
+            if (p.wave) {
+                let selWave = document.getElementById('sel_vinyl_wave');
+                if (selWave) selWave.value = p.wave;
+            }
+            if (p.duration) {
+                let rngSpeed = document.getElementById('range_vinyl_speed');
+                if (rngSpeed) {
+                    rngSpeed.value = p.duration;
+                    let tt = document.getElementById('tt_val_vinyl_speed');
+                    if (tt) tt.innerText = p.duration;
+                }
+            }
+
             window.drawVinylCanvas();
             alert("Vinyl geladen!");
         } catch(e) {
