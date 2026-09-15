@@ -107,6 +107,10 @@ window.stopAllAudio = function() {
         window.audioIntervals.forEach(i => clearInterval(i));
         window.audioIntervals = [];
     }
+
+    if (typeof window.stopVinylRotation === 'function') {
+        window.stopVinylRotation();
+    }
 };
 
 window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets) {
@@ -262,21 +266,16 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
 
 
 window.playVinylAudio = async function(vinylArray) {
-    if (!window.audioContext) {
-        window.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        window.masterCompressor = window.audioContext.createDynamicsCompressor();
-        window.masterCompressor.connect(window.audioContext.destination);
-    }
-    window.stopAllAudio();
+    const actx = window.getAudioCtx();
 
     let synthSettings = {
         mode: 'lr',
-        scale: 'pentatonic',
-        oktaven: 4,
+        scale: document.getElementById('sel_vinyl_scale')?.value || 'pentatonic',
+        oktaven: parseInt(document.getElementById('sel_vinyl_octaves')?.value) || 4,
         range: 100,
-        wave: 'chime',
+        wave: document.getElementById('sel_vinyl_wave')?.value || 'chime',
         volume: 0.2,
-        duration: 15.0, // length of total song? We'll stream it.
+        duration: parseFloat(document.getElementById('range_vinyl_speed')?.value || 15),
         attack: 0.1,
         release: 0.5,
         echo: 0.4
@@ -309,43 +308,43 @@ window.playVinylAudio = async function(vinylArray) {
 
     const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
 
-    if(window.audioContext.state === 'suspended') await window.audioContext.resume();
-    let startTime = window.audioContext.currentTime;
+    if(actx.state === 'suspended') await actx.resume();
+    let startTime = actx.currentTime;
 
-    const osc = window.audioContext.createOscillator();
-    const gain = window.audioContext.createGain();
-    const panner = window.audioContext.createStereoPanner();
+    const osc = actx.createOscillator();
+    const gain = actx.createGain();
+    const panner = actx.createStereoPanner();
     let filter = null;
     let osc2 = null;
     let noise = null;
 
     if (synthSettings.wave === 'darkpad') {
         osc.type = 'sawtooth';
-        filter = window.audioContext.createBiquadFilter();
+        filter = actx.createBiquadFilter();
         filter.type = 'lowpass'; filter.frequency.value = 800;
         osc.connect(filter); filter.connect(gain);
     } else if (synthSettings.wave === 'chime') {
         osc.type = 'sine';
-        osc2 = window.audioContext.createOscillator();
+        osc2 = actx.createOscillator();
         osc2.type = 'triangle';
         osc2.connect(gain);
         window.activeOscillators.push(osc2);
         osc.connect(gain);
     } else if (synthSettings.wave === 'noise') {
-        const bufferSize = window.audioContext.sampleRate * 2.0;
-        const buffer = window.audioContext.createBuffer(1, bufferSize, window.audioContext.sampleRate);
+        const bufferSize = actx.sampleRate * 2.0;
+        const buffer = actx.createBuffer(1, bufferSize, actx.sampleRate);
         const data = buffer.getChannelData(0);
         for (let j = 0; j < bufferSize; j++) { data[j] = Math.random() * 2 - 1; }
-        noise = window.audioContext.createBufferSource();
+        noise = actx.createBufferSource();
         noise.buffer = buffer;
         noise.loop = true;
-        filter = window.audioContext.createBiquadFilter();
+        filter = actx.createBiquadFilter();
         filter.type = 'bandpass'; filter.Q.value = 10;
         noise.connect(filter); filter.connect(gain);
         window.activeOscillators.push(noise);
     } else if (synthSettings.wave === 'detuned_saw') {
         osc.type = 'sawtooth';
-        osc2 = window.audioContext.createOscillator();
+        osc2 = actx.createOscillator();
         osc2.type = 'sawtooth';
         osc2.connect(gain);
         window.activeOscillators.push(osc2);
@@ -356,9 +355,9 @@ window.playVinylAudio = async function(vinylArray) {
     }
 
     if (synthSettings.echo > 0) {
-        const delayNode = window.audioContext.createDelay();
+        const delayNode = actx.createDelay();
         delayNode.delayTime.value = synthSettings.echo;
-        const feedback = window.audioContext.createGain();
+        const feedback = actx.createGain();
         feedback.gain.value = 0.4;
         gain.connect(delayNode);
         delayNode.connect(feedback);

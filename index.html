@@ -50,8 +50,50 @@
 </div>
 
 <div id="vinyl-menu" style="display: none;">
-    <div id="vinyl-canvas-container">
-        <canvas id="vinyl-canvas" width="200" height="200"></canvas>
+    <div style="display: flex; gap: 10px; align-items: stretch; width: 100%;">
+        <!-- Speed Fader -->
+        <div class="fader-box te-tooltip-container" style="height: auto; border: 1px solid #333; background: #e5e0d8; min-width: 40px;">
+            <div class="te-tooltip" id="tt_vinyl_speed"><span class="tt-label">Speed: </span><span id="tt_val_vinyl_speed">15</span><span class="tt-unit">s</span></div>
+            <div class="fader-icon-container" style="color: #1a1a1a;">◷</div>
+            <div class="fader-container">
+                <input type="range" id="range_vinyl_speed" class="te-fader" min="1" max="60" step="1" value="15" oninput="document.getElementById('tt_val_vinyl_speed').innerText = this.value;">
+            </div>
+        </div>
+
+        <div id="vinyl-canvas-container" style="flex: 1; position: relative;">
+            <canvas id="vinyl-canvas" width="200" height="200" style="position: absolute; top:0; left:0; width:100%; height:100%;"></canvas>
+            <canvas id="vinyl-overlay-canvas" width="200" height="200" style="position: absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;"></canvas>
+        </div>
+    </div>
+
+    <div style="display: flex; width: 100%; flex-direction: column; gap: 0; border: 1px solid #1a1a1a; margin-top: 5px;">
+        <select id="sel_vinyl_octaves" style="width: 100%; border: none; border-bottom: 1px solid #333; background: #111; color: #00BFFF; padding: 4px; outline: none; cursor: pointer; text-transform: uppercase; font-size: 11px;">
+            <option value="1">1 Oktave</option>
+            <option value="2">2 Oktaven</option>
+            <option value="3">3 Oktaven</option>
+            <option value="4" selected>4 Oktaven</option>
+            <option value="5">5 Oktaven</option>
+            <option value="6">6 Oktaven</option>
+        </select>
+        <select id="sel_vinyl_scale" style="width: 100%; border: none; border-bottom: 1px solid #333; background: #111; color: #00BFFF; padding: 4px; outline: none; cursor: pointer; text-transform: uppercase; font-size: 11px;">
+            <option value="major">Dur</option>
+            <option value="minor">Moll</option>
+            <option value="lydian">Lydisch</option>
+            <option value="dorian">Dorisch</option>
+            <option value="pentatonic" selected>Pentatonik</option>
+            <option value="hirajoshi">Hirajōshi</option>
+        </select>
+        <select id="sel_vinyl_wave" style="width: 100%; border: none; background: #111; color: #00BFFF; padding: 4px; outline: none; cursor: pointer; text-transform: uppercase; font-size: 11px;">
+            <option value="sine">Sinus</option>
+            <option value="triangle">Dreieck</option>
+            <option value="sawtooth">Sägezahn</option>
+            <option value="square">Rechteck</option>
+            <option value="organ">Orgel</option>
+            <option value="darkpad">Dark Pad</option>
+            <option value="chime" selected>Glöckchen</option>
+            <option value="detuned_saw">Verstimmte Säge</option>
+            <option value="noise">Rauschen</option>
+        </select>
     </div>
 
     <div id="vinyl-controls">
