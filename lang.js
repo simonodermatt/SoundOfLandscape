@@ -52,7 +52,12 @@ const text = {
         hint_play_current: "Aktuelles Panorama abspielen",
         hint_play_sel: "Ausgewählte Presets abspielen",
         hint_load_sel: "Markiertes Preset laden",
-        hint_save: "Aktuelle Einstellung speichern"
+                hint_save: "Aktuelle Einstellung speichern",
+        vinyl_mode: "Vinyl",
+        vinyl_generate: "Generieren",
+        vinyl_play: "Abspielen",
+        vinyl_save: "Speichern",
+        vinyl_load: "Laden"
     },
     fr: {
         sprache: "Langue:",
@@ -106,7 +111,12 @@ const text = {
         hint_play_current: "Lire le panorama actuel",
         hint_play_sel: "Lire les préréglages sélectionnés",
         hint_load_sel: "Charger le préréglage sélectionné",
-        hint_save: "Enregistrer le réglage actuel"
+                hint_save: "Enregistrer le réglage actuel",
+        vinyl_mode: "Vinyle",
+        vinyl_generate: "Générer",
+        vinyl_play: "Jouer",
+        vinyl_save: "Sauvegarder",
+        vinyl_load: "Charger"
     },
     it: {
         sprache: "Lingua:",
@@ -160,7 +170,12 @@ const text = {
         hint_play_current: "Riproduci panorama attuale",
         hint_play_sel: "Riproduci preset selezionati",
         hint_load_sel: "Carica preset selezionato",
-        hint_save: "Salva impostazione corrente"
+                hint_save: "Salva impostazione corrente",
+        vinyl_mode: "Vinile",
+        vinyl_generate: "Generare",
+        vinyl_play: "Giocare",
+        vinyl_save: "Salvare",
+        vinyl_load: "Caricare"
     },
     en: {
         sprache: "Language:",
@@ -214,7 +229,12 @@ const text = {
         hint_play_current: "Play current panorama",
         hint_play_sel: "Play selected presets",
         hint_load_sel: "Load selected preset",
-        hint_save: "Save current setting"
+                hint_save: "Save current setting",
+        vinyl_mode: "Vinyl",
+        vinyl_generate: "Generate",
+        vinyl_play: "Play",
+        vinyl_save: "Save",
+        vinyl_load: "Load"
     },
     uk: {
         sprache: "Мова:",
@@ -268,7 +288,12 @@ const text = {
         hint_play_current: "Відтворити поточну панораму",
         hint_play_sel: "Відтворити вибрані пресети",
         hint_load_sel: "Завантажити вибраний пресет",
-        hint_save: "Зберегти поточні налаштування"
+                hint_save: "Зберегти поточні налаштування",
+        vinyl_mode: "Вініл",
+        vinyl_generate: "Згенерувати",
+        vinyl_play: "Відтворити",
+        vinyl_save: "Зберегти",
+        vinyl_load: "Завантажити"
     },
     ru: {
         sprache: "Язык:",
@@ -322,6 +347,11 @@ const text = {
         hint_play_current: "Воспроизвести текущую панораму",
         hint_play_sel: "Воспроизвести выбранные пресеты",
         hint_load_sel: "Загрузить выбранный пресет",
-        hint_save: "Сохранить текущую настройку"
+                hint_save: "Сохранить текущую настройку",
+        vinyl_mode: "Винил",
+        vinyl_generate: "Сгенерировать",
+        vinyl_play: "Воспроизвести",
+        vinyl_save: "Сохранить",
+        vinyl_load: "Загрузить"
     }
 };

@@ -283,3 +283,160 @@ window.ladePanoramenAusSheet = async function() {
     }
 };
 
+
+window.saveVinyl = async function() {
+    if (!window.vinylArray || window.vinylArray.length === 0) {
+        alert("Bitte generiere zuerst das Vinyl-Array!");
+        return;
+    }
+
+    const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
+    let name = getUserName();
+
+    if (!name) {
+        name = prompt(t.prompt_welcome || "Willkommen! Unter welchem (Spitz-)Namen sollen deine Presets gespeichert werden?");
+        if (!name) return;
+        setUserName(name);
+    }
+
+    let msg = (t.prompt_preset_name || "Hallo {name}, wie soll diese Klangeinstellung heissen?").replace('{name}', name);
+    let presetName = prompt(msg, "My Vinyl Record");
+    if (!presetName) return;
+
+    // Convert array to string for storage, might be large but fits in Google Sheet cell (up to 50k chars usually)
+    // To save space, we could sample it, but let's try full array as JSON string
+    let compressedArray = [];
+    let stepSize = 10;
+    for(let i=0; i<window.vinylArray.length; i+=stepSize) {
+        compressedArray.push(Math.round(window.vinylArray[i]));
+    }
+    let arrayString = JSON.stringify(compressedArray);
+
+    let payload = {
+        action: "save",
+        pano_id: 'vinyl_mode_id',
+        preset_name: presetName,
+        user_name: name,
+        user_id: getUserId(),
+        timestamp: new Date().toISOString(),
+        is_vinyl: true,
+        vinyl_array: arrayString,
+        // dummy values for required fields
+        peaks: 0, valleys: 0, spacing: 0, sensibilitaet: 0, mode: 'chord', scale: 'major',
+        oktaven: 0, range: 0, wave: 'sine', volume: 0, duration: 0, attack: 0, release: 0, echo: 0
+    };
+
+    let btn = document.getElementById(`btn-vinyl-save`);
+    if (btn) { btn.innerText = "⧗"; }
+
+    try {
+        await fetch(API_URL, {
+            method: 'POST', mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify(payload)
+        });
+
+        let successMsg = (t.alert_saved || "Erfolg! '{preset}' wurde gespeichert.").replace('{preset}', presetName);
+        alert(successMsg);
+        window.loadVinylPresets();
+    } catch(e) {
+        alert(t.alert_net_error || "Netzwerkfehler beim Speichern.");
+    }
+    if (btn) { btn.innerText = "⚑"; }
+};
+
+window.loadVinylPresets = async function() {
+    let container = document.getElementById(`vinyl-presets-list`);
+    if(!container) return;
+    container.innerHTML = "<div style='font-size:11px; color:#888;'>Lade Vinyl Records...</div>";
+
+    try {
+        let res = await fetch(`${API_URL}?action=presets&pano_id=vinyl_mode_id`);
+        let presets = await res.json();
+
+        // Filter purely vinyl presets
+        let vinylPresets = presets.filter(p => p.is_vinyl === true || p.is_vinyl === 'true' || p.pano_id === 'vinyl_mode_id');
+        window.currentVinylPresets = vinylPresets;
+
+        if (vinylPresets.length === 0) {
+            container.innerHTML = "<div style='font-size:11px; color:#888;'>Noch keine Vinyls vorhanden.</div>";
+            return;
+        }
+
+        let html = "";
+        let myId = getUserId();
+
+        vinylPresets.forEach(p => {
+            let isOwner = (myId === p.user_id);
+            let timeStr = "";
+
+            if (p.timestamp) {
+                let d = new Date(p.timestamp);
+                if (!isNaN(d.getTime())) {
+                    let day = d.getDate().toString().padStart(2, '0');
+                    let month = (d.getMonth() + 1).toString().padStart(2, '0');
+                    timeStr = ` - ${day}.${month}.`;
+                }
+            }
+
+            html += `
+            <div class="preset-item" style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding:4px 0;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <input type="radio" name="vinyl_preset_rb" class="preset-cb" value="${escapeHTML(p.preset_id)}">
+                    <div class="preset-info" style="font-size:11px;">
+                        <strong>${escapeHTML(p.preset_name || 'Ohne Namen')}</strong>
+                        <span style="color:#aaa;">von ${escapeHTML(p.user_name || 'Unbekannt')}${timeStr}</span>
+                    </div>
+                </div>
+                ${isOwner ? `<button onclick="deleteVinylPreset('${escapeHTML(p.preset_id)}')"" class="del-btn" title="Löschen" style="background:transparent; border:none; color:#ff4d4d; cursor:pointer;">🗑️</button>` : ''}
+            </div>`;
+        });
+        container.innerHTML = html;
+    } catch(e) {
+        container.innerHTML = "<div style='font-size:11px; color:red;'>Fehler beim Laden.</div>";
+    }
+};
+
+window.loadVinyl = function() {
+    let checkedBox = document.querySelector(`input[name="vinyl_preset_rb"]:checked`);
+    if (!checkedBox) {
+        alert("Bitte markiere ein Vinyl Preset zum Laden.");
+        return;
+    }
+
+    let presetId = checkedBox.value;
+    let p = window.currentVinylPresets.find(pr => String(pr.preset_id) === String(presetId));
+
+    if (p && p.vinyl_array) {
+        try {
+            let arr = JSON.parse(p.vinyl_array);
+            // Re-interpolate if we compressed it
+            let expandedArray = [];
+            for (let i = 0; i < arr.length - 1; i++) {
+                let current = arr[i];
+                let next = arr[i+1];
+                let steps = 10;
+                for (let j = 0; j < steps; j++) {
+                    expandedArray.push(current + (next - current) * (j / steps));
+                }
+            }
+            window.vinylArray = expandedArray;
+            window.drawVinylCanvas();
+            alert("Vinyl geladen!");
+        } catch(e) {
+            alert("Fehler beim Parsen der Vinyl-Daten.");
+        }
+    }
+};
+
+window.deleteVinylPreset = async function(presetId) {
+    if(!confirm("Möchtest du dieses Vinyl wirklich löschen?")) return;
+    try {
+        await fetch(API_URL, {
+            method: 'POST', mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({ action: "delete", preset_id: presetId, user_id: getUserId() })
+        });
+        setTimeout(() => { window.loadVinylPresets(); }, 1500);
+    } catch(e) { alert("Fehler beim Löschen."); }
+};

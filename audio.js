@@ -259,3 +259,132 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
 
     } catch (e) { alert("Audio-Fehler: " + e.message); }
 };
+
+
+window.playVinylAudio = async function(vinylArray) {
+    if (!window.audioContext) {
+        window.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        window.masterCompressor = window.audioContext.createDynamicsCompressor();
+        window.masterCompressor.connect(window.audioContext.destination);
+    }
+    window.stopAllAudio();
+
+    let synthSettings = {
+        mode: 'lr',
+        scale: 'pentatonic',
+        oktaven: 4,
+        range: 100,
+        wave: 'chime',
+        volume: 0.2,
+        duration: 15.0, // length of total song? We'll stream it.
+        attack: 0.1,
+        release: 0.5,
+        echo: 0.4
+    };
+
+    let baseFreqs = generateScale(synthSettings.scale, synthSettings.oktaven);
+
+    // Smooth the array heavily so it's not crazy noisy for every pixel
+    let stepSize = 30; // Read a value every N pixels
+    let smoothArray = [];
+    for (let i = 0; i < vinylArray.length; i += stepSize) {
+        smoothArray.push(vinylArray[i]);
+    }
+
+    if (smoothArray.length === 0) return;
+
+    let maxY = Math.max(...smoothArray);
+    let minY = Math.min(...smoothArray);
+    let span = maxY - minY || 1;
+
+    let points = smoothArray.map((y, idx) => {
+        let h = 1.0 - ((y - minY) / span); // Invert Y
+        return { relativeHoehe: h, x: idx };
+    });
+
+    // Determine timing
+    // Total playback time e.g. 15 seconds
+    let totalTime = synthSettings.duration;
+    let timePerPoint = totalTime / points.length;
+
+    const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
+
+    for (let i = 0; i < points.length; i++) {
+        let p = points[i];
+        let delay = i * timePerPoint;
+        let index = Math.floor(p.relativeHoehe * (synthSettings.range / 100) * (baseFreqs.length - 1));
+        index = Math.max(0, Math.min(index, baseFreqs.length - 1));
+        let freq = baseFreqs[index];
+
+        let panValue = -0.5 + (i / points.length);
+
+        let tId = setTimeout(() => {
+            if(window.audioContext.state === 'suspended') window.audioContext.resume();
+
+            const osc = window.audioContext.createOscillator();
+            const gain = window.audioContext.createGain();
+            const panner = window.audioContext.createStereoPanner();
+
+            panner.pan.value = panValue;
+
+            if (synthSettings.wave === 'darkpad') {
+                osc.type = 'sawtooth';
+                const filter = window.audioContext.createBiquadFilter();
+                filter.type = 'lowpass'; filter.frequency.value = 800;
+                osc.connect(filter); filter.connect(gain);
+            } else if (synthSettings.wave === 'chime') {
+                osc.type = 'sine';
+                const osc2 = window.audioContext.createOscillator();
+                osc2.type = 'triangle'; osc2.frequency.value = freq * 2.01;
+                osc2.connect(gain); osc2.start(); window.activeOscillators.push(osc2);
+                osc.connect(gain);
+            } else if (synthSettings.wave === 'noise') {
+                const bufferSize = window.audioContext.sampleRate * 2.0;
+                const buffer = window.audioContext.createBuffer(1, bufferSize, window.audioContext.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) { data[i] = Math.random() * 2 - 1; }
+                const noise = window.audioContext.createBufferSource();
+                noise.buffer = buffer;
+                const filter = window.audioContext.createBiquadFilter();
+                filter.type = 'bandpass'; filter.frequency.value = freq; filter.Q.value = 10;
+                noise.connect(filter); filter.connect(gain);
+                noise.start(); window.activeOscillators.push(noise);
+            } else if (synthSettings.wave === 'detuned_saw') {
+                osc.type = 'sawtooth';
+                const osc2 = window.audioContext.createOscillator();
+                osc2.type = 'sawtooth'; osc2.frequency.value = freq * 1.02;
+                osc2.connect(gain); osc2.start(); window.activeOscillators.push(osc2);
+                osc.connect(gain);
+            } else {
+                osc.type = synthSettings.wave || 'sine';
+                osc.connect(gain);
+            }
+
+            osc.frequency.setValueAtTime(freq, window.audioContext.currentTime);
+
+            gain.gain.setValueAtTime(0, window.audioContext.currentTime);
+            gain.gain.linearRampToValueAtTime(synthSettings.volume, window.audioContext.currentTime + synthSettings.attack);
+            gain.gain.exponentialRampToValueAtTime(0.01, window.audioContext.currentTime + synthSettings.attack + synthSettings.release);
+
+            if (synthSettings.echo > 0) {
+                const delayNode = window.audioContext.createDelay();
+                delayNode.delayTime.value = synthSettings.echo;
+                const feedback = window.audioContext.createGain();
+                feedback.gain.value = 0.4;
+                gain.connect(delayNode);
+                delayNode.connect(feedback);
+                feedback.connect(delayNode);
+                delayNode.connect(panner);
+            }
+
+            gain.connect(panner);
+            panner.connect(window.masterCompressor);
+
+            osc.start();
+            osc.stop(window.audioContext.currentTime + synthSettings.attack + synthSettings.release);
+            window.activeOscillators.push(osc);
+        }, delay * 1000);
+
+        window.audioTimeouts.push(tId);
+    }
+};
