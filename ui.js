@@ -569,8 +569,8 @@ window.generateVinyl = async function() {
     window.vinylArray = [];
 
     let btnGen = document.getElementById('btn-vinyl-generate');
-    let originalText = btnGen.innerText;
-    btnGen.innerText = "⌛";
+    let originalText = btnGen.innerHTML;
+    btnGen.innerHTML = "⏳";
 
     // Scratching animation
     window.vinylRotationInterval = setInterval(() => {
@@ -608,7 +608,7 @@ window.generateVinyl = async function() {
         canvas.style.transform = `rotate(0deg)`;
     }
 
-    btnGen.innerText = originalText;
+    btnGen.innerHTML = originalText;
     window.isVinylGenerating = false;
     window.drawVinylCanvas();
 };
@@ -688,18 +688,50 @@ window.drawVinylCanvas = function() {
     }
 };
 
+window.vinylIsPlaying = false;
+
+window.stopVinylRotation = function() {
+    if (window.vinylRotationInterval) {
+        clearInterval(window.vinylRotationInterval);
+        window.vinylRotationInterval = null;
+    }
+    let btnPlay = document.getElementById('btn-vinyl-play');
+    if (btnPlay) {
+        btnPlay.style.background = '';
+        btnPlay.style.color = '';
+    }
+    window.vinylIsPlaying = false;
+};
+
 window.playVinyl = function() {
     if (!window.vinylArray || window.vinylArray.length === 0) {
         alert("Bitte generiere zuerst das Vinyl-Array!");
         return;
     }
 
+    let btnPlay = document.getElementById('btn-vinyl-play');
+
+    if (window.vinylIsPlaying) {
+        window.stopVinylRotation();
+        if (typeof window.stopAllAudio === 'function') {
+            window.stopAllAudio();
+        }
+        return;
+    }
+
+    window.vinylIsPlaying = true;
+    if (btnPlay) {
+        btnPlay.style.background = '#FF6600';
+        btnPlay.style.color = '#1a1a1a';
+    }
+
     let canvas = document.getElementById('vinyl-canvas');
     if (canvas) {
-        let angle = 0;
+        let angle = window.vinylRotationAngle || 0;
         if (window.vinylRotationInterval) clearInterval(window.vinylRotationInterval);
         window.vinylRotationInterval = setInterval(() => {
             angle += 1;
+            window.vinylRotationAngle = angle;
             canvas.style.transform = `rotate(${angle}deg)`;
         }, 30);
     }
