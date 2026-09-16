@@ -547,6 +547,31 @@ window.toggleVinylMode = function() {
     let menu = document.getElementById('vinyl-menu');
     if (menu.style.display === 'none' || menu.style.display === '') {
         menu.style.display = 'flex';
+
+        let uiMenu = document.getElementById('ui-menu');
+        if (uiMenu) {
+            menu.style.width = uiMenu.offsetWidth + 'px';
+        }
+
+        // Setup ResizeObserver to adjust speed fader width to its container height
+        if (!window.vinylFaderObserver) {
+            let speedBox = document.getElementById('vinyl-speed-box');
+            let rangeSpeed = document.getElementById('range_vinyl_speed');
+            if (speedBox && rangeSpeed) {
+                window.vinylFaderObserver = new ResizeObserver(entries => {
+                    for (let entry of entries) {
+                        let h = entry.contentRect.height;
+                        // Fader Container has some padding and icon on top, height of fader is h - roughly 60px
+                        let availableHeight = h - 60;
+                        if (availableHeight > 20) {
+                            rangeSpeed.style.width = availableHeight + 'px';
+                        }
+                    }
+                });
+                window.vinylFaderObserver.observe(speedBox);
+            }
+        }
+
         window.drawVinylCanvas();
         if (typeof window.loadVinylPresets === 'function') {
             window.loadVinylPresets();
@@ -570,7 +595,7 @@ window.generateVinyl = async function() {
 
     let btnGen = document.getElementById('btn-vinyl-generate');
     let originalText = btnGen.innerHTML;
-    btnGen.innerHTML = "⏳";
+    btnGen.innerHTML = "⧖";
 
     // Scratching animation
     window.vinylRotationInterval = setInterval(() => {
@@ -693,6 +718,9 @@ window.drawVinylCanvas = function() {
 
 window.vinylIsPlaying = false;
 window.vinylDotAnimationReq = null;
+window.vinylStartTime = null;
+window.vinylProgress = 0;
+window.vinylTotalRotations = 20;
 
 window.startVinylDotAnimation = function() {
     let overlayCanvas = document.getElementById('vinyl-overlay-canvas');
@@ -700,10 +728,16 @@ window.startVinylDotAnimation = function() {
     let ctx = overlayCanvas.getContext('2d');
 
     let totalPoints = window.vinylArray.length;
-    let duration = parseFloat(document.getElementById('range_vinyl_speed')?.value || 15) * 1000;
+
+    // Duration in ms based on 20 rotations and current RPM.
+    // RPM = Rotations Per Minute. So Total Time = (Rotations / RPM) * 60 seconds
+    let getDuration = () => {
+        let rpm = parseFloat(document.getElementById('range_vinyl_speed')?.value || 33);
+        return (window.vinylTotalRotations / rpm) * 60 * 1000;
+    };
 
     // We already have max/min and rotations from drawVinylCanvas logic
-    let rotations = 20;
+    let rotations = window.vinylTotalRotations;
     let maxRadius = (overlayCanvas.width / 2) - 10;
     let minRadius = (overlayCanvas.width / 6) + 10;
     let cx = overlayCanvas.width / 2;
@@ -718,13 +752,22 @@ window.startVinylDotAnimation = function() {
     }
     let rangeY = maxY - minY || 1;
 
-    let startTime = performance.now();
+    window.vinylStartTime = performance.now();
+    let lastTime = window.vinylStartTime;
+    window.vinylProgress = 0;
 
     function drawDot(time) {
         ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
-        let elapsed = time - startTime;
-        let progress = Math.min(elapsed / duration, 1.0);
+        let duration = getDuration();
+        let delta = time - lastTime;
+        lastTime = time;
+
+        if (window.vinylIsPlaying) {
+            window.vinylProgress += delta / duration;
+        }
+
+        let progress = Math.min(window.vinylProgress, 1.0);
 
         if (progress < 1.0 && window.vinylIsPlaying) {
             let index = Math.floor(progress * totalPoints);
@@ -755,10 +798,19 @@ window.startVinylDotAnimation = function() {
             window.vinylDotAnimationReq = requestAnimationFrame(drawDot);
         } else {
             ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+            if (progress >= 1.0) {
+                window.stopVinylRotation();
+            }
         }
     }
 
     window.vinylDotAnimationReq = requestAnimationFrame(drawDot);
+};
+
+window.updateVinylSpeed = function(newRPM) {
+    if (window.vinylIsPlaying && typeof window.updateVinylAudioSpeed === 'function') {
+        window.updateVinylAudioSpeed(parseFloat(newRPM));
+    }
 };
 
 window.stopVinylRotation = function() {
@@ -811,8 +863,16 @@ window.playVinyl = function() {
     if (canvas) {
         let angle = window.vinylRotationAngle || 0;
         if (window.vinylRotationInterval) clearInterval(window.vinylRotationInterval);
+        window.vinylRotationLastTime = performance.now();
         window.vinylRotationInterval = setInterval(() => {
-            angle += 1;
+            let rpm = parseFloat(document.getElementById('range_vinyl_speed')?.value || 33);
+            let now = performance.now();
+            let delta = now - window.vinylRotationLastTime;
+            window.vinylRotationLastTime = now;
+
+            // Degrees per ms: (RPM * 360) / 60000
+            let degPerMs = (rpm * 360) / 60000;
+            angle += degPerMs * delta;
             window.vinylRotationAngle = angle;
             canvas.style.transform = `rotate(${angle}deg)`;
         }, 30);
