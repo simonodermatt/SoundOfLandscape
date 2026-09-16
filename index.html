@@ -66,8 +66,8 @@
         </div>
     </div>
 
-    <div style="display: flex; width: 100%; flex-direction: column; gap: 0; border: 1px solid #1a1a1a; margin-top: 5px;">
-        <select id="sel_vinyl_octaves" style="width: 100%; border: none; border-bottom: 1px solid #333; background: #111; color: #00BFFF; padding: 4px; outline: none; cursor: pointer; text-transform: uppercase; font-size: 11px;">
+    <div style="display: flex; width: 100%; flex-direction: row; gap: 0; border: 1px solid #1a1a1a; margin-top: 5px;">
+        <select id="sel_vinyl_octaves" style="flex: 1; border: none; border-right: 1px solid #333; background: #111; color: #00BFFF; padding: 4px; outline: none; cursor: pointer; text-transform: uppercase; font-size: 11px;">
             <option value="1">1 Oktave</option>
             <option value="2">2 Oktaven</option>
             <option value="3">3 Oktaven</option>
@@ -75,7 +75,7 @@
             <option value="5">5 Oktaven</option>
             <option value="6">6 Oktaven</option>
         </select>
-        <select id="sel_vinyl_scale" style="width: 100%; border: none; border-bottom: 1px solid #333; background: #111; color: #00BFFF; padding: 4px; outline: none; cursor: pointer; text-transform: uppercase; font-size: 11px;">
+        <select id="sel_vinyl_scale" style="flex: 1; border: none; border-right: 1px solid #333; background: #111; color: #00BFFF; padding: 4px; outline: none; cursor: pointer; text-transform: uppercase; font-size: 11px;">
             <option value="major">Dur</option>
             <option value="minor">Moll</option>
             <option value="lydian">Lydisch</option>
@@ -83,7 +83,7 @@
             <option value="pentatonic" selected>Pentatonik</option>
             <option value="hirajoshi">Hirajōshi</option>
         </select>
-        <select id="sel_vinyl_wave" style="width: 100%; border: none; background: #111; color: #00BFFF; padding: 4px; outline: none; cursor: pointer; text-transform: uppercase; font-size: 11px;">
+        <select id="sel_vinyl_wave" style="flex: 1; border: none; background: #111; color: #00BFFF; padding: 4px; outline: none; cursor: pointer; text-transform: uppercase; font-size: 11px;">
             <option value="sine">Sinus</option>
             <option value="triangle">Dreieck</option>
             <option value="sawtooth">Sägezahn</option>
@@ -98,9 +98,9 @@
 
     <div id="vinyl-controls">
         <button class="icon-btn" id="btn-vinyl-generate" onclick="generateVinyl()" title="Generieren">⚄</button>
-        <button class="icon-btn" id="btn-vinyl-save" onclick="saveVinyl()" title="Speichern">⚑</button>
-        <button class="icon-btn" id="btn-vinyl-load" onclick="loadVinyl()" title="Laden">⇪</button>
         <button class="icon-btn" id="btn-vinyl-play" onclick="playVinyl()" title="Abspielen">▶</button>
+        <button class="icon-btn" id="btn-vinyl-load" onclick="loadVinyl()" title="Laden">⇪</button>
+        <button class="icon-btn" id="btn-vinyl-save" onclick="saveVinyl()" title="Speichern">⚑</button>
     </div>
 
     <div id="vinyl-presets-list" style="margin-top: 10px; max-height: 100px; overflow-y: auto; overflow-x: hidden; width: 100%; box-sizing: border-box;"></div>
