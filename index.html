@@ -52,11 +52,11 @@
 <div id="vinyl-menu" style="display: none;">
     <div style="display: flex; gap: 10px; align-items: stretch; width: 100%;">
         <!-- Speed Fader -->
-        <div class="fader-box te-tooltip-container" style="height: auto; border: 1px solid #333; background: #e5e0d8; min-width: 40px;">
-            <div class="te-tooltip" id="tt_vinyl_speed"><span class="tt-label">Speed: </span><span id="tt_val_vinyl_speed">15</span><span class="tt-unit">s</span></div>
+        <div class="fader-box te-tooltip-container" id="vinyl-speed-box" style="height: auto; border: 1px solid #333; background: #e5e0d8; min-width: 40px;">
+            <div class="te-tooltip" id="tt_vinyl_speed"><span class="tt-label">Speed: </span><span id="tt_val_vinyl_speed">33</span><span class="tt-unit"> RPM</span></div>
             <div class="fader-icon-container" style="color: #1a1a1a;">◷</div>
-            <div class="fader-container">
-                <input type="range" id="range_vinyl_speed" class="te-fader" min="1" max="60" step="1" value="15" oninput="document.getElementById('tt_val_vinyl_speed').innerText = this.value;">
+            <div class="fader-container" id="vinyl-fader-container">
+                <input type="range" id="range_vinyl_speed" class="te-fader" min="1" max="48" step="1" value="33" oninput="document.getElementById('tt_val_vinyl_speed').innerText = this.value; if(window.updateVinylSpeed) window.updateVinylSpeed(this.value);">
             </div>
         </div>
 
