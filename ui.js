@@ -171,6 +171,8 @@ window.changeLanguage = function(lang) {
     if (btnSave) btnSave.title = text[lang].vinyl_save || "Save";
     let btnLoad = document.getElementById('btn-vinyl-load');
     if (btnLoad) btnLoad.title = text[lang].vinyl_load || "Load";
+    let lblMutation = document.getElementById('lbl_mutation');
+    if (lblMutation) lblMutation.innerText = (text[lang].vinyl_mutation || "Mutation") + ": ";
 
     let activeModal = document.getElementById('active-pano-modal');
     if (activeModal && window.currentOpenPano) {
@@ -567,6 +569,8 @@ window.toggleVinylMode = function() {
         if (!window.vinylFaderObserver) {
             let speedBox = document.getElementById('vinyl-speed-box');
             let rangeSpeed = document.getElementById('range_vinyl_speed');
+            let mutationBox = document.getElementById('vinyl-mutation-box');
+            let rangeMutation = document.getElementById('range_vinyl_mutation');
             if (speedBox && rangeSpeed) {
                 window.vinylFaderObserver = new ResizeObserver(entries => {
                     for (let entry of entries) {
@@ -575,10 +579,16 @@ window.toggleVinylMode = function() {
                         let availableHeight = h - 60;
                         if (availableHeight > 20) {
                             rangeSpeed.style.width = availableHeight + 'px';
+                            if (rangeMutation) {
+                                rangeMutation.style.width = availableHeight + 'px';
+                            }
                         }
                     }
                 });
                 window.vinylFaderObserver.observe(speedBox);
+                if (mutationBox) {
+                    window.vinylFaderObserver.observe(mutationBox);
+                }
             }
         }
 
@@ -737,7 +747,9 @@ window.aiComposePano = async function(panoId) {
         seedSequence.totalQuantizedSteps = seedPoints.length;
 
         // Generate melody (64 steps) via Magenta
-        let generatedSequence = await window.music_rnn.continueSequence(seedSequence, 64, 1.0);
+        // For Pano mode, we don't have a mutation slider explicitly requested, but let's default to 1.0 or read from vinyl slider if available and pano is playing in vinyl mode. We'll use 1.0 for Pano to be safe unless specified.
+        let mutationPano = 1.0;
+        let generatedSequence = await window.music_rnn.continueSequence(seedSequence, 64, mutationPano);
 
         // Now map the final combined sequence back to the user's requested scale/octaves
         let scaleName = s.scale || 'lydian';
@@ -763,37 +775,51 @@ window.aiComposePano = async function(panoId) {
         }
 
         let mergedNotes = [];
+        let allRawNotes = seedSequence.notes.concat(generatedSequence.notes);
 
-        // Map Seed Notes
-        for (let i = 0; i < seedSequence.notes.length; i++) {
-            let note = seedSequence.notes[i];
-            let normalized = (note.pitch - SAFE_MIN) / (SAFE_MAX - SAFE_MIN); // 0.0 to 1.0
-            let targetRawMidi = allowedNotes[0] + (normalized * (allowedNotes[allowedNotes.length-1] - allowedNotes[0]));
-
-            mergedNotes.push({
-                pitch: snapToScale(Math.round(targetRawMidi)),
-                startTime: note.startTime,
-                endTime: note.endTime,
-                velocity: note.velocity
-            });
-        }
-
-        // Map Generated Notes
-        for (let i = 0; i < generatedSequence.notes.length; i++) {
-            let note = generatedSequence.notes[i];
-            let startStep = seedSequence.totalQuantizedSteps + note.quantizedStartStep;
-            let endStep = seedSequence.totalQuantizedSteps + note.quantizedEndStep;
-
+        for (let i = 0; i < allRawNotes.length; i++) {
+            let note = allRawNotes[i];
             let normalized = (note.pitch - SAFE_MIN) / (SAFE_MAX - SAFE_MIN);
-            // Protect against bounds if Magenta hallucinates slightly outside 48-83
             normalized = Math.max(0, Math.min(1, normalized));
             let targetRawMidi = allowedNotes[0] + (normalized * (allowedNotes[allowedNotes.length-1] - allowedNotes[0]));
+
+            let isGenerated = i >= seedSequence.notes.length;
+            let startStep = isGenerated ? seedSequence.totalQuantizedSteps + note.quantizedStartStep : note.quantizedStartStep;
+            let endStep = isGenerated ? seedSequence.totalQuantizedSteps + note.quantizedEndStep : note.quantizedEndStep;
+
+            let velocity = 80;
+            if (i > 0) {
+                let prevRawPoint = null;
+                let currRawPoint = null;
+
+                // If it's a seed point, we can compare original heights exactly.
+                if (!isGenerated) {
+                   prevRawPoint = seedPoints[i-1].hoehe;
+                   currRawPoint = seedPoints[i].hoehe;
+                } else {
+                   // If it's generated, we compare the generated pitches mapped back relative to the range.
+                   // A simple approximation is just using the pitch diff, which is what the reviewer suggests we do for all notes but we can be even more precise.
+                   // However, for generated notes, we don't have a "height", just a pitch. So we compare the pitches.
+                   let prevPitch = allRawNotes[i-1].pitch;
+                   let diff = Math.abs(note.pitch - prevPitch);
+                   let diffNorm = diff / (SAFE_MAX - SAFE_MIN);
+                   velocity = Math.min(127, Math.max(40, 40 + Math.round(diffNorm * 400)));
+                   if (diffNorm < 0.05) continue;
+                }
+
+                if (prevRawPoint !== null && currRawPoint !== null) {
+                    let diff = Math.abs(currRawPoint - prevRawPoint);
+                    let diffNorm = diff / (range || 1);
+                    velocity = Math.min(127, Math.max(40, 40 + Math.round(diffNorm * 400)));
+                    if (diffNorm < 0.05) continue;
+                }
+            }
 
             mergedNotes.push({
                 pitch: snapToScale(Math.round(targetRawMidi)),
                 startTime: startStep * stepDuration,
                 endTime: endStep * stepDuration,
-                velocity: note.velocity || 80
+                velocity: velocity
             });
         }
 
@@ -879,7 +905,6 @@ window.aiComposeVinyl = async function() {
         for (let i = 0; i < seedPoints.length; i++) {
             let normalized = (seedPoints[i] - minVal) / range;
             let rawMidi = SAFE_MIN + (normalized * (SAFE_MAX - SAFE_MIN));
-
             seedSequence.notes.push({
                 pitch: Math.round(rawMidi),
                 quantizedStartStep: i,
@@ -892,7 +917,8 @@ window.aiComposeVinyl = async function() {
         seedSequence.totalQuantizedSteps = seedPoints.length;
 
         // 4. Generate melody (64 steps) via Magenta
-        let generatedSequence = await window.music_rnn.continueSequence(seedSequence, 64, 1.0);
+        let mutationVal = document.getElementById('range_vinyl_mutation') ? parseFloat(document.getElementById('range_vinyl_mutation').value) : 1.0;
+        let generatedSequence = await window.music_rnn.continueSequence(seedSequence, 64, mutationVal);
 
         // Now map the final combined sequence back to the user's requested scale/octaves
         let scaleName = document.getElementById('sel_vinyl_scale')?.value || 'pentatonic';
@@ -919,36 +945,47 @@ window.aiComposeVinyl = async function() {
         }
 
         let mergedNotes = [];
+        let allRawNotes = seedSequence.notes.concat(generatedSequence.notes);
 
-        // Map Seed Notes
-        for (let i = 0; i < seedSequence.notes.length; i++) {
-            let note = seedSequence.notes[i];
+        for (let i = 0; i < allRawNotes.length; i++) {
+            let note = allRawNotes[i];
             let normalized = (note.pitch - SAFE_MIN) / (SAFE_MAX - SAFE_MIN);
+            normalized = Math.max(0, Math.min(1, normalized));
             let targetRawMidi = allowedNotes[0] + (normalized * (allowedNotes[allowedNotes.length-1] - allowedNotes[0]));
 
-            mergedNotes.push({
-                pitch: snapToScale(Math.round(targetRawMidi)),
-                startTime: note.startTime,
-                endTime: note.endTime,
-                velocity: note.velocity
-            });
-        }
+            let isGenerated = i >= seedSequence.notes.length;
+            let startStep = isGenerated ? seedSequence.totalQuantizedSteps + note.quantizedStartStep : note.quantizedStartStep;
+            let endStep = isGenerated ? seedSequence.totalQuantizedSteps + note.quantizedEndStep : note.quantizedEndStep;
 
-        // Map Generated Notes
-        for (let i = 0; i < generatedSequence.notes.length; i++) {
-            let note = generatedSequence.notes[i];
-            let startStep = seedSequence.totalQuantizedSteps + note.quantizedStartStep;
-            let endStep = seedSequence.totalQuantizedSteps + note.quantizedEndStep;
+            let velocity = 80;
+            if (i > 0) {
+                let prevRawPoint = null;
+                let currRawPoint = null;
 
-            let normalized = (note.pitch - SAFE_MIN) / (SAFE_MAX - SAFE_MIN);
-            normalized = Math.max(0, Math.min(1, normalized)); // Clamp
-            let targetRawMidi = allowedNotes[0] + (normalized * (allowedNotes[allowedNotes.length-1] - allowedNotes[0]));
+                if (!isGenerated) {
+                   prevRawPoint = seedPoints[i-1];
+                   currRawPoint = seedPoints[i];
+                } else {
+                   let prevPitch = allRawNotes[i-1].pitch;
+                   let diff = Math.abs(note.pitch - prevPitch);
+                   let diffNorm = diff / (SAFE_MAX - SAFE_MIN);
+                   velocity = Math.min(127, Math.max(40, 40 + Math.round(diffNorm * 400)));
+                   if (diffNorm < 0.02) continue;
+                }
+
+                if (prevRawPoint !== null && currRawPoint !== null) {
+                    let diff = Math.abs(currRawPoint - prevRawPoint);
+                    let diffNorm = diff / (range || 1);
+                    velocity = Math.min(127, Math.max(40, 40 + Math.round(diffNorm * 400)));
+                    if (diffNorm < 0.02) continue;
+                }
+            }
 
             mergedNotes.push({
                 pitch: snapToScale(Math.round(targetRawMidi)),
                 startTime: startStep * stepDuration,
                 endTime: endStep * stepDuration,
-                velocity: note.velocity || 80
+                velocity: velocity
             });
         }
 
