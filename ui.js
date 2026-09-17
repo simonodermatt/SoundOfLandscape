@@ -547,6 +547,31 @@ window.toggleVinylMode = function() {
     let menu = document.getElementById('vinyl-menu');
     if (menu.style.display === 'none' || menu.style.display === '') {
         menu.style.display = 'flex';
+
+        let uiMenu = document.getElementById('ui-menu');
+        if (uiMenu) {
+            menu.style.width = uiMenu.offsetWidth + 'px';
+        }
+
+        // Setup ResizeObserver to adjust speed fader width to its container height
+        if (!window.vinylFaderObserver) {
+            let speedBox = document.getElementById('vinyl-speed-box');
+            let rangeSpeed = document.getElementById('range_vinyl_speed');
+            if (speedBox && rangeSpeed) {
+                window.vinylFaderObserver = new ResizeObserver(entries => {
+                    for (let entry of entries) {
+                        let h = entry.contentRect.height;
+                        // Fader Container has some padding and icon on top, height of fader is h - roughly 60px
+                        let availableHeight = h - 60;
+                        if (availableHeight > 20) {
+                            rangeSpeed.style.width = availableHeight + 'px';
+                        }
+                    }
+                });
+                window.vinylFaderObserver.observe(speedBox);
+            }
+        }
+
         window.drawVinylCanvas();
         if (typeof window.loadVinylPresets === 'function') {
             window.loadVinylPresets();
@@ -570,7 +595,7 @@ window.generateVinyl = async function() {
 
     let btnGen = document.getElementById('btn-vinyl-generate');
     let originalText = btnGen.innerHTML;
-    btnGen.innerHTML = "⏳";
+    btnGen.innerHTML = "⧖";
 
     // Scratching animation
     window.vinylRotationInterval = setInterval(() => {
@@ -613,8 +638,126 @@ window.generateVinyl = async function() {
 
     btnGen.innerHTML = originalText;
     window.isVinylGenerating = false;
+    window.vinylAiSequence = null; // Reset AI sequence on new generation
     window.drawVinylCanvas();
 };
+
+window.aiComposeVinyl = async function() {
+    let btnAi = document.getElementById('btn-ai-compose');
+    if (!btnAi || window.isAiComposing) return;
+
+    if (!window.vinylArray || window.vinylArray.length < 16) {
+        alert("Bitte generiere zuerst ein Vinyl-Array mit ausreichend Daten (mind. 16 Punkte)!");
+        return;
+    }
+
+    window.isAiComposing = true;
+    let originalText = btnAi.innerHTML;
+    let originalStyle = btnAi.getAttribute('style') || '';
+    btnAi.disabled = true;
+
+    // Blinking effect
+    let blinkState = false;
+    let blinkInterval = setInterval(() => {
+        blinkState = !blinkState;
+        btnAi.innerHTML = blinkState ? "[ * PROCESSING... ]" : "[ PROCESSING... ]";
+        btnAi.style.background = blinkState ? "#FF6600" : "#1a1a1a";
+        btnAi.style.color = blinkState ? "#1a1a1a" : "#FF6600";
+    }, 500);
+
+    try {
+        if (!window.music_rnn) {
+            window.music_rnn = new mm.MusicRNN('https://storage.googleapis.com/magentadata/js/checkpoints/music_rnn/basic_rnn');
+            await window.music_rnn.initialize();
+        }
+
+        // 1. Get seed data (first 16 points)
+        let seedPoints = window.vinylArray.slice(0, 16);
+
+        // 2. Find min/max for mapping
+        let minVal = Math.min(...seedPoints);
+        let maxVal = Math.max(...seedPoints);
+        let range = maxVal - minVal;
+        if (range === 0) range = 1;
+
+        // 3. Map to MIDI notes (48 to 83) and quantize to C minor pentatonic
+        // C minor pentatonic notes (MIDI): C, Eb, F, G, Bb
+        // We will build a list of all C minor pentatonic notes between 48 and 83
+        const cMinorPentatonicClasses = [0, 3, 5, 7, 10];
+        let allowedNotes = [];
+        for (let note = 48; note <= 83; note++) {
+            if (cMinorPentatonicClasses.includes(note % 12)) {
+                allowedNotes.push(note);
+            }
+        }
+
+        function snapToScale(midiNote) {
+            return allowedNotes.reduce((prev, curr) =>
+                Math.abs(curr - midiNote) < Math.abs(prev - midiNote) ? curr : prev
+            );
+        }
+
+        let seedSequence = {
+            notes: [],
+            totalTime: 0,
+            quantizationInfo: { stepsPerQuarter: 4 } // 1 step = 1/16th note
+        };
+
+        const stepDuration = 0.25; // 0.25 seconds per note
+
+        for (let i = 0; i < seedPoints.length; i++) {
+            let normalized = (seedPoints[i] - minVal) / range;
+            let rawMidi = 48 + (normalized * (83 - 48));
+            let quantizedMidi = snapToScale(Math.round(rawMidi));
+
+            seedSequence.notes.push({
+                pitch: quantizedMidi,
+                quantizedStartStep: i,
+                quantizedEndStep: i + 1,
+                startTime: i * stepDuration,
+                endTime: (i + 1) * stepDuration,
+                velocity: 80
+            });
+        }
+        seedSequence.totalQuantizedSteps = seedPoints.length;
+
+        // 4. Generate melody (64 steps)
+        let generatedSequence = await window.music_rnn.continueSequence(seedSequence, 64, 1.0);
+
+        // 5. Unquantize to time-based sequence and merge
+        // Rebuild full sequence by concatenating the seed notes and the generated notes
+        let mergedNotes = [...seedSequence.notes];
+
+        for (let i = 0; i < generatedSequence.notes.length; i++) {
+            let note = generatedSequence.notes[i];
+            let startStep = seedSequence.totalQuantizedSteps + note.quantizedStartStep;
+            let endStep = seedSequence.totalQuantizedSteps + note.quantizedEndStep;
+
+            mergedNotes.push({
+                pitch: note.pitch,
+                startTime: startStep * stepDuration,
+                endTime: endStep * stepDuration,
+                velocity: note.velocity || 80
+            });
+        }
+
+        window.vinylAiSequence = {
+            notes: mergedNotes,
+            totalTime: (seedSequence.totalQuantizedSteps + 64) * stepDuration,
+            stepDuration: stepDuration
+        };
+
+    } catch (e) {
+        console.error("Fehler bei AI Generierung:", e);
+        alert("Fehler bei der AI Generierung.");
+    } finally {
+        clearInterval(blinkInterval);
+        btnAi.innerHTML = originalText;
+        btnAi.setAttribute('style', originalStyle);
+        btnAi.disabled = false;
+        window.isAiComposing = false;
+    }
+}
 
 window.drawVinylCanvas = function() {
     let canvas = document.getElementById('vinyl-canvas');
@@ -693,6 +836,9 @@ window.drawVinylCanvas = function() {
 
 window.vinylIsPlaying = false;
 window.vinylDotAnimationReq = null;
+window.vinylStartTime = null;
+window.vinylProgress = 0;
+window.vinylTotalRotations = 20;
 
 window.startVinylDotAnimation = function() {
     let overlayCanvas = document.getElementById('vinyl-overlay-canvas');
@@ -700,10 +846,19 @@ window.startVinylDotAnimation = function() {
     let ctx = overlayCanvas.getContext('2d');
 
     let totalPoints = window.vinylArray.length;
-    let duration = parseFloat(document.getElementById('range_vinyl_speed')?.value || 15) * 1000;
+
+    // Duration in ms based on 20 rotations and current RPM (or AI generated sequence time).
+    let getDuration = () => {
+        let rpm = parseFloat(document.getElementById('range_vinyl_speed')?.value || 33);
+        if (window.vinylAiSequence) {
+            let speedMultiplier = rpm / 33.0;
+            return (window.vinylAiSequence.totalTime / speedMultiplier) * 1000;
+        }
+        return (window.vinylTotalRotations / rpm) * 60 * 1000;
+    };
 
     // We already have max/min and rotations from drawVinylCanvas logic
-    let rotations = 20;
+    let rotations = window.vinylTotalRotations;
     let maxRadius = (overlayCanvas.width / 2) - 10;
     let minRadius = (overlayCanvas.width / 6) + 10;
     let cx = overlayCanvas.width / 2;
@@ -718,13 +873,22 @@ window.startVinylDotAnimation = function() {
     }
     let rangeY = maxY - minY || 1;
 
-    let startTime = performance.now();
+    window.vinylStartTime = performance.now();
+    let lastTime = window.vinylStartTime;
+    window.vinylProgress = 0;
 
     function drawDot(time) {
         ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
-        let elapsed = time - startTime;
-        let progress = Math.min(elapsed / duration, 1.0);
+        let duration = getDuration();
+        let delta = time - lastTime;
+        lastTime = time;
+
+        if (window.vinylIsPlaying) {
+            window.vinylProgress += delta / duration;
+        }
+
+        let progress = Math.min(window.vinylProgress, 1.0);
 
         if (progress < 1.0 && window.vinylIsPlaying) {
             let index = Math.floor(progress * totalPoints);
@@ -755,10 +919,19 @@ window.startVinylDotAnimation = function() {
             window.vinylDotAnimationReq = requestAnimationFrame(drawDot);
         } else {
             ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+            if (progress >= 1.0) {
+                window.stopVinylRotation();
+            }
         }
     }
 
     window.vinylDotAnimationReq = requestAnimationFrame(drawDot);
+};
+
+window.updateVinylSpeed = function(newRPM) {
+    if (window.vinylIsPlaying && typeof window.updateVinylAudioSpeed === 'function') {
+        window.updateVinylAudioSpeed(parseFloat(newRPM));
+    }
 };
 
 window.stopVinylRotation = function() {
@@ -811,8 +984,16 @@ window.playVinyl = function() {
     if (canvas) {
         let angle = window.vinylRotationAngle || 0;
         if (window.vinylRotationInterval) clearInterval(window.vinylRotationInterval);
+        window.vinylRotationLastTime = performance.now();
         window.vinylRotationInterval = setInterval(() => {
-            angle += 1;
+            let rpm = parseFloat(document.getElementById('range_vinyl_speed')?.value || 33);
+            let now = performance.now();
+            let delta = now - window.vinylRotationLastTime;
+            window.vinylRotationLastTime = now;
+
+            // Degrees per ms: (RPM * 360) / 60000
+            let degPerMs = (rpm * 360) / 60000;
+            angle += degPerMs * delta;
             window.vinylRotationAngle = angle;
             canvas.style.transform = `rotate(${angle}deg)`;
         }, 30);

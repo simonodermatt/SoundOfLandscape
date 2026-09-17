@@ -281,6 +281,106 @@ window.playVinylAudio = async function(vinylArray) {
         echo: 0.4
     };
 
+    if(actx.state === 'suspended') await actx.resume();
+
+    // Check if we have an AI generated sequence
+    if (window.vinylAiSequence) {
+        let rpm = parseFloat(document.getElementById('range_vinyl_speed')?.value || 33);
+        let speedMultiplier = rpm / 33.0; // 33 RPM is standard speed 1.0
+        let startTime = actx.currentTime;
+
+        // Global gain for AI sequence
+        const globalGain = actx.createGain();
+        globalGain.gain.value = synthSettings.volume;
+        globalGain.connect(window.masterCompressor);
+
+        window.vinylAiSequence.notes.forEach(note => {
+            const osc = actx.createOscillator();
+
+            // Map MIDI pitch to frequency
+            const freq = 440 * Math.pow(2, (note.pitch - 69) / 12);
+            osc.frequency.value = freq;
+
+            let filter = null;
+            let osc2 = null;
+            let noise = null;
+
+            if (synthSettings.wave === 'darkpad') {
+                osc.type = 'sawtooth';
+            } else if (synthSettings.wave === 'chime') {
+                osc.type = 'sine';
+                osc2 = actx.createOscillator();
+                osc2.type = 'triangle';
+                osc2.frequency.value = freq * 2; // Octave higher for chime
+            } else if (synthSettings.wave === 'noise') {
+                const bufferSize = actx.sampleRate * 2.0;
+                const buffer = actx.createBuffer(1, bufferSize, actx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let j = 0; j < bufferSize; j++) { data[j] = Math.random() * 2 - 1; }
+                noise = actx.createBufferSource();
+                noise.buffer = buffer;
+                noise.loop = true;
+                filter = actx.createBiquadFilter();
+                filter.type = 'bandpass'; filter.Q.value = 10;
+                filter.frequency.value = freq;
+                noise.connect(filter);
+            } else if (synthSettings.wave === 'detuned_saw') {
+                osc.type = 'sawtooth';
+                osc2 = actx.createOscillator();
+                osc2.type = 'sawtooth';
+                osc2.frequency.value = freq * 1.01;
+            } else {
+                osc.type = synthSettings.wave;
+            }
+
+            const noteGain = actx.createGain();
+
+            // Adjust start/end times based on speed multiplier
+            let adjustedStartTime = startTime + (note.startTime / speedMultiplier);
+            let adjustedEndTime = startTime + (note.endTime / speedMultiplier);
+            let noteDuration = adjustedEndTime - adjustedStartTime;
+
+            // Arpeggiator-like envelope (fast attack, exponential decay)
+            noteGain.gain.setValueAtTime(0, adjustedStartTime);
+            noteGain.gain.linearRampToValueAtTime(1.0, adjustedStartTime + 0.02);
+            noteGain.gain.exponentialRampToValueAtTime(0.01, adjustedEndTime);
+
+            // Connect to noteGain
+            if (noise) {
+                filter.connect(noteGain);
+                window.activeOscillators.push(noise);
+            } else {
+                osc.connect(noteGain);
+            }
+            if (osc2) {
+                osc2.connect(noteGain);
+                window.activeOscillators.push(osc2);
+            }
+
+            noteGain.connect(globalGain);
+
+            if (noise) {
+                noise.start(adjustedStartTime);
+                noise.stop(adjustedEndTime + 0.1);
+            } else {
+                osc.start(adjustedStartTime);
+                osc.stop(adjustedEndTime + 0.1);
+            }
+            window.activeOscillators.push(osc);
+        });
+
+        // Track global state for AI sequence to match normal vinyl playback structure
+        window.vinylAudioState = {
+            isAi: true,
+            totalTime: window.vinylAiSequence.totalTime / speedMultiplier,
+            startTime: startTime,
+            actx: actx,
+            getVinylDuration: (currentRpm) => { return window.vinylAiSequence.totalTime / (currentRpm / 33.0); }
+        };
+
+        return;
+    }
+
     let baseFreqs = generateScale(synthSettings.scale, synthSettings.oktaven);
 
     // Smooth the array heavily so it's not crazy noisy for every pixel
@@ -301,10 +401,13 @@ window.playVinylAudio = async function(vinylArray) {
         return { relativeHoehe: h, x: idx };
     });
 
-    // Determine timing
-    // Total playback time e.g. 15 seconds
-    let totalTime = synthSettings.duration;
-    let timePerPoint = totalTime / points.length;
+    // Total playback time based on current RPM and 20 rotations
+    let rpm = parseFloat(document.getElementById('range_vinyl_speed')?.value || 33);
+    let getVinylDuration = (currentRpm) => {
+        let totalRotations = (typeof window.vinylTotalRotations !== 'undefined') ? window.vinylTotalRotations : 20;
+        return (totalRotations / currentRpm) * 60;
+    };
+    let totalTime = getVinylDuration(rpm);
 
     const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
 
@@ -369,56 +472,125 @@ window.playVinylAudio = async function(vinylArray) {
 
     panner.connect(window.masterCompressor);
 
+    // Store state for dynamic speed updates
+    window.vinylAudioState = {
+        actx,
+        gain,
+        osc,
+        osc2,
+        noise,
+        filter,
+        panner,
+        synthSettings,
+        baseFreqs,
+        points,
+        startTime,
+        getVinylDuration,
+        stopTimeoutId: null
+    };
+
+    window.scheduleVinylAudioEvents(rpm, startTime);
+
     // Initial values
     gain.gain.setValueAtTime(0, startTime);
     gain.gain.linearRampToValueAtTime(synthSettings.volume, startTime + 0.1);
 
-    for (let i = 0; i < points.length; i++) {
-        let p = points[i];
-        let delay = i * timePerPoint;
-        let index = Math.floor(p.relativeHoehe * (synthSettings.range / 100) * (baseFreqs.length - 1));
-        index = Math.max(0, Math.min(index, baseFreqs.length - 1));
-        let freq = baseFreqs[index];
+    osc.start(startTime);
+    window.activeOscillators.push(osc);
 
-        let panValue = -0.5 + (i / points.length);
-        let noteStartTime = startTime + delay;
+    if (osc2) {
+        osc2.start(startTime);
+    }
+    if (noise) {
+        noise.start(startTime);
+    }
+};
 
-        panner.pan.setValueAtTime(panValue, noteStartTime);
+window.scheduleVinylAudioEvents = function(rpm, scheduleFromTime) {
+    let state = window.vinylAudioState;
+    if (!state) return;
 
-        if (synthSettings.wave === 'noise' && filter) {
-            filter.frequency.setValueAtTime(freq, noteStartTime);
+    let actx = state.actx;
+    let totalTime = state.getVinylDuration(rpm);
+    let timePerPoint = totalTime / state.points.length;
+    let now = actx.currentTime;
+
+    // We only schedule points that occur after the current time
+    // If scheduleFromTime is specified, we use that as the base time for calculating delays.
+    let baseTime = state.startTime;
+
+    // Cancel all previously scheduled values from 'now' onwards
+    state.panner.pan.cancelScheduledValues(now);
+    if (state.filter) state.filter.frequency.cancelScheduledValues(now);
+    state.osc.frequency.cancelScheduledValues(now);
+    if (state.osc2) state.osc2.frequency.cancelScheduledValues(now);
+    state.gain.gain.cancelScheduledValues(now);
+
+    // We only want to update the timeout if it exists
+    if (state.stopTimeoutId) {
+        clearTimeout(state.stopTimeoutId);
+    }
+
+    // How much time has passed since start relative to the NEW total time?
+    // Actually, it's easier to just calculate the current progress from UI and start from there,
+    // but we can also just compute absolute times for all points and only apply the ones in the future.
+    let progress = (typeof window.vinylProgress !== 'undefined') ? window.vinylProgress : 0;
+    let startIndex = Math.floor(progress * state.points.length);
+
+    // Base time for the remainder of the track
+    let remainderTime = totalTime * (1.0 - progress);
+
+    for (let i = startIndex; i < state.points.length; i++) {
+        let p = state.points[i];
+        // Calculate delay relative to the start of the remainder
+        let remainingPoints = state.points.length - startIndex;
+        let delayFromNow = ((i - startIndex) / remainingPoints) * remainderTime;
+
+        let index = Math.floor(p.relativeHoehe * (state.synthSettings.range / 100) * (state.baseFreqs.length - 1));
+        index = Math.max(0, Math.min(index, state.baseFreqs.length - 1));
+        let freq = state.baseFreqs[index];
+
+        let panValue = -0.5 + (i / state.points.length);
+        let noteStartTime = now + delayFromNow;
+
+        state.panner.pan.setValueAtTime(panValue, noteStartTime);
+
+        if (state.synthSettings.wave === 'noise' && state.filter) {
+            state.filter.frequency.setValueAtTime(freq, noteStartTime);
         } else {
-            osc.frequency.setValueAtTime(freq, noteStartTime);
-            if (osc2 && synthSettings.wave === 'chime') {
-                osc2.frequency.setValueAtTime(freq * 2.01, noteStartTime);
-            } else if (osc2 && synthSettings.wave === 'detuned_saw') {
-                osc2.frequency.setValueAtTime(freq * 1.02, noteStartTime);
+            state.osc.frequency.setValueAtTime(freq, noteStartTime);
+            if (state.osc2 && state.synthSettings.wave === 'chime') {
+                state.osc2.frequency.setValueAtTime(freq * 2.01, noteStartTime);
+            } else if (state.osc2 && state.synthSettings.wave === 'detuned_saw') {
+                state.osc2.frequency.setValueAtTime(freq * 1.02, noteStartTime);
             }
         }
     }
 
     // Fade out at the end
-    gain.gain.setValueAtTime(synthSettings.volume, startTime + totalTime - 0.5);
-    gain.gain.linearRampToValueAtTime(0.01, startTime + totalTime);
+    let endTime = now + remainderTime;
+    state.gain.gain.setValueAtTime(state.synthSettings.volume, Math.max(now, endTime - 0.5));
+    state.gain.gain.linearRampToValueAtTime(0.01, endTime);
 
-    osc.start(startTime);
-    osc.stop(startTime + totalTime);
-    window.activeOscillators.push(osc);
-
-    if (osc2) {
-        osc2.start(startTime);
-        osc2.stop(startTime + totalTime);
-    }
-    if (noise) {
-        noise.start(startTime);
-        noise.stop(startTime + totalTime);
+    try {
+        state.osc.stop(endTime);
+        if (state.osc2) state.osc2.stop(endTime);
+        if (state.noise) state.noise.stop(endTime);
+    } catch(e) {
+        // May throw if already stopped
     }
 
     // Automatically stop rotation when audio finishes
-    let stopTimeoutId = setTimeout(() => {
+    state.stopTimeoutId = setTimeout(() => {
         if (typeof window.stopVinylRotation === 'function') {
             window.stopVinylRotation();
         }
-    }, totalTime * 1000);
-    window.audioTimeouts.push(stopTimeoutId);
+    }, remainderTime * 1000);
+    window.audioTimeouts.push(state.stopTimeoutId);
+};
+
+window.updateVinylAudioSpeed = function(newRPM) {
+    if (window.vinylAudioState) {
+        window.scheduleVinylAudioEvents(newRPM, window.vinylAudioState.actx.currentTime);
+    }
 };
