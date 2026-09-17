@@ -602,6 +602,7 @@ window.generateVinyl = async function() {
     if (window.isVinylGenerating) return;
     window.isVinylGenerating = true;
     window.vinylArray = [];
+    window.vinylProgress = 0;
 
     let btnGen = document.getElementById('btn-vinyl-generate');
     let originalText = btnGen.innerHTML;
@@ -708,20 +709,9 @@ window.aiComposePano = async function(panoId) {
         let range = maxVal - minVal;
         if (range === 0) range = 1;
 
-        // C minor pentatonic notes (MIDI): C, Eb, F, G, Bb
-        const cMinorPentatonicClasses = [0, 3, 5, 7, 10];
-        let allowedNotes = [];
-        for (let note = 48; note <= 83; note++) {
-            if (cMinorPentatonicClasses.includes(note % 12)) {
-                allowedNotes.push(note);
-            }
-        }
-
-        function snapToScale(midiNote) {
-            return allowedNotes.reduce((prev, curr) =>
-                Math.abs(curr - midiNote) < Math.abs(prev - midiNote) ? curr : prev
-            );
-        }
+        // Magenta strictly requires notes between 48 and 83. We generate safely in this range.
+        const SAFE_MIN = 48;
+        const SAFE_MAX = 83;
 
         let seedSequence = {
             notes: [],
@@ -731,13 +721,12 @@ window.aiComposePano = async function(panoId) {
 
         const stepDuration = 0.25;
 
+        // Create seed within SAFE range
         for (let i = 0; i < seedPoints.length; i++) {
             let normalized = (seedPoints[i].hoehe - minVal) / range;
-            let rawMidi = 48 + (normalized * (83 - 48));
-            let quantizedMidi = snapToScale(Math.round(rawMidi));
-
+            let rawMidi = SAFE_MIN + (normalized * (SAFE_MAX - SAFE_MIN));
             seedSequence.notes.push({
-                pitch: quantizedMidi,
+                pitch: Math.round(rawMidi), // Unquantized for Magenta, but in safe range
                 quantizedStartStep: i,
                 quantizedEndStep: i + 1,
                 startTime: i * stepDuration,
@@ -747,18 +736,61 @@ window.aiComposePano = async function(panoId) {
         }
         seedSequence.totalQuantizedSteps = seedPoints.length;
 
-        // Generate melody (64 steps)
+        // Generate melody (64 steps) via Magenta
         let generatedSequence = await window.music_rnn.continueSequence(seedSequence, 64, 1.0);
 
-        let mergedNotes = [...seedSequence.notes];
+        // Now map the final combined sequence back to the user's requested scale/octaves
+        let scaleName = s.scale || 'lydian';
+        let octaves = s.oktaven || 3;
+        let intervals = window.scales && window.scales[scaleName] ? window.scales[scaleName] : [2, 2, 1, 2, 2, 2, 1];
 
+        let allowedNotes = [];
+        let baseNote = 48;
+        let currentNote = baseNote;
+        allowedNotes.push(currentNote);
+        for (let o = 0; o < octaves; o++) {
+            for (let i = 0; i < intervals.length; i++) {
+                currentNote += intervals[i];
+                allowedNotes.push(currentNote);
+            }
+        }
+
+        function snapToScale(midiNote) {
+            if (allowedNotes.length === 0) return midiNote;
+            return allowedNotes.reduce((prev, curr) =>
+                Math.abs(curr - midiNote) < Math.abs(prev - midiNote) ? curr : prev
+            );
+        }
+
+        let mergedNotes = [];
+
+        // Map Seed Notes
+        for (let i = 0; i < seedSequence.notes.length; i++) {
+            let note = seedSequence.notes[i];
+            let normalized = (note.pitch - SAFE_MIN) / (SAFE_MAX - SAFE_MIN); // 0.0 to 1.0
+            let targetRawMidi = allowedNotes[0] + (normalized * (allowedNotes[allowedNotes.length-1] - allowedNotes[0]));
+
+            mergedNotes.push({
+                pitch: snapToScale(Math.round(targetRawMidi)),
+                startTime: note.startTime,
+                endTime: note.endTime,
+                velocity: note.velocity
+            });
+        }
+
+        // Map Generated Notes
         for (let i = 0; i < generatedSequence.notes.length; i++) {
             let note = generatedSequence.notes[i];
             let startStep = seedSequence.totalQuantizedSteps + note.quantizedStartStep;
             let endStep = seedSequence.totalQuantizedSteps + note.quantizedEndStep;
 
+            let normalized = (note.pitch - SAFE_MIN) / (SAFE_MAX - SAFE_MIN);
+            // Protect against bounds if Magenta hallucinates slightly outside 48-83
+            normalized = Math.max(0, Math.min(1, normalized));
+            let targetRawMidi = allowedNotes[0] + (normalized * (allowedNotes[allowedNotes.length-1] - allowedNotes[0]));
+
             mergedNotes.push({
-                pitch: note.pitch,
+                pitch: snapToScale(Math.round(targetRawMidi)),
                 startTime: startStep * stepDuration,
                 endTime: endStep * stepDuration,
                 velocity: note.velocity || 80
@@ -796,6 +828,7 @@ window.aiComposeVinyl = async function() {
     if (!btnAi || window.isAiComposing) return;
 
     window.vinylAiSequence = null; // Clear previous AI sequence to allow new generation
+    window.vinylProgress = 0;
 
     if (!window.vinylArray || window.vinylArray.length < 16) {
         alert("Bitte generiere zuerst ein Vinyl-Array mit ausreichend Daten (mind. 16 Punkte)!");
@@ -831,22 +864,9 @@ window.aiComposeVinyl = async function() {
         let range = maxVal - minVal;
         if (range === 0) range = 1;
 
-        // 3. Map to MIDI notes (48 to 83) and quantize to C minor pentatonic
-        // C minor pentatonic notes (MIDI): C, Eb, F, G, Bb
-        // We will build a list of all C minor pentatonic notes between 48 and 83
-        const cMinorPentatonicClasses = [0, 3, 5, 7, 10];
-        let allowedNotes = [];
-        for (let note = 48; note <= 83; note++) {
-            if (cMinorPentatonicClasses.includes(note % 12)) {
-                allowedNotes.push(note);
-            }
-        }
-
-        function snapToScale(midiNote) {
-            return allowedNotes.reduce((prev, curr) =>
-                Math.abs(curr - midiNote) < Math.abs(prev - midiNote) ? curr : prev
-            );
-        }
+        // Magenta strictly requires notes between 48 and 83. We generate safely in this range.
+        const SAFE_MIN = 48;
+        const SAFE_MAX = 83;
 
         let seedSequence = {
             notes: [],
@@ -858,11 +878,10 @@ window.aiComposeVinyl = async function() {
 
         for (let i = 0; i < seedPoints.length; i++) {
             let normalized = (seedPoints[i] - minVal) / range;
-            let rawMidi = 48 + (normalized * (83 - 48));
-            let quantizedMidi = snapToScale(Math.round(rawMidi));
+            let rawMidi = SAFE_MIN + (normalized * (SAFE_MAX - SAFE_MIN));
 
             seedSequence.notes.push({
-                pitch: quantizedMidi,
+                pitch: Math.round(rawMidi),
                 quantizedStartStep: i,
                 quantizedEndStep: i + 1,
                 startTime: i * stepDuration,
@@ -872,20 +891,61 @@ window.aiComposeVinyl = async function() {
         }
         seedSequence.totalQuantizedSteps = seedPoints.length;
 
-        // 4. Generate melody (64 steps)
+        // 4. Generate melody (64 steps) via Magenta
         let generatedSequence = await window.music_rnn.continueSequence(seedSequence, 64, 1.0);
 
-        // 5. Unquantize to time-based sequence and merge
-        // Rebuild full sequence by concatenating the seed notes and the generated notes
-        let mergedNotes = [...seedSequence.notes];
+        // Now map the final combined sequence back to the user's requested scale/octaves
+        let scaleName = document.getElementById('sel_vinyl_scale')?.value || 'pentatonic';
+        let octaves = parseInt(document.getElementById('sel_vinyl_octaves')?.value) || 4;
+        let intervals = window.scales && window.scales[scaleName] ? window.scales[scaleName] : [2, 2, 1, 2, 2, 2, 1];
 
+        let allowedNotes = [];
+        let baseNote = 48;
+        let currentNote = baseNote;
+
+        allowedNotes.push(currentNote);
+        for (let o = 0; o < octaves; o++) {
+            for (let i = 0; i < intervals.length; i++) {
+                currentNote += intervals[i];
+                allowedNotes.push(currentNote);
+            }
+        }
+
+        function snapToScale(midiNote) {
+            if (allowedNotes.length === 0) return midiNote;
+            return allowedNotes.reduce((prev, curr) =>
+                Math.abs(curr - midiNote) < Math.abs(prev - midiNote) ? curr : prev
+            );
+        }
+
+        let mergedNotes = [];
+
+        // Map Seed Notes
+        for (let i = 0; i < seedSequence.notes.length; i++) {
+            let note = seedSequence.notes[i];
+            let normalized = (note.pitch - SAFE_MIN) / (SAFE_MAX - SAFE_MIN);
+            let targetRawMidi = allowedNotes[0] + (normalized * (allowedNotes[allowedNotes.length-1] - allowedNotes[0]));
+
+            mergedNotes.push({
+                pitch: snapToScale(Math.round(targetRawMidi)),
+                startTime: note.startTime,
+                endTime: note.endTime,
+                velocity: note.velocity
+            });
+        }
+
+        // Map Generated Notes
         for (let i = 0; i < generatedSequence.notes.length; i++) {
             let note = generatedSequence.notes[i];
             let startStep = seedSequence.totalQuantizedSteps + note.quantizedStartStep;
             let endStep = seedSequence.totalQuantizedSteps + note.quantizedEndStep;
 
+            let normalized = (note.pitch - SAFE_MIN) / (SAFE_MAX - SAFE_MIN);
+            normalized = Math.max(0, Math.min(1, normalized)); // Clamp
+            let targetRawMidi = allowedNotes[0] + (normalized * (allowedNotes[allowedNotes.length-1] - allowedNotes[0]));
+
             mergedNotes.push({
-                pitch: note.pitch,
+                pitch: snapToScale(Math.round(targetRawMidi)),
                 startTime: startStep * stepDuration,
                 endTime: endStep * stepDuration,
                 velocity: note.velocity || 80
@@ -1033,7 +1093,11 @@ window.startVinylDotAnimation = function() {
 
     window.vinylStartTime = performance.now();
     let lastTime = window.vinylStartTime;
-    window.vinylProgress = 0;
+
+    // Reset progress only if we've reached the end
+    if (window.vinylProgress >= 1.0) {
+        window.vinylProgress = 0;
+    }
 
     function drawDot(time) {
         ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
