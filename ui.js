@@ -680,12 +680,12 @@ window.aiComposeVinyl = async function() {
         let range = maxVal - minVal;
         if (range === 0) range = 1;
 
-        // 3. Map to MIDI notes (48 to 84) and quantize to C minor pentatonic
+        // 3. Map to MIDI notes (48 to 83) and quantize to C minor pentatonic
         // C minor pentatonic notes (MIDI): C, Eb, F, G, Bb
-        // We will build a list of all C minor pentatonic notes between 48 and 84
+        // We will build a list of all C minor pentatonic notes between 48 and 83
         const cMinorPentatonicClasses = [0, 3, 5, 7, 10];
         let allowedNotes = [];
-        for (let note = 48; note <= 84; note++) {
+        for (let note = 48; note <= 83; note++) {
             if (cMinorPentatonicClasses.includes(note % 12)) {
                 allowedNotes.push(note);
             }
@@ -707,7 +707,7 @@ window.aiComposeVinyl = async function() {
 
         for (let i = 0; i < seedPoints.length; i++) {
             let normalized = (seedPoints[i] - minVal) / range;
-            let rawMidi = 48 + (normalized * (84 - 48));
+            let rawMidi = 48 + (normalized * (83 - 48));
             let quantizedMidi = snapToScale(Math.round(rawMidi));
 
             seedSequence.notes.push({

@@ -374,7 +374,8 @@ window.playVinylAudio = async function(vinylArray) {
             isAi: true,
             totalTime: window.vinylAiSequence.totalTime / speedMultiplier,
             startTime: startTime,
-            actx: actx
+            actx: actx,
+            getVinylDuration: (currentRpm) => { return window.vinylAiSequence.totalTime / (currentRpm / 33.0); }
         };
 
         return;
