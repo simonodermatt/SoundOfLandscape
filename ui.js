@@ -10,7 +10,8 @@ const synthIcons = {
     echo: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>`,
     attack: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M3 20h6l12-14"/></svg>`,
     release: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M3 6h6l12 14"/></svg>`,
-    volume: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`
+    volume: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`,
+    mutation: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.5" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1.5" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg>`
 };
 
 // ui.js - Karte, Canvas, Vollbild-Modal und angepasste UI
@@ -378,12 +379,12 @@ window.drawLines = function(panoId) {
 
 window.buildKnob = function(panoId, key, label, min, max, step, isInt, displayMult, unit = "") {
     let val = (window.activeSynth && window.activeSynth[panoId] && window.activeSynth[panoId][key]) !== undefined ? window.activeSynth[panoId][key] : min;
-    let valId = `val_${key}_${panoId}`;
+    let displayVal = key === 'mutation' ? parseFloat(val).toFixed(1) : (displayMult ? Math.round(val * displayMult) : val);
     let triggerDraw = ['peaks', 'valleys', 'spacing', 'sensibilitaet'].includes(key) ? `window.drawLines('${panoId}');` : '';
-    let displayVal = displayMult ? Math.round(val * displayMult) : val;
+
     let jsAction = `
         window.activeSynth['${panoId}'].${key} = ${isInt ? 'parseInt' : 'parseFloat'}(this.value);
-        let dVal = ${displayMult ? 'Math.round(this.value * '+displayMult+')' : 'this.value'};
+        let dVal = ${key === 'mutation' ? 'parseFloat(this.value).toFixed(1)' : (displayMult ? 'Math.round(this.value * '+displayMult+')' : 'this.value')};
         let tooltip = document.getElementById('tt_val_${key}_${panoId}'); if(tooltip) { tooltip.innerText = dVal; }
         if (window.panoAiSequences && window.panoAiSequences['${panoId}']) {
             window.panoAiSequences['${panoId}'] = null;
@@ -477,7 +478,9 @@ window.getPopupHTML = function(pano) {
 
             <div class="synth-layout-container">
                 <div class="synth-layout-left">
-                    <div class="synth-grid">
+                    <div class="synth-grid" style="grid-template-columns: 40px 20px repeat(11, 40px);">
+                        ${window.buildKnob(pano.id, 'mutation', t.vinyl_mutation || 'Mutation', 0.5, 1.5, 0.1, false, null)}
+                        <div class="synth-grid-spacer"></div>
                         ${window.buildKnob(pano.id, 'peaks', t.gipfel || 'Gipfel', 0, 12, 1, true, null)}
                         ${window.buildKnob(pano.id, 'valleys', t.taeler || 'Täler', 0, 12, 1, true, null)}
                         ${window.buildKnob(pano.id, 'spacing', t.abstand || 'Abstand', 10, 150, 5, true, null, 'px')}
@@ -747,8 +750,7 @@ window.aiComposePano = async function(panoId) {
         seedSequence.totalQuantizedSteps = seedPoints.length;
 
         // Generate melody (64 steps) via Magenta
-        // For Pano mode, we don't have a mutation slider explicitly requested, but let's default to 1.0 or read from vinyl slider if available and pano is playing in vinyl mode. We'll use 1.0 for Pano to be safe unless specified.
-        let mutationPano = 1.0;
+        let mutationPano = s.mutation !== undefined ? s.mutation : 1.0;
         let generatedSequence = await window.music_rnn.continueSequence(seedSequence, 64, mutationPano);
 
         // Now map the final combined sequence back to the user's requested scale/octaves
