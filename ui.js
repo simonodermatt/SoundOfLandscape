@@ -709,32 +709,9 @@ window.aiComposePano = async function(panoId) {
         let range = maxVal - minVal;
         if (range === 0) range = 1;
 
-        // Generate allowed notes dynamically based on selected scale and octaves
-        let scaleName = s.scale || 'lydian';
-        let octaves = s.oktaven || 3;
-        let intervals = window.scales && window.scales[scaleName] ? window.scales[scaleName] : [2, 2, 1, 2, 2, 2, 1]; // Fallback to major
-
-        let allowedNotes = [];
-        let baseNote = 48; // C3
-        let currentNote = baseNote;
-
-        allowedNotes.push(currentNote);
-        for (let o = 0; o < octaves; o++) {
-            for (let i = 0; i < intervals.length; i++) {
-                currentNote += intervals[i];
-                allowedNotes.push(currentNote);
-            }
-        }
-
-        let minMidi = allowedNotes[0];
-        let maxMidi = allowedNotes[allowedNotes.length - 1];
-
-        function snapToScale(midiNote) {
-            if (allowedNotes.length === 0) return midiNote;
-            return allowedNotes.reduce((prev, curr) =>
-                Math.abs(curr - midiNote) < Math.abs(prev - midiNote) ? curr : prev
-            );
-        }
+        // Magenta strictly requires notes between 48 and 83. We generate safely in this range.
+        const SAFE_MIN = 48;
+        const SAFE_MAX = 83;
 
         let seedSequence = {
             notes: [],
@@ -744,13 +721,12 @@ window.aiComposePano = async function(panoId) {
 
         const stepDuration = 0.25;
 
+        // Create seed within SAFE range
         for (let i = 0; i < seedPoints.length; i++) {
             let normalized = (seedPoints[i].hoehe - minVal) / range;
-            let rawMidi = minMidi + (normalized * (maxMidi - minMidi));
-            let quantizedMidi = snapToScale(Math.round(rawMidi));
-
+            let rawMidi = SAFE_MIN + (normalized * (SAFE_MAX - SAFE_MIN));
             seedSequence.notes.push({
-                pitch: quantizedMidi,
+                pitch: Math.round(rawMidi), // Unquantized for Magenta, but in safe range
                 quantizedStartStep: i,
                 quantizedEndStep: i + 1,
                 startTime: i * stepDuration,
@@ -760,18 +736,61 @@ window.aiComposePano = async function(panoId) {
         }
         seedSequence.totalQuantizedSteps = seedPoints.length;
 
-        // Generate melody (64 steps)
+        // Generate melody (64 steps) via Magenta
         let generatedSequence = await window.music_rnn.continueSequence(seedSequence, 64, 1.0);
 
-        let mergedNotes = [...seedSequence.notes];
+        // Now map the final combined sequence back to the user's requested scale/octaves
+        let scaleName = s.scale || 'lydian';
+        let octaves = s.oktaven || 3;
+        let intervals = window.scales && window.scales[scaleName] ? window.scales[scaleName] : [2, 2, 1, 2, 2, 2, 1];
 
+        let allowedNotes = [];
+        let baseNote = 48;
+        let currentNote = baseNote;
+        allowedNotes.push(currentNote);
+        for (let o = 0; o < octaves; o++) {
+            for (let i = 0; i < intervals.length; i++) {
+                currentNote += intervals[i];
+                allowedNotes.push(currentNote);
+            }
+        }
+
+        function snapToScale(midiNote) {
+            if (allowedNotes.length === 0) return midiNote;
+            return allowedNotes.reduce((prev, curr) =>
+                Math.abs(curr - midiNote) < Math.abs(prev - midiNote) ? curr : prev
+            );
+        }
+
+        let mergedNotes = [];
+
+        // Map Seed Notes
+        for (let i = 0; i < seedSequence.notes.length; i++) {
+            let note = seedSequence.notes[i];
+            let normalized = (note.pitch - SAFE_MIN) / (SAFE_MAX - SAFE_MIN); // 0.0 to 1.0
+            let targetRawMidi = allowedNotes[0] + (normalized * (allowedNotes[allowedNotes.length-1] - allowedNotes[0]));
+
+            mergedNotes.push({
+                pitch: snapToScale(Math.round(targetRawMidi)),
+                startTime: note.startTime,
+                endTime: note.endTime,
+                velocity: note.velocity
+            });
+        }
+
+        // Map Generated Notes
         for (let i = 0; i < generatedSequence.notes.length; i++) {
             let note = generatedSequence.notes[i];
             let startStep = seedSequence.totalQuantizedSteps + note.quantizedStartStep;
             let endStep = seedSequence.totalQuantizedSteps + note.quantizedEndStep;
 
+            let normalized = (note.pitch - SAFE_MIN) / (SAFE_MAX - SAFE_MIN);
+            // Protect against bounds if Magenta hallucinates slightly outside 48-83
+            normalized = Math.max(0, Math.min(1, normalized));
+            let targetRawMidi = allowedNotes[0] + (normalized * (allowedNotes[allowedNotes.length-1] - allowedNotes[0]));
+
             mergedNotes.push({
-                pitch: note.pitch,
+                pitch: snapToScale(Math.round(targetRawMidi)),
                 startTime: startStep * stepDuration,
                 endTime: endStep * stepDuration,
                 velocity: note.velocity || 80
@@ -845,32 +864,9 @@ window.aiComposeVinyl = async function() {
         let range = maxVal - minVal;
         if (range === 0) range = 1;
 
-        // 3. Map to MIDI notes dynamically based on selected scale and octaves
-        let scaleName = document.getElementById('sel_vinyl_scale')?.value || 'pentatonic';
-        let octaves = parseInt(document.getElementById('sel_vinyl_octaves')?.value) || 4;
-        let intervals = window.scales && window.scales[scaleName] ? window.scales[scaleName] : [2, 2, 1, 2, 2, 2, 1]; // Fallback to major
-
-        let allowedNotes = [];
-        let baseNote = 48; // C3
-        let currentNote = baseNote;
-
-        allowedNotes.push(currentNote);
-        for (let o = 0; o < octaves; o++) {
-            for (let i = 0; i < intervals.length; i++) {
-                currentNote += intervals[i];
-                allowedNotes.push(currentNote);
-            }
-        }
-
-        let minMidi = allowedNotes[0];
-        let maxMidi = allowedNotes[allowedNotes.length - 1];
-
-        function snapToScale(midiNote) {
-            if (allowedNotes.length === 0) return midiNote;
-            return allowedNotes.reduce((prev, curr) =>
-                Math.abs(curr - midiNote) < Math.abs(prev - midiNote) ? curr : prev
-            );
-        }
+        // Magenta strictly requires notes between 48 and 83. We generate safely in this range.
+        const SAFE_MIN = 48;
+        const SAFE_MAX = 83;
 
         let seedSequence = {
             notes: [],
@@ -882,11 +878,10 @@ window.aiComposeVinyl = async function() {
 
         for (let i = 0; i < seedPoints.length; i++) {
             let normalized = (seedPoints[i] - minVal) / range;
-            let rawMidi = minMidi + (normalized * (maxMidi - minMidi));
-            let quantizedMidi = snapToScale(Math.round(rawMidi));
+            let rawMidi = SAFE_MIN + (normalized * (SAFE_MAX - SAFE_MIN));
 
             seedSequence.notes.push({
-                pitch: quantizedMidi,
+                pitch: Math.round(rawMidi),
                 quantizedStartStep: i,
                 quantizedEndStep: i + 1,
                 startTime: i * stepDuration,
@@ -896,20 +891,61 @@ window.aiComposeVinyl = async function() {
         }
         seedSequence.totalQuantizedSteps = seedPoints.length;
 
-        // 4. Generate melody (64 steps)
+        // 4. Generate melody (64 steps) via Magenta
         let generatedSequence = await window.music_rnn.continueSequence(seedSequence, 64, 1.0);
 
-        // 5. Unquantize to time-based sequence and merge
-        // Rebuild full sequence by concatenating the seed notes and the generated notes
-        let mergedNotes = [...seedSequence.notes];
+        // Now map the final combined sequence back to the user's requested scale/octaves
+        let scaleName = document.getElementById('sel_vinyl_scale')?.value || 'pentatonic';
+        let octaves = parseInt(document.getElementById('sel_vinyl_octaves')?.value) || 4;
+        let intervals = window.scales && window.scales[scaleName] ? window.scales[scaleName] : [2, 2, 1, 2, 2, 2, 1];
 
+        let allowedNotes = [];
+        let baseNote = 48;
+        let currentNote = baseNote;
+
+        allowedNotes.push(currentNote);
+        for (let o = 0; o < octaves; o++) {
+            for (let i = 0; i < intervals.length; i++) {
+                currentNote += intervals[i];
+                allowedNotes.push(currentNote);
+            }
+        }
+
+        function snapToScale(midiNote) {
+            if (allowedNotes.length === 0) return midiNote;
+            return allowedNotes.reduce((prev, curr) =>
+                Math.abs(curr - midiNote) < Math.abs(prev - midiNote) ? curr : prev
+            );
+        }
+
+        let mergedNotes = [];
+
+        // Map Seed Notes
+        for (let i = 0; i < seedSequence.notes.length; i++) {
+            let note = seedSequence.notes[i];
+            let normalized = (note.pitch - SAFE_MIN) / (SAFE_MAX - SAFE_MIN);
+            let targetRawMidi = allowedNotes[0] + (normalized * (allowedNotes[allowedNotes.length-1] - allowedNotes[0]));
+
+            mergedNotes.push({
+                pitch: snapToScale(Math.round(targetRawMidi)),
+                startTime: note.startTime,
+                endTime: note.endTime,
+                velocity: note.velocity
+            });
+        }
+
+        // Map Generated Notes
         for (let i = 0; i < generatedSequence.notes.length; i++) {
             let note = generatedSequence.notes[i];
             let startStep = seedSequence.totalQuantizedSteps + note.quantizedStartStep;
             let endStep = seedSequence.totalQuantizedSteps + note.quantizedEndStep;
 
+            let normalized = (note.pitch - SAFE_MIN) / (SAFE_MAX - SAFE_MIN);
+            normalized = Math.max(0, Math.min(1, normalized)); // Clamp
+            let targetRawMidi = allowedNotes[0] + (normalized * (allowedNotes[allowedNotes.length-1] - allowedNotes[0]));
+
             mergedNotes.push({
-                pitch: note.pitch,
+                pitch: snapToScale(Math.round(targetRawMidi)),
                 startTime: startStep * stepDuration,
                 endTime: endStep * stepDuration,
                 velocity: note.velocity || 80
