@@ -409,7 +409,7 @@ async function ladePanoramenAusSheet() {
                 sensibilitaet: parseInt(pano.sensibilitaet) || 0, mode: pano.mode || 'chord', scale: pano.scale || 'lydian',
                 oktaven: parseInt(pano.oktaven) || 3, range: parseInt(pano.range) || 100, wave: pano.wave || 'darkpad',
                 volume: parseFloat(pano.volume) || 0.2, duration: parseFloat(pano.duration) || 5.0, attack: parseFloat(pano.attack) || 1.0,
-                release: parseFloat(pano.release) || 2.0, echo: parseFloat(pano.echo) || 0.3
+                release: parseFloat(pano.release) || 2.0, echo: parseFloat(pano.echo) || 0.3, mutation: parseFloat(pano.mutation) || 1.0
             };
         });
     } catch (e) { console.error(e); }
@@ -1481,7 +1481,7 @@ window.ladePanoramenAusSheet = async function() {
                 sensibilitaet: parseInt(pano.sensibilitaet) || 0, mode: pano.mode || 'chord', scale: pano.scale || 'lydian',
                 oktaven: parseInt(pano.oktaven) || 3, range: parseInt(pano.range) || 100, wave: pano.wave || 'darkpad',
                 volume: parseFloat(pano.volume) || 0.2, duration: parseFloat(pano.duration) || 5.0, attack: parseFloat(pano.attack) || 1.0,
-                release: parseFloat(pano.release) || 2.0, echo: parseFloat(pano.echo) || 0.3
+                release: parseFloat(pano.release) || 2.0, echo: parseFloat(pano.echo) || 0.3, mutation: parseFloat(pano.mutation) || 1.0
             };
         });
     } catch (e) { console.error(e); }
@@ -4279,7 +4279,7 @@ window.ladePanoramenAusSheet = async function() {
                 sensibilitaet: parseInt(pano.sensibilitaet) || 0, mode: pano.mode || 'chord', scale: pano.scale || 'lydian',
                 oktaven: parseInt(pano.oktaven) || 3, range: parseInt(pano.range) || 100, wave: pano.wave || 'darkpad',
                 volume: parseFloat(pano.volume) || 0.2, duration: parseFloat(pano.duration) || 5.0, attack: parseFloat(pano.attack) || 1.0,
-                release: parseFloat(pano.release) || 2.0, echo: parseFloat(pano.echo) || 0.3
+                release: parseFloat(pano.release) || 2.0, echo: parseFloat(pano.echo) || 0.3, mutation: parseFloat(pano.mutation) || 1.0
             };
         });
     } catch (e) { console.error(e); }
@@ -4621,7 +4621,7 @@ window.ladePanoramenAusSheet = async function() {
                 sensibilitaet: parseInt(pano.sensibilitaet) || 0, mode: pano.mode || 'chord', scale: pano.scale || 'lydian',
                 oktaven: parseInt(pano.oktaven) || 3, range: parseInt(pano.range) || 100, wave: pano.wave || 'darkpad',
                 volume: parseFloat(pano.volume) || 0.2, duration: parseFloat(pano.duration) || 5.0, attack: parseFloat(pano.attack) || 1.0,
-                release: parseFloat(pano.release) || 2.0, echo: parseFloat(pano.echo) || 0.3
+                release: parseFloat(pano.release) || 2.0, echo: parseFloat(pano.echo) || 0.3, mutation: parseFloat(pano.mutation) || 1.0
             };
         });
     } catch (e) { console.error(e); }
@@ -5018,7 +5018,7 @@ window.ladePanoramenAusSheet = async function() {
                 sensibilitaet: parseInt(pano.sensibilitaet) || 0, mode: pano.mode || 'chord', scale: pano.scale || 'lydian',
                 oktaven: parseInt(pano.oktaven) || 3, range: parseInt(pano.range) || 100, wave: pano.wave || 'darkpad',
                 volume: parseFloat(pano.volume) || 0.2, duration: parseFloat(pano.duration) || 5.0, attack: parseFloat(pano.attack) || 1.0,
-                release: parseFloat(pano.release) || 2.0, echo: parseFloat(pano.echo) || 0.3
+                release: parseFloat(pano.release) || 2.0, echo: parseFloat(pano.echo) || 0.3, mutation: parseFloat(pano.mutation) || 1.0
             };
         });
     } catch (e) { console.error(e); }

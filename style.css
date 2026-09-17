@@ -198,7 +198,7 @@ html, body {
 /* Vertical Faders Grid (Teenage Engineering Style) */
 .synth-grid { 
     display: grid;
-    grid-template-columns: repeat(11, 40px); justify-content: start;
+    grid-template-columns: repeat(12, 40px); justify-content: start;
     gap: 0;
     background: #e5e0d8;
     padding: 0;
@@ -206,6 +206,12 @@ html, body {
     border-radius: 0;
     margin-bottom: 0px;
     width: fit-content;
+}
+
+.synth-grid-spacer {
+    width: 20px;
+    border-right: 1px solid #1a1a1a;
+    box-sizing: border-box;
 }
 
 .fader-box {
