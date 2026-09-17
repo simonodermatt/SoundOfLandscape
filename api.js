@@ -81,11 +81,15 @@ window.loadPresets = async function(panoId) {
                 }
             }
 
+            let aiBadge = (p.is_ai === true || p.is_ai === 'true' || p.is_ai === 'TRUE')
+                ? '<span style="font-size:10px; margin-left:4px; padding:1px 3px; border:1px solid #aaa; border-radius:3px; color:#aaa; filter: grayscale(100%);" title="AI Generated">🤖 AI</span>'
+                : '';
+
             html += `
             <div class="preset-item">
                 <input type="checkbox" class="preset-cb" value="${escapeHTML(p.preset_id)}">
                 <div class="preset-info">
-                    <strong>${escapeHTML(p.preset_name || 'Ohne Namen')}</strong> 
+                    <strong>${escapeHTML(p.preset_name || 'Ohne Namen')}${aiBadge}</strong>
                     <span>von ${escapeHTML(p.user_name || 'Unbekannt')}${timeStr}</span>
                 </div>
                 ${isOwner ? `<button onclick="deletePreset('${escapeHTML(p.preset_id)}', '${escapeHTML(panoId)}')" class="del-btn" title="Löschen">🗑️</button>` : ''}
@@ -157,6 +161,35 @@ window.loadSelectedPreset = function(panoId) {
                 rangeInput.dispatchEvent(new Event('input'));
             }
         });
+
+        // Load AI state
+        let btnAi = document.getElementById(`btn-ai-compose-${panoId}`);
+        if (p.is_ai === true || p.is_ai === 'true' || p.is_ai === 'TRUE') {
+            if (p.ai_sound) {
+                try {
+                    window.panoAiSequences = window.panoAiSequences || {};
+                    window.panoAiSequences[panoId] = JSON.parse(p.ai_sound);
+                    if (btnAi) {
+                        btnAi.style.background = "#FF6600";
+                        btnAi.style.color = "#1a1a1a";
+                        btnAi.innerHTML = "[ AI COMPOSE ]";
+                    }
+                } catch(e) {
+                    console.error("Error parsing ai_sound", e);
+                    window.panoAiSequences[panoId] = null;
+                    if (btnAi) {
+                        btnAi.style.background = "";
+                        btnAi.style.color = "";
+                    }
+                }
+            }
+        } else {
+            if (window.panoAiSequences) window.panoAiSequences[panoId] = null;
+            if (btnAi) {
+                btnAi.style.background = "";
+                btnAi.style.color = "";
+            }
+        }
     }
 };
 
@@ -175,10 +208,19 @@ window.savePreset = async function(panoId) {
     if (!presetName) return;
 
     let s = window.activeSynth[panoId];
+    let aiSeq = window.panoAiSequences && window.panoAiSequences[panoId] ? window.panoAiSequences[panoId] : null;
     let payload = {
         action: "save", pano_id: panoId, preset_name: presetName,
         user_name: name, user_id: getUserId(), timestamp: new Date().toISOString(), ...s
     };
+
+    if (aiSeq) {
+        payload.is_ai = true;
+        payload.ai_sound = JSON.stringify(aiSeq);
+    } else {
+        payload.is_ai = false;
+        payload.ai_sound = "";
+    }
 
     let btn = document.getElementById(`save-btn-${panoId}`);
     if (btn) { btn.innerText = "⧗"; }
@@ -334,6 +376,14 @@ window.saveVinyl = async function() {
         range: 0, volume: 0, attack: 0, release: 0, echo: 0
     };
 
+    if (window.vinylAiSequence) {
+        payload.is_ai = true;
+        payload.ai_sound = JSON.stringify(window.vinylAiSequence);
+    } else {
+        payload.is_ai = false;
+        payload.ai_sound = "";
+    }
+
     let btn = document.getElementById(`btn-vinyl-save`);
     if (btn) { btn.innerText = "⧗"; }
 
@@ -387,12 +437,16 @@ window.loadVinylPresets = async function() {
                 }
             }
 
+            let aiBadge = (p.is_ai === true || p.is_ai === 'true' || p.is_ai === 'TRUE')
+                ? '<span style="font-size:10px; margin-left:4px; padding:1px 3px; border:1px solid #aaa; border-radius:3px; color:#aaa; filter: grayscale(100%);" title="AI Generated">🤖 AI</span>'
+                : '';
+
             html += `
             <div class="preset-item" style="box-sizing: border-box; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding:4px 5px; width:100%;">
                 <div style="display:flex; align-items:center; gap:8px;">
                     <input type="radio" name="vinyl_preset_rb" class="preset-cb" value="${escapeHTML(p.preset_id)}">
                     <div class="preset-info" style="font-size:11px;">
-                        <strong>${escapeHTML(p.preset_name || 'Ohne Namen')}</strong>
+                        <strong>${escapeHTML(p.preset_name || 'Ohne Namen')}${aiBadge}</strong>
                         <span style="color:#aaa;">von ${escapeHTML(p.user_name || 'Unbekannt')}${timeStr}</span>
                     </div>
                 </div>
@@ -457,7 +511,23 @@ window.loadVinyl = function() {
             }
 
             window.vinylArray = expandedArray;
-            window.vinylAiSequence = aiSeq || null;
+
+            // Check if is_ai and ai_sound are present at the top level
+            if (p.is_ai === true || p.is_ai === 'true' || p.is_ai === 'TRUE') {
+                if (p.ai_sound) {
+                    try {
+                        window.vinylAiSequence = JSON.parse(p.ai_sound);
+                    } catch(e) {
+                        console.error("Error parsing ai_sound", e);
+                        window.vinylAiSequence = aiSeq || null; // Fallback to inner aiSeq if any
+                    }
+                } else {
+                    window.vinylAiSequence = aiSeq || null;
+                }
+            } else {
+                window.vinylAiSequence = aiSeq || null;
+            }
+
             if (window.drawVinylCanvas) { window.drawVinylCanvas(); }
 
             if (p.scale) {
