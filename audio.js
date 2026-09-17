@@ -265,6 +265,117 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
 };
 
 
+window.playAiPanoAudio = async function(panoId) {
+    if (!window.panoAiSequences || !window.panoAiSequences[panoId]) {
+        alert("Bitte generiere zuerst eine AI Komposition.");
+        return;
+    }
+
+    window.stopAllAudio();
+    const actx = window.getAudioCtx();
+    if (actx.state === 'suspended') await actx.resume();
+
+    const sequence = window.panoAiSequences[panoId];
+    const synthSettings = window.activeSynth[panoId];
+
+    let startTime = actx.currentTime;
+
+    const globalGain = actx.createGain();
+    globalGain.gain.value = synthSettings.volume;
+    globalGain.connect(window.masterCompressor);
+
+    // Apply delay based on settings
+    let maxEcho = synthSettings.echo || 0;
+    const delayNode = actx.createDelay();
+    delayNode.delayTime.value = 0.4;
+    const feedbackGain = actx.createGain();
+    feedbackGain.gain.value = Math.min(maxEcho, 0.85);
+    if (maxEcho > 0) {
+        delayNode.connect(feedbackGain);
+        feedbackGain.connect(delayNode);
+        delayNode.connect(window.masterCompressor);
+        globalGain.connect(delayNode);
+    }
+
+    sequence.notes.forEach(note => {
+        const osc = actx.createOscillator();
+        const freq = 440 * Math.pow(2, (note.pitch - 69) / 12);
+        osc.frequency.value = freq;
+
+        let filter = null;
+        let osc2 = null;
+        let noise = null;
+
+        if (synthSettings.wave === 'darkpad') {
+            osc.type = 'sawtooth';
+        } else if (synthSettings.wave === 'chime') {
+            osc.type = 'sine';
+            osc2 = actx.createOscillator();
+            osc2.type = 'triangle';
+            osc2.frequency.value = freq * 2;
+        } else if (synthSettings.wave === 'noise') {
+            const bufferSize = actx.sampleRate * 2.0;
+            const buffer = actx.createBuffer(1, bufferSize, actx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let j = 0; j < bufferSize; j++) { data[j] = Math.random() * 2 - 1; }
+            noise = actx.createBufferSource();
+            noise.buffer = buffer;
+            noise.loop = true;
+            filter = actx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.Q.value = 10;
+            filter.frequency.value = freq;
+            noise.connect(filter);
+        } else if (synthSettings.wave === 'detuned_saw') {
+            osc.type = 'sawtooth';
+            osc2 = actx.createOscillator();
+            osc2.type = 'sawtooth';
+            osc2.frequency.value = freq * 1.01;
+        } else {
+            osc.type = synthSettings.wave;
+        }
+
+        const noteGain = actx.createGain();
+        let noteStartTime = startTime + note.startTime;
+        let noteEndTime = startTime + note.endTime;
+
+        let attack = synthSettings.attack || 0.1;
+        let release = synthSettings.release || 0.1;
+
+        // Ensure attack and release are reasonable for the note length to avoid popping
+        let maxAttack = (noteEndTime - noteStartTime) / 2;
+        attack = Math.min(attack, maxAttack);
+
+        noteGain.gain.setValueAtTime(0, noteStartTime);
+        noteGain.gain.linearRampToValueAtTime(1.0, noteStartTime + attack);
+        noteGain.gain.setValueAtTime(1.0, noteEndTime);
+        noteGain.gain.exponentialRampToValueAtTime(0.01, noteEndTime + release);
+
+        if (noise) {
+            filter.connect(noteGain);
+            window.activeOscillators.push(noise);
+        } else {
+            osc.connect(noteGain);
+        }
+        if (osc2) {
+            osc2.connect(noteGain);
+            window.activeOscillators.push(osc2);
+        }
+
+        noteGain.connect(globalGain);
+
+        if (noise) {
+            noise.start(noteStartTime);
+            noise.stop(noteEndTime + release + 0.1);
+            window.activeOscillators.push(noise);
+        } else {
+            osc.start(noteStartTime);
+            osc.stop(noteEndTime + release + 0.1);
+            window.activeOscillators.push(osc);
+        }
+    });
+};
+
 window.playVinylAudio = async function(vinylArray) {
     const actx = window.getAudioCtx();
 
@@ -283,8 +394,8 @@ window.playVinylAudio = async function(vinylArray) {
 
     if(actx.state === 'suspended') await actx.resume();
 
-    // Check if we have an AI generated sequence
-    if (window.vinylAiSequence) {
+    // Check if we have an AI generated sequence AND we are playing it via playAiVinyl
+    if (window.vinylAiSequence && window.isPlayingAiVinyl) {
         let rpm = parseFloat(document.getElementById('range_vinyl_speed')?.value || 33);
         let speedMultiplier = rpm / 33.0; // 33 RPM is standard speed 1.0
         let startTime = actx.currentTime;
@@ -362,11 +473,12 @@ window.playVinylAudio = async function(vinylArray) {
             if (noise) {
                 noise.start(adjustedStartTime);
                 noise.stop(adjustedEndTime + 0.1);
+                window.activeOscillators.push(noise);
             } else {
                 osc.start(adjustedStartTime);
                 osc.stop(adjustedEndTime + 0.1);
+                window.activeOscillators.push(osc);
             }
-            window.activeOscillators.push(osc);
         });
 
         // Track global state for AI sequence to match normal vinyl playback structure

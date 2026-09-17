@@ -383,6 +383,14 @@ window.buildKnob = function(panoId, key, label, min, max, step, isInt, displayMu
         window.activeSynth['${panoId}'].${key} = ${isInt ? 'parseInt' : 'parseFloat'}(this.value);
         let dVal = ${displayMult ? 'Math.round(this.value * '+displayMult+')' : 'this.value'};
         let tooltip = document.getElementById('tt_val_${key}_${panoId}'); if(tooltip) { tooltip.innerText = dVal; }
+        if (window.panoAiSequences && window.panoAiSequences['${panoId}']) {
+            window.panoAiSequences['${panoId}'] = null;
+            let aiBtn = document.getElementById('btn-ai-compose-${panoId}');
+            if (aiBtn) {
+                aiBtn.style.background = '';
+                aiBtn.style.color = '';
+            }
+        }
         ${triggerDraw}
     `.replace(/\n/g, '').replace(/\s+/g, ' ');
     
@@ -486,7 +494,7 @@ window.getPopupHTML = function(pano) {
                 <div class="synth-layout-right">
                     <div class="dropdown-box">
 
-                        <select id="sel_mode_${pano.id}" onchange="window.activeSynth['${pano.id}'].mode = this.value;">
+                        <select id="sel_mode_${pano.id}" onchange="window.activeSynth['${pano.id}'].mode = this.value; if(window.panoAiSequences && window.panoAiSequences['${pano.id}']) { window.panoAiSequences['${pano.id}'] = null; let btn = document.getElementById('btn-ai-compose-${pano.id}'); if(btn){ btn.style.background=''; btn.style.color=''; } }">
                             <option value="chord" ${s.mode === 'chord' ? 'selected' : ''}>${t.mod_gleich || "Akkord"}</option>
                             <option value="lr" ${s.mode === 'lr' ? 'selected' : ''}>${t.mod_lr || "L -> R"}</option>
                             <option value="rl" ${s.mode === 'rl' ? 'selected' : ''}>${t.mod_rl || "R -> L"}</option>
@@ -494,7 +502,7 @@ window.getPopupHTML = function(pano) {
                     </div>
                     <div class="dropdown-box">
 
-                        <select id="sel_scale_${pano.id}" onchange="window.activeSynth['${pano.id}'].scale = this.value;">
+                        <select id="sel_scale_${pano.id}" onchange="window.activeSynth['${pano.id}'].scale = this.value; if(window.panoAiSequences && window.panoAiSequences['${pano.id}']) { window.panoAiSequences['${pano.id}'] = null; let btn = document.getElementById('btn-ai-compose-${pano.id}'); if(btn){ btn.style.background=''; btn.style.color=''; } }">
                             <option value="major" ${s.scale === 'major' ? 'selected' : ''}>${t.scale_major || "Dur"}</option>
                             <option value="minor" ${s.scale === 'minor' ? 'selected' : ''}>${t.scale_minor || "Moll"}</option>
                             <option value="lydian" ${s.scale === 'lydian' ? 'selected' : ''}>${t.scale_lydian || "Lydisch"}</option>
@@ -505,7 +513,7 @@ window.getPopupHTML = function(pano) {
                     </div>
                     <div class="dropdown-box">
 
-                        <select id="sel_wave_${pano.id}" onchange="window.activeSynth['${pano.id}'].wave = this.value;">
+                        <select id="sel_wave_${pano.id}" onchange="window.activeSynth['${pano.id}'].wave = this.value; if(window.panoAiSequences && window.panoAiSequences['${pano.id}']) { window.panoAiSequences['${pano.id}'] = null; let btn = document.getElementById('btn-ai-compose-${pano.id}'); if(btn){ btn.style.background=''; btn.style.color=''; } }">
                             <option value="sine" ${s.wave === 'sine' ? 'selected' : ''}>${t.wave_sine || "Sinus"}</option>
                             <option value="triangle" ${s.wave === 'triangle' ? 'selected' : ''}>${t.wave_triangle || "Dreieck"}</option>
                             <option value="sawtooth" ${s.wave === 'sawtooth' ? 'selected' : ''}>${t.wave_sawtooth || "Sägezahn"}</option>
@@ -521,6 +529,8 @@ window.getPopupHTML = function(pano) {
             </div>
 
             <div class="action-btn-row">
+                <button class="icon-btn" id="btn-ai-compose-${pano.id}" onclick="window.aiComposePano('${pano.id}')" title="AI Compose" style="font-size: 11px; padding: 0 5px;">[ AI COMPOSE ]</button>
+                <button class="icon-btn" id="btn-ai-play-${pano.id}" onclick="window.playAiPanoAudio('${pano.id}')" title="AI Play" style="font-size: 11px; padding: 0 5px;">[ AI PLAY ]</button>
                 <button class="icon-btn" title="${t.hint_play_current || 'Play'}" onclick="window.playMultiPanorama('${pano.id}', '${pano.arrayUrl}', false)">▶</button>
                 <button class="icon-btn" title="${t.hint_play_sel || 'Play Selection'}" onclick="window.playMultiPanorama('${pano.id}', '${pano.arrayUrl}', true)">♫</button>
                 <button class="icon-btn" title="${t.hint_load_sel || 'Load Preset'}" onclick="window.loadSelectedPreset('${pano.id}')">⇪</button>
@@ -642,6 +652,145 @@ window.generateVinyl = async function() {
     window.drawVinylCanvas();
 };
 
+window.panoAiSequences = {};
+
+window.aiComposePano = async function(panoId) {
+    let btnAi = document.getElementById(`btn-ai-compose-${panoId}`);
+    if (!btnAi || window.isAiComposing) return;
+
+    const daten = window.panoDataCache[panoId];
+    const s = window.activeSynth[panoId];
+    if (!daten || !s) {
+        alert("Daten nicht gefunden.");
+        return;
+    }
+
+    const topGipfel = window.findePunkte(daten.kurve_y, s.peaks, s.spacing, s.sensibilitaet, 'gipfel');
+    const tiefeTaeler = window.findePunkte(daten.kurve_y, s.valleys, s.spacing, s.sensibilitaet, 'tal');
+    let allePunkte = topGipfel.concat(tiefeTaeler);
+
+    if (allePunkte.length === 0) {
+        alert("Keine Punkte gefunden. Bitte Einstellungen anpassen.");
+        return;
+    }
+
+    if (s.mode === 'lr') allePunkte.sort((a, b) => a.x - b.x);
+    else if (s.mode === 'rl') allePunkte.sort((a, b) => b.x - a.x);
+    else allePunkte.sort((a, b) => a.x - b.x); // Default sort by x
+
+    window.panoAiSequences[panoId] = null;
+
+    window.isAiComposing = true;
+    let originalText = btnAi.innerHTML;
+    let originalStyle = btnAi.getAttribute('style') || '';
+    btnAi.disabled = true;
+
+    let blinkState = false;
+    let blinkInterval = setInterval(() => {
+        blinkState = !blinkState;
+        btnAi.innerHTML = blinkState ? "[ * PROCESSING... ]" : "[ PROCESSING... ]";
+        btnAi.style.background = blinkState ? "#FF6600" : "#1a1a1a";
+        btnAi.style.color = blinkState ? "#1a1a1a" : "#FF6600";
+    }, 500);
+
+    try {
+        if (!window.music_rnn) {
+            window.music_rnn = new mm.MusicRNN('https://storage.googleapis.com/magentadata/js/checkpoints/music_rnn/basic_rnn');
+            await window.music_rnn.initialize();
+        }
+
+        // Limit to 16 points for seed
+        let seedPoints = allePunkte.slice(0, 16);
+
+        // Find min/max height for mapping
+        let minVal = Math.min(...seedPoints.map(p => p.hoehe));
+        let maxVal = Math.max(...seedPoints.map(p => p.hoehe));
+        let range = maxVal - minVal;
+        if (range === 0) range = 1;
+
+        // C minor pentatonic notes (MIDI): C, Eb, F, G, Bb
+        const cMinorPentatonicClasses = [0, 3, 5, 7, 10];
+        let allowedNotes = [];
+        for (let note = 48; note <= 83; note++) {
+            if (cMinorPentatonicClasses.includes(note % 12)) {
+                allowedNotes.push(note);
+            }
+        }
+
+        function snapToScale(midiNote) {
+            return allowedNotes.reduce((prev, curr) =>
+                Math.abs(curr - midiNote) < Math.abs(prev - midiNote) ? curr : prev
+            );
+        }
+
+        let seedSequence = {
+            notes: [],
+            totalTime: 0,
+            quantizationInfo: { stepsPerQuarter: 4 } // 1 step = 1/16th note
+        };
+
+        const stepDuration = 0.25;
+
+        for (let i = 0; i < seedPoints.length; i++) {
+            let normalized = (seedPoints[i].hoehe - minVal) / range;
+            let rawMidi = 48 + (normalized * (83 - 48));
+            let quantizedMidi = snapToScale(Math.round(rawMidi));
+
+            seedSequence.notes.push({
+                pitch: quantizedMidi,
+                quantizedStartStep: i,
+                quantizedEndStep: i + 1,
+                startTime: i * stepDuration,
+                endTime: (i + 1) * stepDuration,
+                velocity: 80
+            });
+        }
+        seedSequence.totalQuantizedSteps = seedPoints.length;
+
+        // Generate melody (64 steps)
+        let generatedSequence = await window.music_rnn.continueSequence(seedSequence, 64, 1.0);
+
+        let mergedNotes = [...seedSequence.notes];
+
+        for (let i = 0; i < generatedSequence.notes.length; i++) {
+            let note = generatedSequence.notes[i];
+            let startStep = seedSequence.totalQuantizedSteps + note.quantizedStartStep;
+            let endStep = seedSequence.totalQuantizedSteps + note.quantizedEndStep;
+
+            mergedNotes.push({
+                pitch: note.pitch,
+                startTime: startStep * stepDuration,
+                endTime: endStep * stepDuration,
+                velocity: note.velocity || 80
+            });
+        }
+
+        window.panoAiSequences[panoId] = {
+            notes: mergedNotes,
+            totalTime: (seedSequence.totalQuantizedSteps + 64) * stepDuration,
+            stepDuration: stepDuration
+        };
+
+        // Success state
+        btnAi.style.background = "#FF6600";
+        btnAi.style.color = "#1a1a1a";
+        btnAi.innerHTML = "[ AI COMPOSE ]";
+        btnAi.disabled = false;
+
+    } catch (e) {
+        console.error("Fehler bei AI Generierung:", e);
+        alert("Fehler bei der AI Generierung.");
+
+        // Reset to original on error
+        btnAi.innerHTML = originalText;
+        btnAi.setAttribute('style', originalStyle);
+        btnAi.disabled = false;
+    } finally {
+        clearInterval(blinkInterval);
+        window.isAiComposing = false;
+    }
+};
+
 window.aiComposeVinyl = async function() {
     let btnAi = document.getElementById('btn-ai-compose');
     if (!btnAi || window.isAiComposing) return;
@@ -754,8 +903,14 @@ window.aiComposeVinyl = async function() {
         alert("Fehler bei der AI Generierung.");
     } finally {
         clearInterval(blinkInterval);
-        btnAi.innerHTML = originalText;
-        btnAi.setAttribute('style', originalStyle);
+        if (window.vinylAiSequence) {
+            btnAi.style.background = "#FF6600";
+            btnAi.style.color = "#1a1a1a";
+            btnAi.innerHTML = "[ AI COMPOSE ]";
+        } else {
+            btnAi.innerHTML = originalText;
+            btnAi.setAttribute('style', originalStyle);
+        }
         btnAi.disabled = false;
         window.isAiComposing = false;
     }
@@ -837,6 +992,7 @@ window.drawVinylCanvas = function() {
 };
 
 window.vinylIsPlaying = false;
+    window.isPlayingAiVinyl = false;
 window.vinylDotAnimationReq = null;
 window.vinylStartTime = null;
 window.vinylProgress = 0;
@@ -953,7 +1109,66 @@ window.stopVinylRotation = function() {
         btnPlay.style.background = '';
         btnPlay.style.color = '';
     }
+    let btnAiPlay = document.getElementById('btn-ai-play');
+    if (btnAiPlay) {
+        btnAiPlay.style.background = '';
+        btnAiPlay.style.color = '';
+    }
     window.vinylIsPlaying = false;
+    window.isPlayingAiVinyl = false;
+};
+
+
+
+window.playAiVinyl = function() {
+    if (!window.vinylAiSequence) {
+        alert("Bitte generiere zuerst eine AI Sequenz!");
+        return;
+    }
+
+    let btnAiPlay = document.getElementById('btn-ai-play');
+
+    if (window.vinylIsPlaying) {
+        window.stopVinylRotation();
+        if (typeof window.stopAllAudio === 'function') {
+            window.stopAllAudio();
+        }
+        if (btnAiPlay) {
+            btnAiPlay.style.background = '';
+            btnAiPlay.style.color = '';
+        }
+        return;
+    }
+
+    window.vinylIsPlaying = true;
+    window.isPlayingAiVinyl = true; // Flag for audio.js
+    if (btnAiPlay) {
+        btnAiPlay.style.background = '#FF6600';
+        btnAiPlay.style.color = '#1a1a1a';
+    }
+
+    if (typeof window.playVinylAudio === 'function') {
+        window.playVinylAudio(window.vinylArray);
+    }
+
+    let canvas = document.getElementById('vinyl-canvas');
+    if (canvas) {
+        let angle = window.vinylRotationAngle || 0;
+        if (window.vinylRotationInterval) clearInterval(window.vinylRotationInterval);
+        window.vinylRotationLastTime = performance.now();
+        window.vinylRotationInterval = setInterval(() => {
+            let rpm = parseFloat(document.getElementById('range_vinyl_speed')?.value || 33);
+            let now = performance.now();
+            let delta = now - window.vinylRotationLastTime;
+            window.vinylRotationLastTime = now;
+            let degPerMs = (rpm * 360) / 60000;
+            angle += degPerMs * delta;
+            window.vinylRotationAngle = angle;
+            canvas.style.transform = `rotate(${angle}deg)`;
+        }, 30);
+    }
+
+    window.startVinylDotAnimation();
 };
 
 window.playVinyl = function() {
@@ -973,6 +1188,7 @@ window.playVinyl = function() {
     }
 
     window.vinylIsPlaying = true;
+    window.isPlayingAiVinyl = false;
     if (btnPlay) {
         btnPlay.style.background = '#FF6600';
         btnPlay.style.color = '#1a1a1a';
