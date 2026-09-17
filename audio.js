@@ -508,7 +508,7 @@ window.playVinylAudio = async function(vinylArray) {
 
 window.scheduleVinylAudioEvents = function(rpm, scheduleFromTime) {
     let state = window.vinylAudioState;
-    if (!state) return;
+    if (!state || state.isAi) return;
 
     let actx = state.actx;
     let totalTime = state.getVinylDuration(rpm);
