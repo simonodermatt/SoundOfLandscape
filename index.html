@@ -98,6 +98,7 @@
 
     <div id="vinyl-controls">
         <button class="icon-btn" id="btn-vinyl-generate" onclick="generateVinyl()" title="Generieren">⚄</button>
+        <button class="icon-btn" id="btn-ai-compose" onclick="aiComposeVinyl()" title="AI Compose" style="font-size: 11px; padding: 0 5px;">[ AI COMPOSE ]</button>
         <button class="icon-btn" id="btn-vinyl-play" onclick="playVinyl()" title="Abspielen">▶</button>
         <button class="icon-btn" id="btn-vinyl-load" onclick="loadVinyl()" title="Laden">⇪</button>
         <button class="icon-btn" id="btn-vinyl-save" onclick="saveVinyl()" title="Speichern">⚑</button>
@@ -121,6 +122,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
 <!-- PapaParse Bibliothek für den CSV-Import -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<!-- Magenta Music für KI-Melodie-Generierung -->
+    <script src="https://cdn.jsdelivr.net/npm/@magenta/music@1.23.1/dist/magentamusic.min.js"></script>
 
 <!-- Logik v=3 -->
 <script src="lang.js?v=10"></script>

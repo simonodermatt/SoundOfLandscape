@@ -310,7 +310,11 @@ window.saveVinyl = async function() {
     for(let i=0; i<window.vinylArray.length; i+=stepSize) {
         compressedArray.push(Math.round(window.vinylArray[i]));
     }
-    let arrayString = JSON.stringify(compressedArray);
+    let arrayData = { array: compressedArray };
+    if (window.vinylAiSequence) {
+        arrayData.aiSequence = window.vinylAiSequence;
+    }
+    let arrayString = JSON.stringify(arrayData);
 
     let payload = {
         action: "save",
@@ -414,6 +418,7 @@ window.loadVinyl = function() {
     if (p && p.vinyl_array) {
         try {
             let arr;
+            let aiSeq = null;
             try {
                 arr = typeof p.vinyl_array === 'string' ? JSON.parse(p.vinyl_array) : p.vinyl_array;
             } catch (err) {
@@ -424,6 +429,12 @@ window.loadVinyl = function() {
             // Handle if arr is a string after parsing (double JSON encoded)
             if (typeof arr === 'string') {
                 arr = JSON.parse(arr);
+            }
+
+            if (arr && !Array.isArray(arr) && arr.array) {
+                // It's our packed object { array: [...], aiSequence: {...} }
+                aiSeq = arr.aiSequence;
+                arr = arr.array;
             }
 
             if (!Array.isArray(arr)) {
@@ -446,6 +457,8 @@ window.loadVinyl = function() {
             }
 
             window.vinylArray = expandedArray;
+            window.vinylAiSequence = aiSeq || null;
+            if (window.drawVinylCanvas) { window.drawVinylCanvas(); }
 
             if (p.scale) {
                 let selScale = document.getElementById('sel_vinyl_scale');
