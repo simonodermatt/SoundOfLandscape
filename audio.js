@@ -9,6 +9,7 @@ const scales = {
     lydian: [2, 2, 2, 1, 2, 2, 1], dorian: [2, 1, 2, 2, 2, 1, 2],
     pentatonic: [2, 2, 3, 2, 3], hirajoshi: [2, 1, 4, 1, 4]
 };
+window.scales = scales;
 
 function generateScale(scaleName, octaves) {
     const intervals = scales[scaleName] || scales.major;
@@ -396,100 +397,15 @@ window.playVinylAudio = async function(vinylArray) {
 
     // Check if we have an AI generated sequence AND we are playing it via playAiVinyl
     if (window.vinylAiSequence && window.isPlayingAiVinyl) {
-        let rpm = parseFloat(document.getElementById('range_vinyl_speed')?.value || 33);
-        let speedMultiplier = rpm / 33.0; // 33 RPM is standard speed 1.0
-        let startTime = actx.currentTime;
-
-        // Global gain for AI sequence
-        const globalGain = actx.createGain();
-        globalGain.gain.value = synthSettings.volume;
-        globalGain.connect(window.masterCompressor);
-
-        window.vinylAiSequence.notes.forEach(note => {
-            const osc = actx.createOscillator();
-
-            // Map MIDI pitch to frequency
-            const freq = 440 * Math.pow(2, (note.pitch - 69) / 12);
-            osc.frequency.value = freq;
-
-            let filter = null;
-            let osc2 = null;
-            let noise = null;
-
-            if (synthSettings.wave === 'darkpad') {
-                osc.type = 'sawtooth';
-            } else if (synthSettings.wave === 'chime') {
-                osc.type = 'sine';
-                osc2 = actx.createOscillator();
-                osc2.type = 'triangle';
-                osc2.frequency.value = freq * 2; // Octave higher for chime
-            } else if (synthSettings.wave === 'noise') {
-                const bufferSize = actx.sampleRate * 2.0;
-                const buffer = actx.createBuffer(1, bufferSize, actx.sampleRate);
-                const data = buffer.getChannelData(0);
-                for (let j = 0; j < bufferSize; j++) { data[j] = Math.random() * 2 - 1; }
-                noise = actx.createBufferSource();
-                noise.buffer = buffer;
-                noise.loop = true;
-                filter = actx.createBiquadFilter();
-                filter.type = 'bandpass'; filter.Q.value = 10;
-                filter.frequency.value = freq;
-                noise.connect(filter);
-            } else if (synthSettings.wave === 'detuned_saw') {
-                osc.type = 'sawtooth';
-                osc2 = actx.createOscillator();
-                osc2.type = 'sawtooth';
-                osc2.frequency.value = freq * 1.01;
-            } else {
-                osc.type = synthSettings.wave;
-            }
-
-            const noteGain = actx.createGain();
-
-            // Adjust start/end times based on speed multiplier
-            let adjustedStartTime = startTime + (note.startTime / speedMultiplier);
-            let adjustedEndTime = startTime + (note.endTime / speedMultiplier);
-            let noteDuration = adjustedEndTime - adjustedStartTime;
-
-            // Arpeggiator-like envelope (fast attack, exponential decay)
-            noteGain.gain.setValueAtTime(0, adjustedStartTime);
-            noteGain.gain.linearRampToValueAtTime(1.0, adjustedStartTime + 0.02);
-            noteGain.gain.exponentialRampToValueAtTime(0.01, adjustedEndTime);
-
-            // Connect to noteGain
-            if (noise) {
-                filter.connect(noteGain);
-                window.activeOscillators.push(noise);
-            } else {
-                osc.connect(noteGain);
-            }
-            if (osc2) {
-                osc2.connect(noteGain);
-                window.activeOscillators.push(osc2);
-            }
-
-            noteGain.connect(globalGain);
-
-            if (noise) {
-                noise.start(adjustedStartTime);
-                noise.stop(adjustedEndTime + 0.1);
-                window.activeOscillators.push(noise);
-            } else {
-                osc.start(adjustedStartTime);
-                osc.stop(adjustedEndTime + 0.1);
-                window.activeOscillators.push(osc);
-            }
-        });
-
-        // Track global state for AI sequence to match normal vinyl playback structure
         window.vinylAudioState = {
             isAi: true,
-            totalTime: window.vinylAiSequence.totalTime / speedMultiplier,
-            startTime: startTime,
             actx: actx,
-            getVinylDuration: (currentRpm) => { return window.vinylAiSequence.totalTime / (currentRpm / 33.0); }
+            synthSettings: synthSettings,
+            getVinylDuration: (currentRpm) => { return window.vinylAiSequence.totalTime / (currentRpm / 33.0); },
+            stopTimeoutId: null
         };
-
+        let rpm = parseFloat(document.getElementById('range_vinyl_speed')?.value || 33);
+        window.scheduleAiVinylAudioEvents(rpm, actx.currentTime);
         return;
     }
 
@@ -703,6 +619,146 @@ window.scheduleVinylAudioEvents = function(rpm, scheduleFromTime) {
 
 window.updateVinylAudioSpeed = function(newRPM) {
     if (window.vinylAudioState) {
-        window.scheduleVinylAudioEvents(newRPM, window.vinylAudioState.actx.currentTime);
+        if (window.vinylAudioState.isAi) {
+            window.scheduleAiVinylAudioEvents(newRPM, window.vinylAudioState.actx.currentTime);
+        } else {
+            window.scheduleVinylAudioEvents(newRPM, window.vinylAudioState.actx.currentTime);
+        }
     }
+};
+
+window.scheduleAiVinylAudioEvents = function(rpm, startTime) {
+    let state = window.vinylAudioState;
+    if (!state || !state.isAi || !window.vinylAiSequence) return;
+
+    let actx = state.actx;
+    let speedMultiplier = rpm / 33.0; // 33 RPM is standard speed 1.0
+
+    // Total original time
+    let totalOriginalTime = window.vinylAiSequence.totalTime;
+    let totalAdjustedTime = totalOriginalTime / speedMultiplier;
+
+    // Stop previous scheduled notes if we are rescheduling (e.g. speed change)
+    if (state.stopTimeoutId) {
+        clearTimeout(state.stopTimeoutId);
+    }
+
+    // Since we create NEW oscillators for AI sequence notes every time, we need to clear old ones
+    // if we are updating speed on the fly.
+    // We will do a mini stopAllAudio just for AI notes.
+    if (window.activeAiOscillators) {
+        window.activeAiOscillators.forEach(osc => {
+            try { osc.stop(); osc.disconnect(); } catch (e) {}
+        });
+    }
+    window.activeAiOscillators = [];
+
+    // Calculate current progress
+    let progress = (typeof window.vinylProgress !== 'undefined') ? window.vinylProgress : 0;
+
+    // Time passed in the ORIGINAL timeline
+    let originalTimePassed = progress * totalOriginalTime;
+
+    let remainderAdjustedTime = (totalOriginalTime - originalTimePassed) / speedMultiplier;
+
+    // We recreate global gain for the remaining sequence
+    if (state.globalGain) {
+        try { state.globalGain.disconnect(); } catch(e){}
+    }
+    state.globalGain = actx.createGain();
+    state.globalGain.gain.value = state.synthSettings.volume;
+    state.globalGain.connect(window.masterCompressor);
+
+    window.vinylAiSequence.notes.forEach(note => {
+        // Skip notes that have already ENDED in the original timeline
+        if (note.endTime <= originalTimePassed) return;
+
+        // If a note has started but not ended, we adjust its start time to NOW.
+        let isPlayingNow = note.startTime <= originalTimePassed && note.endTime > originalTimePassed;
+
+        // Original time remaining for this note to start
+        let originalDelay = isPlayingNow ? 0 : (note.startTime - originalTimePassed);
+        let adjustedDelay = originalDelay / speedMultiplier;
+
+        let adjustedStartTime = startTime + adjustedDelay;
+
+        // Duration of the note remaining
+        let originalNoteDuration = note.endTime - (isPlayingNow ? originalTimePassed : note.startTime);
+        let adjustedNoteDuration = originalNoteDuration / speedMultiplier;
+        let adjustedEndTime = adjustedStartTime + adjustedNoteDuration;
+
+        const osc = actx.createOscillator();
+        const freq = 440 * Math.pow(2, (note.pitch - 69) / 12);
+        osc.frequency.value = freq;
+
+        let filter = null;
+        let osc2 = null;
+        let noise = null;
+
+        if (state.synthSettings.wave === 'darkpad') {
+            osc.type = 'sawtooth';
+        } else if (state.synthSettings.wave === 'chime') {
+            osc.type = 'sine';
+            osc2 = actx.createOscillator();
+            osc2.type = 'triangle';
+            osc2.frequency.value = freq * 2;
+        } else if (state.synthSettings.wave === 'noise') {
+            const bufferSize = actx.sampleRate * 2.0;
+            const buffer = actx.createBuffer(1, bufferSize, actx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let j = 0; j < bufferSize; j++) { data[j] = Math.random() * 2 - 1; }
+            noise = actx.createBufferSource();
+            noise.buffer = buffer;
+            noise.loop = true;
+            filter = actx.createBiquadFilter();
+            filter.type = 'bandpass'; filter.Q.value = 10;
+            filter.frequency.value = freq;
+            noise.connect(filter);
+        } else if (state.synthSettings.wave === 'detuned_saw') {
+            osc.type = 'sawtooth';
+            osc2 = actx.createOscillator();
+            osc2.type = 'sawtooth';
+            osc2.frequency.value = freq * 1.01;
+        } else {
+            osc.type = state.synthSettings.wave;
+        }
+
+        const noteGain = actx.createGain();
+
+        noteGain.gain.setValueAtTime(0, adjustedStartTime);
+        noteGain.gain.linearRampToValueAtTime(1.0, adjustedStartTime + 0.02);
+        noteGain.gain.exponentialRampToValueAtTime(0.01, adjustedEndTime);
+
+        if (noise) {
+            filter.connect(noteGain);
+            window.activeAiOscillators.push(noise);
+            window.activeOscillators.push(noise); // keep in global for hard stop
+        } else {
+            osc.connect(noteGain);
+        }
+        if (osc2) {
+            osc2.connect(noteGain);
+            window.activeAiOscillators.push(osc2);
+            window.activeOscillators.push(osc2);
+        }
+
+        noteGain.connect(state.globalGain);
+
+        if (noise) {
+            noise.start(adjustedStartTime);
+            noise.stop(adjustedEndTime + 0.1);
+        } else {
+            osc.start(adjustedStartTime);
+            osc.stop(adjustedEndTime + 0.1);
+            window.activeAiOscillators.push(osc);
+            window.activeOscillators.push(osc);
+        }
+    });
+
+    state.stopTimeoutId = setTimeout(() => {
+        if (typeof window.stopVinylRotation === 'function') {
+            window.stopVinylRotation();
+        }
+    }, remainderAdjustedTime * 1000);
+    window.audioTimeouts.push(state.stopTimeoutId);
 };
