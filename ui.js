@@ -602,6 +602,7 @@ window.generateVinyl = async function() {
     if (window.isVinylGenerating) return;
     window.isVinylGenerating = true;
     window.vinylArray = [];
+    window.vinylProgress = 0;
 
     let btnGen = document.getElementById('btn-vinyl-generate');
     let originalText = btnGen.innerHTML;
@@ -708,16 +709,28 @@ window.aiComposePano = async function(panoId) {
         let range = maxVal - minVal;
         if (range === 0) range = 1;
 
-        // C minor pentatonic notes (MIDI): C, Eb, F, G, Bb
-        const cMinorPentatonicClasses = [0, 3, 5, 7, 10];
+        // Generate allowed notes dynamically based on selected scale and octaves
+        let scaleName = s.scale || 'lydian';
+        let octaves = s.oktaven || 3;
+        let intervals = window.scales && window.scales[scaleName] ? window.scales[scaleName] : [2, 2, 1, 2, 2, 2, 1]; // Fallback to major
+
         let allowedNotes = [];
-        for (let note = 48; note <= 83; note++) {
-            if (cMinorPentatonicClasses.includes(note % 12)) {
-                allowedNotes.push(note);
+        let baseNote = 48; // C3
+        let currentNote = baseNote;
+
+        allowedNotes.push(currentNote);
+        for (let o = 0; o < octaves; o++) {
+            for (let i = 0; i < intervals.length; i++) {
+                currentNote += intervals[i];
+                allowedNotes.push(currentNote);
             }
         }
 
+        let minMidi = allowedNotes[0];
+        let maxMidi = allowedNotes[allowedNotes.length - 1];
+
         function snapToScale(midiNote) {
+            if (allowedNotes.length === 0) return midiNote;
             return allowedNotes.reduce((prev, curr) =>
                 Math.abs(curr - midiNote) < Math.abs(prev - midiNote) ? curr : prev
             );
@@ -733,7 +746,7 @@ window.aiComposePano = async function(panoId) {
 
         for (let i = 0; i < seedPoints.length; i++) {
             let normalized = (seedPoints[i].hoehe - minVal) / range;
-            let rawMidi = 48 + (normalized * (83 - 48));
+            let rawMidi = minMidi + (normalized * (maxMidi - minMidi));
             let quantizedMidi = snapToScale(Math.round(rawMidi));
 
             seedSequence.notes.push({
@@ -796,6 +809,7 @@ window.aiComposeVinyl = async function() {
     if (!btnAi || window.isAiComposing) return;
 
     window.vinylAiSequence = null; // Clear previous AI sequence to allow new generation
+    window.vinylProgress = 0;
 
     if (!window.vinylArray || window.vinylArray.length < 16) {
         alert("Bitte generiere zuerst ein Vinyl-Array mit ausreichend Daten (mind. 16 Punkte)!");
@@ -831,18 +845,28 @@ window.aiComposeVinyl = async function() {
         let range = maxVal - minVal;
         if (range === 0) range = 1;
 
-        // 3. Map to MIDI notes (48 to 83) and quantize to C minor pentatonic
-        // C minor pentatonic notes (MIDI): C, Eb, F, G, Bb
-        // We will build a list of all C minor pentatonic notes between 48 and 83
-        const cMinorPentatonicClasses = [0, 3, 5, 7, 10];
+        // 3. Map to MIDI notes dynamically based on selected scale and octaves
+        let scaleName = document.getElementById('sel_vinyl_scale')?.value || 'pentatonic';
+        let octaves = parseInt(document.getElementById('sel_vinyl_octaves')?.value) || 4;
+        let intervals = window.scales && window.scales[scaleName] ? window.scales[scaleName] : [2, 2, 1, 2, 2, 2, 1]; // Fallback to major
+
         let allowedNotes = [];
-        for (let note = 48; note <= 83; note++) {
-            if (cMinorPentatonicClasses.includes(note % 12)) {
-                allowedNotes.push(note);
+        let baseNote = 48; // C3
+        let currentNote = baseNote;
+
+        allowedNotes.push(currentNote);
+        for (let o = 0; o < octaves; o++) {
+            for (let i = 0; i < intervals.length; i++) {
+                currentNote += intervals[i];
+                allowedNotes.push(currentNote);
             }
         }
 
+        let minMidi = allowedNotes[0];
+        let maxMidi = allowedNotes[allowedNotes.length - 1];
+
         function snapToScale(midiNote) {
+            if (allowedNotes.length === 0) return midiNote;
             return allowedNotes.reduce((prev, curr) =>
                 Math.abs(curr - midiNote) < Math.abs(prev - midiNote) ? curr : prev
             );
@@ -858,7 +882,7 @@ window.aiComposeVinyl = async function() {
 
         for (let i = 0; i < seedPoints.length; i++) {
             let normalized = (seedPoints[i] - minVal) / range;
-            let rawMidi = 48 + (normalized * (83 - 48));
+            let rawMidi = minMidi + (normalized * (maxMidi - minMidi));
             let quantizedMidi = snapToScale(Math.round(rawMidi));
 
             seedSequence.notes.push({
@@ -1033,7 +1057,11 @@ window.startVinylDotAnimation = function() {
 
     window.vinylStartTime = performance.now();
     let lastTime = window.vinylStartTime;
-    window.vinylProgress = 0;
+
+    // Reset progress only if we've reached the end
+    if (window.vinylProgress >= 1.0) {
+        window.vinylProgress = 0;
+    }
 
     function drawDot(time) {
         ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
