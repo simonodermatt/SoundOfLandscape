@@ -56,7 +56,7 @@
             <div class="te-tooltip" id="tt_vinyl_speed"><span class="tt-label">Speed: </span><span id="tt_val_vinyl_speed">33</span><span class="tt-unit"> RPM</span></div>
             <div class="fader-icon-container" style="color: #1a1a1a;">◷</div>
             <div class="fader-container" id="vinyl-fader-container">
-                <input type="range" id="range_vinyl_speed" class="te-fader" min="1" max="48" step="1" value="33" oninput="document.getElementById('tt_val_vinyl_speed').innerText = this.value; if(window.updateVinylSpeed) window.updateVinylSpeed(this.value);">
+                <input type="range" id="range_vinyl_speed" class="te-fader" min="1" max="48" step="1" value="33" oninput="document.getElementById('tt_val_vinyl_speed').innerText = this.value; if(window.updateVinylSpeed) window.updateVinylSpeed(this.value); if(window.vinylAiSequence) { window.vinylAiSequence = null; let btn = document.getElementById('btn-ai-compose'); if(btn){ btn.style.background=''; btn.style.color=''; } }">
             </div>
         </div>
 
@@ -67,7 +67,7 @@
     </div>
 
     <div style="display: flex; width: 100%; flex-direction: row; gap: 0; border: 1px solid #1a1a1a; margin-top: 5px;">
-        <select id="sel_vinyl_octaves" style="flex: 1; border: none; border-right: 1px solid #333; background: #111; color: #00BFFF; padding: 4px; outline: none; cursor: pointer; text-transform: uppercase; font-size: 11px;">
+        <select id="sel_vinyl_octaves" onchange="if(window.vinylAiSequence) { window.vinylAiSequence = null; let btn = document.getElementById('btn-ai-compose'); if(btn){ btn.style.background=''; btn.style.color=''; } }" style="flex: 1; border: none; border-right: 1px solid #333; background: #111; color: #00BFFF; padding: 4px; outline: none; cursor: pointer; text-transform: uppercase; font-size: 11px;">
             <option value="1">1 Oktave</option>
             <option value="2">2 Oktaven</option>
             <option value="3">3 Oktaven</option>
@@ -75,7 +75,7 @@
             <option value="5">5 Oktaven</option>
             <option value="6">6 Oktaven</option>
         </select>
-        <select id="sel_vinyl_scale" style="flex: 1; border: none; border-right: 1px solid #333; background: #111; color: #00BFFF; padding: 4px; outline: none; cursor: pointer; text-transform: uppercase; font-size: 11px;">
+        <select id="sel_vinyl_scale" onchange="if(window.vinylAiSequence) { window.vinylAiSequence = null; let btn = document.getElementById('btn-ai-compose'); if(btn){ btn.style.background=''; btn.style.color=''; } }" style="flex: 1; border: none; border-right: 1px solid #333; background: #111; color: #00BFFF; padding: 4px; outline: none; cursor: pointer; text-transform: uppercase; font-size: 11px;">
             <option value="major">Dur</option>
             <option value="minor">Moll</option>
             <option value="lydian">Lydisch</option>
@@ -83,7 +83,7 @@
             <option value="pentatonic" selected>Pentatonik</option>
             <option value="hirajoshi">Hirajōshi</option>
         </select>
-        <select id="sel_vinyl_wave" style="flex: 1; border: none; background: #111; color: #00BFFF; padding: 4px; outline: none; cursor: pointer; text-transform: uppercase; font-size: 11px;">
+        <select id="sel_vinyl_wave" onchange="if(window.vinylAiSequence) { window.vinylAiSequence = null; let btn = document.getElementById('btn-ai-compose'); if(btn){ btn.style.background=''; btn.style.color=''; } }" style="flex: 1; border: none; background: #111; color: #00BFFF; padding: 4px; outline: none; cursor: pointer; text-transform: uppercase; font-size: 11px;">
             <option value="sine">Sinus</option>
             <option value="triangle">Dreieck</option>
             <option value="sawtooth">Sägezahn</option>
@@ -99,6 +99,7 @@
     <div id="vinyl-controls">
         <button class="icon-btn" id="btn-vinyl-generate" onclick="generateVinyl()" title="Generieren">⚄</button>
         <button class="icon-btn" id="btn-ai-compose" onclick="aiComposeVinyl()" title="AI Compose" style="font-size: 11px; padding: 0 5px;">[ AI COMPOSE ]</button>
+        <button class="icon-btn" id="btn-ai-play" onclick="playAiVinyl()" title="AI Play" style="font-size: 11px; padding: 0 5px;">[ AI PLAY ]</button>
         <button class="icon-btn" id="btn-vinyl-play" onclick="playVinyl()" title="Abspielen">▶</button>
         <button class="icon-btn" id="btn-vinyl-load" onclick="loadVinyl()" title="Laden">⇪</button>
         <button class="icon-btn" id="btn-vinyl-save" onclick="saveVinyl()" title="Speichern">⚑</button>

@@ -367,11 +367,12 @@ window.playAiPanoAudio = async function(panoId) {
         if (noise) {
             noise.start(noteStartTime);
             noise.stop(noteEndTime + release + 0.1);
+            window.activeOscillators.push(noise);
         } else {
             osc.start(noteStartTime);
             osc.stop(noteEndTime + release + 0.1);
+            window.activeOscillators.push(osc);
         }
-        window.activeOscillators.push(osc);
     });
 };
 
@@ -393,8 +394,8 @@ window.playVinylAudio = async function(vinylArray) {
 
     if(actx.state === 'suspended') await actx.resume();
 
-    // Check if we have an AI generated sequence
-    if (window.vinylAiSequence) {
+    // Check if we have an AI generated sequence AND we are playing it via playAiVinyl
+    if (window.vinylAiSequence && window.isPlayingAiVinyl) {
         let rpm = parseFloat(document.getElementById('range_vinyl_speed')?.value || 33);
         let speedMultiplier = rpm / 33.0; // 33 RPM is standard speed 1.0
         let startTime = actx.currentTime;
@@ -472,11 +473,12 @@ window.playVinylAudio = async function(vinylArray) {
             if (noise) {
                 noise.start(adjustedStartTime);
                 noise.stop(adjustedEndTime + 0.1);
+                window.activeOscillators.push(noise);
             } else {
                 osc.start(adjustedStartTime);
                 osc.stop(adjustedEndTime + 0.1);
+                window.activeOscillators.push(osc);
             }
-            window.activeOscillators.push(osc);
         });
 
         // Track global state for AI sequence to match normal vinyl playback structure
