@@ -646,6 +646,8 @@ window.aiComposeVinyl = async function() {
     let btnAi = document.getElementById('btn-ai-compose');
     if (!btnAi || window.isAiComposing) return;
 
+    window.vinylAiSequence = null; // Clear previous AI sequence to allow new generation
+
     if (!window.vinylArray || window.vinylArray.length < 16) {
         alert("Bitte generiere zuerst ein Vinyl-Array mit ausreichend Daten (mind. 16 Punkte)!");
         return;
