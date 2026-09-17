@@ -57,7 +57,8 @@ const text = {
         vinyl_generate: "Generieren",
         vinyl_play: "Abspielen",
         vinyl_save: "Speichern",
-        vinyl_load: "Laden"
+        vinyl_load: "Laden",
+        vinyl_mutation: "Mutation"
     },
     fr: {
         sprache: "Langue:",
@@ -116,7 +117,8 @@ const text = {
         vinyl_generate: "Générer",
         vinyl_play: "Jouer",
         vinyl_save: "Sauvegarder",
-        vinyl_load: "Charger"
+        vinyl_load: "Charger",
+        vinyl_mutation: "Mutation"
     },
     it: {
         sprache: "Lingua:",
@@ -175,7 +177,8 @@ const text = {
         vinyl_generate: "Generare",
         vinyl_play: "Giocare",
         vinyl_save: "Salvare",
-        vinyl_load: "Caricare"
+        vinyl_load: "Caricare",
+        vinyl_mutation: "Mutazione"
     },
     en: {
         sprache: "Language:",
@@ -234,7 +237,8 @@ const text = {
         vinyl_generate: "Generate",
         vinyl_play: "Play",
         vinyl_save: "Save",
-        vinyl_load: "Load"
+        vinyl_load: "Load",
+        vinyl_mutation: "Mutation"
     },
     uk: {
         sprache: "Мова:",
@@ -293,7 +297,8 @@ const text = {
         vinyl_generate: "Згенерувати",
         vinyl_play: "Відтворити",
         vinyl_save: "Зберегти",
-        vinyl_load: "Завантажити"
+        vinyl_load: "Завантажити",
+        vinyl_mutation: "Мутація"
     },
     ru: {
         sprache: "Язык:",
@@ -352,6 +357,7 @@ const text = {
         vinyl_generate: "Сгенерировать",
         vinyl_play: "Воспроизвести",
         vinyl_save: "Сохранить",
-        vinyl_load: "Загрузить"
+        vinyl_load: "Загрузить",
+        vinyl_mutation: "Мутация"
     }
 };
