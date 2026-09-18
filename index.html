@@ -114,6 +114,22 @@
         <button class="icon-btn" id="btn-vinyl-save" onclick="saveVinyl()" title="Speichern">⚑</button>
     </div>
 
+
+    <!-- MIDI K.O. II Section -->
+    <div style="width: 100%; border: 1px solid #1a1a1a; margin-top: 10px; background: #e5e0d8; padding: 5px; box-sizing: border-box;">
+        <div style="font-size: 11px; text-transform: uppercase; margin-bottom: 5px; color: #1a1a1a; font-weight: bold; text-align: center;">[ MIDI K.O. II ]</div>
+        <div style="display: flex; gap: 5px; width: 100%;">
+            <select id="sel_midi_out" onchange="window.selectMidiOutput()" style="flex: 1; border: none; background: #111; color: #00BFFF; padding: 4px; outline: none; cursor: pointer; text-transform: uppercase; font-size: 11px;">
+                <option value="">-- NO MIDI OUT --</option>
+            </select>
+            <select id="sel_midi_in" onchange="window.selectMidiInput()" style="flex: 1; border: none; background: #111; color: #00BFFF; padding: 4px; outline: none; cursor: pointer; text-transform: uppercase; font-size: 11px;">
+                <option value="">-- NO MIDI IN --</option>
+            </select>
+            <input type="number" id="num_midi_channel" value="1" min="1" max="16" title="MIDI Channel" style="width: 40px; border: none; background: #111; color: #00BFFF; padding: 4px; text-align: center; outline: none; font-family: monospace; font-size: 11px;">
+        </div>
+        <button id="btn-init-midi" class="icon-btn" onclick="window.initMIDI()" style="width: 100%; margin-top: 5px; font-size: 11px; padding: 4px;">[ CONNECT MIDI ]</button>
+    </div>
+
     <div id="vinyl-presets-list" style="margin-top: 10px; max-height: 100px; overflow-y: auto; overflow-x: hidden; width: 100%; box-sizing: border-box;"></div>
 </div>
 
@@ -140,6 +156,7 @@
 <script src="config.js?v=6"></script>
 <script src="api.js?v=6"></script>
 <script src="audio.js?v=2"></script>
+<script src="midi.js"></script>
 <script src="ui.js?v=11"></script>
     
 </body>

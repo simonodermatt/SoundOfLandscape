@@ -374,6 +374,20 @@ window.playAiPanoAudio = async function(panoId) {
             osc.stop(noteEndTime + release + 0.1);
             window.activeOscillators.push(osc);
         }
+
+        // MIDI Send Logic
+        if (window.midiOutput && typeof window.sendMidiNote === 'function') {
+            let midiPitch = note.pitch;
+            let midiVelocity = note.velocity || 100;
+
+            let delayMs = (noteStartTime - startTime) * 1000;
+            let durationMs = (noteEndTime - noteStartTime + release) * 1000;
+
+            let chInput = document.getElementById('num_midi_channel');
+            let channel = chInput ? parseInt(chInput.value) : 1;
+
+            window.sendMidiNote(midiPitch, midiVelocity, durationMs, delayMs, channel);
+        }
     });
 };
 
@@ -593,6 +607,21 @@ window.scheduleVinylAudioEvents = function(rpm, scheduleFromTime) {
                 state.osc2.frequency.setValueAtTime(freq * 1.02, noteStartTime);
             }
         }
+
+        // MIDI Send Logic
+        if (window.midiOutput && typeof window.sendMidiNote === 'function') {
+            let midiPitch = window.freqToMidiPitch(freq);
+            let midiVelocity = 100; // default for non-AI
+
+            // Calculate note duration (time until next note, or small gap)
+            let noteDurationMs = (timePerPoint * 1000) * 0.9;
+            let delayMs = delayFromNow * 1000;
+
+            let chInput = document.getElementById('num_midi_channel');
+            let channel = chInput ? parseInt(chInput.value) : 1;
+
+            window.sendMidiNote(midiPitch, midiVelocity, noteDurationMs, delayMs, channel);
+        }
     }
 
     // Fade out at the end
@@ -752,6 +781,20 @@ window.scheduleAiVinylAudioEvents = function(rpm, startTime) {
             osc.stop(adjustedEndTime + 0.1);
             window.activeAiOscillators.push(osc);
             window.activeOscillators.push(osc);
+        }
+
+        // MIDI Send Logic
+        if (window.midiOutput && typeof window.sendMidiNote === 'function') {
+            let midiPitch = note.pitch;
+            let midiVelocity = note.velocity || 100;
+
+            let delayMs = adjustedDelay * 1000;
+            let durationMs = adjustedNoteDuration * 1000;
+
+            let chInput = document.getElementById('num_midi_channel');
+            let channel = chInput ? parseInt(chInput.value) : 1;
+
+            window.sendMidiNote(midiPitch, midiVelocity, durationMs, delayMs, channel);
         }
     });
 
