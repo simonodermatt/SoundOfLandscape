@@ -174,6 +174,34 @@ window.changeLanguage = function(lang) {
     if (btnLoad) btnLoad.title = text[lang].vinyl_load || "Load";
     let lblMutation = document.getElementById('lbl_mutation');
     if (lblMutation) lblMutation.innerText = (text[lang].vinyl_mutation || "Mutation") + ": ";
+    // Update Vinyl Dropdowns
+    let selVinylOctaves = document.getElementById('sel_vinyl_octaves');
+    if (selVinylOctaves) {
+        for (let i = 0; i < selVinylOctaves.options.length; i++) {
+            let opt = selVinylOctaves.options[i];
+            let key = 'oktave_' + opt.value;
+            if (text[lang][key]) opt.text = text[lang][key];
+        }
+    }
+
+    let selVinylScale = document.getElementById('sel_vinyl_scale');
+    if (selVinylScale) {
+        for (let i = 0; i < selVinylScale.options.length; i++) {
+            let opt = selVinylScale.options[i];
+            let key = 'scale_' + opt.value;
+            if (text[lang][key]) opt.text = text[lang][key];
+        }
+    }
+
+    let selVinylWave = document.getElementById('sel_vinyl_wave');
+    if (selVinylWave) {
+        for (let i = 0; i < selVinylWave.options.length; i++) {
+            let opt = selVinylWave.options[i];
+            let key = 'wave_' + opt.value;
+            if (text[lang][key]) opt.text = text[lang][key];
+        }
+    }
+
 
     let activeModal = document.getElementById('active-pano-modal');
     if (activeModal && window.currentOpenPano) {
@@ -314,6 +342,8 @@ window.toggleViewMode = function(panoId, isRaster) {
 };
 
 window.drawLines = function(panoId) {
+    const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
+
     const daten = window.panoDataCache[panoId];
     if(!daten) return; 
     
@@ -675,7 +705,7 @@ window.aiComposePano = async function(panoId) {
     const daten = window.panoDataCache[panoId];
     const s = window.activeSynth[panoId];
     if (!daten || !s) {
-        alert("Daten nicht gefunden.");
+        alert(t.alert_data_not_found || "Daten nicht gefunden.");
         return;
     }
 
@@ -684,7 +714,7 @@ window.aiComposePano = async function(panoId) {
     let allePunkte = topGipfel.concat(tiefeTaeler);
 
     if (allePunkte.length === 0) {
-        alert("Keine Punkte gefunden. Bitte Einstellungen anpassen.");
+        alert(t.alert_no_points_adj || "Keine Punkte gefunden. Bitte Einstellungen anpassen.");
         return;
     }
 
@@ -839,7 +869,7 @@ window.aiComposePano = async function(panoId) {
 
     } catch (e) {
         console.error("Fehler bei AI Generierung:", e);
-        alert("Fehler bei der AI Generierung.");
+        alert(t.alert_ai_error || "Fehler bei der AI Generierung.");
 
         // Reset to original on error
         btnAi.innerHTML = originalText;
@@ -852,6 +882,8 @@ window.aiComposePano = async function(panoId) {
 };
 
 window.aiComposeVinyl = async function() {
+    const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
+
     let btnAi = document.getElementById('btn-ai-compose');
     if (!btnAi || window.isAiComposing) return;
 
@@ -859,7 +891,7 @@ window.aiComposeVinyl = async function() {
     window.vinylProgress = 0;
 
     if (!window.vinylArray || window.vinylArray.length < 16) {
-        alert("Bitte generiere zuerst ein Vinyl-Array mit ausreichend Daten (mind. 16 Punkte)!");
+        alert(t.alert_gen_vinyl_array_data || "Bitte generiere zuerst ein Vinyl-Array mit ausreichend Daten (mind. 16 Punkte)!");
         return;
     }
 
@@ -999,7 +1031,7 @@ window.aiComposeVinyl = async function() {
 
     } catch (e) {
         console.error("Fehler bei AI Generierung:", e);
-        alert("Fehler bei der AI Generierung.");
+        alert(t.alert_ai_error || "Fehler bei der AI Generierung.");
     } finally {
         clearInterval(blinkInterval);
         if (window.vinylAiSequence) {
@@ -1102,6 +1134,12 @@ window.startVinylDotAnimation = function() {
     if (!overlayCanvas) return;
     let ctx = overlayCanvas.getContext('2d');
 
+    if (window.vinylDotAnimationReq) {
+        cancelAnimationFrame(window.vinylDotAnimationReq);
+    }
+    ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+
     let totalPoints = window.vinylArray.length;
 
     // Duration in ms based on 20 rotations and current RPM (or AI generated sequence time).
@@ -1178,10 +1216,29 @@ window.startVinylDotAnimation = function() {
             ctx.fill();
 
             window.vinylDotAnimationReq = requestAnimationFrame(drawDot);
-        } else {
-            ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-            if (progress >= 1.0) {
-                window.stopVinylRotation();
+                } else {
+            if (!window.vinylIsPlaying && progress < 1.0) {
+                let index = Math.floor(progress * totalPoints);
+                if (index >= totalPoints) index = totalPoints - 1;
+                let currentRadius = maxRadius - (progress * (maxRadius - minRadius));
+                let angle = progress * rotations * 2 * Math.PI;
+                let globalAngleRad = (window.vinylRotationAngle || 0) * (Math.PI / 180);
+                let normalizedY = (window.vinylArray && window.vinylArray.length > 0 ? (window.vinylArray[index] - minY) / rangeY : 0.5);
+                let variation = (normalizedY - 0.5) * 4;
+                currentRadius += variation;
+                let totalAngle = angle + globalAngleRad;
+                let x = cx + currentRadius * Math.cos(totalAngle);
+                let y = cy + currentRadius * Math.sin(totalAngle);
+                ctx.beginPath();
+                ctx.arc(x, y, 4, 0, 2 * Math.PI);
+                ctx.fillStyle = '#FF6600';
+                ctx.fill();
+                window.vinylDotAnimationReq = requestAnimationFrame(drawDot);
+            } else {
+                ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+                if (progress >= 1.0) {
+                    window.stopVinylRotation();
+                }
             }
         }
     }
@@ -1224,8 +1281,10 @@ window.stopVinylRotation = function() {
 
 
 window.playAiVinyl = function() {
+    const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
+
     if (!window.vinylAiSequence) {
-        alert("Bitte generiere zuerst eine AI Sequenz!");
+        alert(t.alert_gen_ai_seq_first || "Bitte generiere zuerst eine AI Sequenz!");
         return;
     }
 
@@ -1275,8 +1334,10 @@ window.playAiVinyl = function() {
 };
 
 window.playVinyl = function() {
+    const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
+
     if (!window.vinylArray || window.vinylArray.length === 0) {
-        alert("Bitte generiere zuerst das Vinyl-Array!");
+        alert(t.alert_gen_vinyl_array_first || "Bitte generiere zuerst das Vinyl-Array!");
         return;
     }
 
