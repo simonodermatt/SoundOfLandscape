@@ -1216,7 +1216,7 @@ window.startVinylDotAnimation = function() {
             ctx.fill();
 
             window.vinylDotAnimationReq = requestAnimationFrame(drawDot);
-                } else {
+        } else {
             if (!window.vinylIsPlaying && progress < 1.0) {
                 let index = Math.floor(progress * totalPoints);
                 if (index >= totalPoints) index = totalPoints - 1;
@@ -1260,9 +1260,9 @@ window.stopVinylRotation = function() {
     if (window.vinylDotAnimationReq) {
         cancelAnimationFrame(window.vinylDotAnimationReq);
         window.vinylDotAnimationReq = null;
-        let overlayCanvas = document.getElementById('vinyl-overlay-canvas');
-        if (overlayCanvas) overlayCanvas.getContext('2d').clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
     }
+    let overlayCanvas = document.getElementById('vinyl-overlay-canvas');
+    if (overlayCanvas) overlayCanvas.getContext('2d').clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
 
     let btnPlay = document.getElementById('btn-vinyl-play');
     if (btnPlay) {
