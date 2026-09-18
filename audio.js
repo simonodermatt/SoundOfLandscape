@@ -93,10 +93,27 @@ window.stopAllAudio = function() {
                 osc.stop();
                 osc.disconnect();
             } catch (e) {
-                // Ignore errors if oscillator already stopped or disconnected
             }
         });
         window.activeOscillators = [];
+    }
+
+    if (window.activeAiOscillators) {
+        window.activeAiOscillators.forEach(osc => {
+            try {
+                osc.stop();
+                osc.disconnect();
+            } catch (e) {}
+        });
+        window.activeAiOscillators = [];
+    }
+
+    if (window.vinylAudioState) {
+        try {
+            if (window.vinylAudioState.osc) { window.vinylAudioState.osc.stop(); window.vinylAudioState.osc.disconnect(); }
+            if (window.vinylAudioState.osc2) { window.vinylAudioState.osc2.stop(); window.vinylAudioState.osc2.disconnect(); }
+            if (window.vinylAudioState.noise) { window.vinylAudioState.noise.stop(); window.vinylAudioState.noise.disconnect(); }
+        } catch(e) {}
     }
 
     if (window.audioTimeouts) {
@@ -262,13 +279,13 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
 
         if (playedCount === 0) alert(t.alert_no_points || "Mit diesen Einstellungen wurden keine Punkte gefunden!");
 
-    } catch (e) { alert("Audio-Fehler: " + e.message); }
+    } catch (e) { alert((t.alert_audio_error || "Audio-Fehler: ") + e.message); }
 };
 
 
 window.playAiPanoAudio = async function(panoId) {
     if (!window.panoAiSequences || !window.panoAiSequences[panoId]) {
-        alert("Bitte generiere zuerst eine AI Komposition.");
+        alert(t.alert_gen_ai_comp_first || "Bitte generiere zuerst eine AI Komposition.");
         return;
     }
 
@@ -392,6 +409,9 @@ window.playAiPanoAudio = async function(panoId) {
 };
 
 window.playVinylAudio = async function(vinylArray) {
+    if (typeof window.stopAllAudio === 'function') {
+        window.stopAllAudio();
+    }
     const actx = window.getAudioCtx();
 
     let synthSettings = {

@@ -251,7 +251,7 @@ window.deletePreset = async function(presetId, panoId) {
             body: JSON.stringify({ action: "delete", preset_id: presetId, user_id: getUserId() }) 
         });
         setTimeout(() => { loadPresets(panoId); }, 1500);
-    } catch(e) { alert("Fehler beim Löschen."); }
+    } catch(e) { alert(t.alert_delete_error || "Fehler beim Löschen."); }
 };
 
 
@@ -328,7 +328,7 @@ window.ladePanoramenAusSheet = async function() {
 
 window.saveVinyl = async function() {
     if (!window.vinylArray || window.vinylArray.length === 0) {
-        alert("Bitte generiere zuerst das Vinyl-Array!");
+        alert(t.alert_gen_vinyl_array_first || "Bitte generiere zuerst das Vinyl-Array!");
         return;
     }
 
@@ -462,7 +462,7 @@ window.loadVinylPresets = async function() {
 window.loadVinyl = function() {
     let checkedBox = document.querySelector(`input[name="vinyl_preset_rb"]:checked`);
     if (!checkedBox) {
-        alert("Bitte markiere ein Vinyl Preset zum Laden.");
+        alert(t.alert_load_vinyl_preset_empty || "Bitte markiere ein Vinyl Preset zum Laden.");
         return;
     }
 
@@ -548,15 +548,17 @@ window.loadVinyl = function() {
             }
 
             window.drawVinylCanvas();
-            alert("Vinyl geladen!");
+            alert(t.alert_vinyl_loaded || "Vinyl geladen!");
         } catch(e) {
             console.error("Vinyl Parse Error:", e, "Raw data:", p.vinyl_array);
-            alert("Fehler beim Parsen der Vinyl-Daten.");
+            alert(t.alert_vinyl_parse_error || "Fehler beim Parsen der Vinyl-Daten.");
         }
     }
 };
 
 window.deleteVinylPreset = async function(presetId) {
+    const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
+
     if(!confirm("Möchtest du dieses Vinyl wirklich löschen?")) return;
     try {
         await fetch(API_URL, {
@@ -565,5 +567,5 @@ window.deleteVinylPreset = async function(presetId) {
             body: JSON.stringify({ action: "delete", preset_id: presetId, user_id: getUserId() })
         });
         setTimeout(() => { window.loadVinylPresets(); }, 1500);
-    } catch(e) { alert("Fehler beim Löschen."); }
+    } catch(e) { alert(t.alert_delete_error || "Fehler beim Löschen."); }
 };
