@@ -274,6 +274,26 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
                     o.stop(t3 + 0.2);
                     window.activeOscillators.push(o);
                 });
+
+                // MIDI Send Logic
+                if (window.midiOutput && typeof window.sendMidiNote === 'function') {
+                    let midiPitch = window.freqToMidiPitch(freq);
+                    let velocity = 100;
+                    if (indexPos > 0) {
+                        let prevP = allePunkte[indexPos - 1];
+                        // slope/diff based on hoehe (0-100)
+                        let diff = Math.abs(punkt.hoehe - prevP.hoehe) / 100.0;
+                        velocity = Math.min(127, Math.max(40, 40 + Math.round(diff * 400)));
+                    }
+
+                    let delayMs = (t0 - now) * 1000;
+                    let durationMs = (t3 - t0) * 1000;
+
+                    let chInput = document.getElementById('num_midi_channel');
+                    let channel = chInput ? parseInt(chInput.value) : 1;
+
+                    window.sendMidiNote(midiPitch, velocity, durationMs, delayMs, channel);
+                }
             });
         });
 
@@ -631,7 +651,12 @@ window.scheduleVinylAudioEvents = function(rpm, scheduleFromTime) {
         // MIDI Send Logic
         if (window.midiOutput && typeof window.sendMidiNote === 'function') {
             let midiPitch = window.freqToMidiPitch(freq);
-            let midiVelocity = 100; // default for non-AI
+            let velocity = 100;
+            if (i > 0) {
+                let prevP = state.points[i - 1];
+                let diff = Math.abs(p.relativeHoehe - prevP.relativeHoehe); // 0 to 1
+                velocity = Math.min(127, Math.max(40, 40 + Math.round(diff * 400)));
+            }
 
             // Calculate note duration (time until next note, or small gap)
             let noteDurationMs = (timePerPoint * 1000) * 0.9;
@@ -640,7 +665,7 @@ window.scheduleVinylAudioEvents = function(rpm, scheduleFromTime) {
             let chInput = document.getElementById('num_midi_channel');
             let channel = chInput ? parseInt(chInput.value) : 1;
 
-            window.sendMidiNote(midiPitch, midiVelocity, noteDurationMs, delayMs, channel);
+            window.sendMidiNote(midiPitch, velocity, noteDurationMs, delayMs, channel);
         }
     }
 
