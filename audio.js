@@ -93,10 +93,27 @@ window.stopAllAudio = function() {
                 osc.stop();
                 osc.disconnect();
             } catch (e) {
-                // Ignore errors if oscillator already stopped or disconnected
             }
         });
         window.activeOscillators = [];
+    }
+
+    if (window.activeAiOscillators) {
+        window.activeAiOscillators.forEach(osc => {
+            try {
+                osc.stop();
+                osc.disconnect();
+            } catch (e) {}
+        });
+        window.activeAiOscillators = [];
+    }
+
+    if (window.vinylAudioState) {
+        try {
+            if (window.vinylAudioState.osc) { window.vinylAudioState.osc.stop(); window.vinylAudioState.osc.disconnect(); }
+            if (window.vinylAudioState.osc2) { window.vinylAudioState.osc2.stop(); window.vinylAudioState.osc2.disconnect(); }
+            if (window.vinylAudioState.noise) { window.vinylAudioState.noise.stop(); window.vinylAudioState.noise.disconnect(); }
+        } catch(e) {}
     }
 
     if (window.audioTimeouts) {
@@ -262,13 +279,13 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
 
         if (playedCount === 0) alert(t.alert_no_points || "Mit diesen Einstellungen wurden keine Punkte gefunden!");
 
-    } catch (e) { alert("Audio-Fehler: " + e.message); }
+    } catch (e) { alert((t.alert_audio_error || "Audio-Fehler: ") + e.message); }
 };
 
 
 window.playAiPanoAudio = async function(panoId) {
     if (!window.panoAiSequences || !window.panoAiSequences[panoId]) {
-        alert("Bitte generiere zuerst eine AI Komposition.");
+        alert(t.alert_gen_ai_comp_first || "Bitte generiere zuerst eine AI Komposition.");
         return;
     }
 
@@ -374,10 +391,27 @@ window.playAiPanoAudio = async function(panoId) {
             osc.stop(noteEndTime + release + 0.1);
             window.activeOscillators.push(osc);
         }
+
+        // MIDI Send Logic
+        if (window.midiOutput && typeof window.sendMidiNote === 'function') {
+            let midiPitch = note.pitch;
+            let midiVelocity = note.velocity || 100;
+
+            let delayMs = (noteStartTime - startTime) * 1000;
+            let durationMs = (noteEndTime - noteStartTime + release) * 1000;
+
+            let chInput = document.getElementById('num_midi_channel');
+            let channel = chInput ? parseInt(chInput.value) : 1;
+
+            window.sendMidiNote(midiPitch, midiVelocity, durationMs, delayMs, channel);
+        }
     });
 };
 
 window.playVinylAudio = async function(vinylArray) {
+    if (typeof window.stopAllAudio === 'function') {
+        window.stopAllAudio();
+    }
     const actx = window.getAudioCtx();
 
     let synthSettings = {
@@ -593,6 +627,21 @@ window.scheduleVinylAudioEvents = function(rpm, scheduleFromTime) {
                 state.osc2.frequency.setValueAtTime(freq * 1.02, noteStartTime);
             }
         }
+
+        // MIDI Send Logic
+        if (window.midiOutput && typeof window.sendMidiNote === 'function') {
+            let midiPitch = window.freqToMidiPitch(freq);
+            let midiVelocity = 100; // default for non-AI
+
+            // Calculate note duration (time until next note, or small gap)
+            let noteDurationMs = (timePerPoint * 1000) * 0.9;
+            let delayMs = delayFromNow * 1000;
+
+            let chInput = document.getElementById('num_midi_channel');
+            let channel = chInput ? parseInt(chInput.value) : 1;
+
+            window.sendMidiNote(midiPitch, midiVelocity, noteDurationMs, delayMs, channel);
+        }
     }
 
     // Fade out at the end
@@ -752,6 +801,20 @@ window.scheduleAiVinylAudioEvents = function(rpm, startTime) {
             osc.stop(adjustedEndTime + 0.1);
             window.activeAiOscillators.push(osc);
             window.activeOscillators.push(osc);
+        }
+
+        // MIDI Send Logic
+        if (window.midiOutput && typeof window.sendMidiNote === 'function') {
+            let midiPitch = note.pitch;
+            let midiVelocity = note.velocity || 100;
+
+            let delayMs = adjustedDelay * 1000;
+            let durationMs = adjustedNoteDuration * 1000;
+
+            let chInput = document.getElementById('num_midi_channel');
+            let channel = chInput ? parseInt(chInput.value) : 1;
+
+            window.sendMidiNote(midiPitch, midiVelocity, durationMs, delayMs, channel);
         }
     });
 
