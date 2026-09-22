@@ -193,11 +193,20 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
             if (s.mode === 'lr') allePunkte.sort((a, b) => a.x - b.x);
             else if (s.mode === 'rl') allePunkte.sort((a, b) => b.x - a.x);
 
+            let prevHoehe = null;
             allePunkte.forEach((punkt, indexPos) => {
                 let yProzent = (punkt.hoehe / 100) * (s.range / 100);
                 const freqIndex = Math.floor(yProzent * (tonleiter.length - 1));
                 const freq = tonleiter[freqIndex] || 440;
                 
+                let velocity = 80;
+                if (prevHoehe !== null) {
+                    let diff = Math.abs(punkt.hoehe - prevHoehe); // hoehe is 0-100
+                    let diffNorm = diff / 100.0;
+                    velocity = Math.min(127, Math.max(40, 40 + Math.round(diffNorm * 400)));
+                }
+                prevHoehe = punkt.hoehe;
+
                 const masterGain = actx.createGain();
                 let panner = actx.createStereoPanner ? actx.createStereoPanner() : actx.createGain();
                 if(panner.pan) panner.pan.value = (punkt.x / daten.bild_breite) * 2 - 1;
@@ -274,6 +283,18 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
                     o.stop(t3 + 0.2);
                     window.activeOscillators.push(o);
                 });
+
+                // MIDI Send Logic
+                if (window.midiOutput && typeof window.sendMidiNote === 'function') {
+                    let midiPitch = window.freqToMidiPitch(freq);
+                    let midiVelocity = velocity;
+                    let delayMs = (startDelay + 0.1) * 1000;
+                    let fullDuration = Math.max(0.01, s.attack) + Math.max(0.01, s.duration);
+
+                    let chInput = document.getElementById('num_midi_channel');
+                    let channel = chInput ? parseInt(chInput.value) : 1;
+                    window.sendMidiNote(midiPitch, midiVelocity, fullDuration * 1000, delayMs, channel);
+                }
             });
         });
 
@@ -602,6 +623,8 @@ window.scheduleVinylAudioEvents = function(rpm, scheduleFromTime) {
     // Base time for the remainder of the track
     let remainderTime = totalTime * (1.0 - progress);
 
+    let prevY = null;
+
     for (let i = startIndex; i < state.points.length; i++) {
         let p = state.points[i];
         // Calculate delay relative to the start of the remainder
@@ -628,10 +651,18 @@ window.scheduleVinylAudioEvents = function(rpm, scheduleFromTime) {
             }
         }
 
+        let velocity = 80;
+        if (prevY !== null) {
+            let diff = Math.abs(p.relativeHoehe - prevY);
+            let diffNorm = diff; // relativeHoehe is 0-1
+            velocity = Math.min(127, Math.max(40, 40 + Math.round(diffNorm * 400)));
+        }
+        prevY = p.relativeHoehe;
+
         // MIDI Send Logic
         if (window.midiOutput && typeof window.sendMidiNote === 'function') {
             let midiPitch = window.freqToMidiPitch(freq);
-            let midiVelocity = 100; // default for non-AI
+            let midiVelocity = velocity; // use calculated velocity
 
             // Calculate note duration (time until next note, or small gap)
             let noteDurationMs = (timePerPoint * 1000) * 0.9;
