@@ -148,6 +148,13 @@ function onMIDIMessage(event) {
 
         // Map any CC input to the Mutation slider as requested
         let mutationSlider = document.getElementById('range_vinyl_mutation');
+
+        // Check if there is an active pano modal with a mutation slider
+        if (window.currentOpenPano) {
+            let modalSlider = document.getElementById('range_mutation_' + window.currentOpenPano.id);
+            if (modalSlider) mutationSlider = modalSlider;
+        }
+
         if (mutationSlider) {
             // Map 0-127 to 0.5-1.5
             let min = 0.5;
@@ -156,19 +163,8 @@ function onMIDIMessage(event) {
 
             mutationSlider.value = mappedVal.toFixed(1);
 
-            // Trigger the oninput event logic manually
-            let ttVal = document.getElementById('tt_val_vinyl_mutation');
-            if (ttVal) {
-                ttVal.innerText = mappedVal.toFixed(1);
-            }
-            if (window.vinylAiSequence) {
-                window.vinylAiSequence = null;
-                let btn = document.getElementById('btn-ai-compose');
-                if (btn) {
-                    btn.style.background = '';
-                    btn.style.color = '';
-                }
-            }
+            // Dispatch an 'input' event to trigger UI updates, text change, and logic resets cleanly
+            mutationSlider.dispatchEvent(new Event('input'));
         }
     }
 }
