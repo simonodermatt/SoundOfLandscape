@@ -156,19 +156,8 @@ function onMIDIMessage(event) {
 
             mutationSlider.value = mappedVal.toFixed(1);
 
-            // Trigger the oninput event logic manually
-            let ttVal = document.getElementById('tt_val_vinyl_mutation');
-            if (ttVal) {
-                ttVal.innerText = mappedVal.toFixed(1);
-            }
-            if (window.vinylAiSequence) {
-                window.vinylAiSequence = null;
-                let btn = document.getElementById('btn-ai-compose');
-                if (btn) {
-                    btn.style.background = '';
-                    btn.style.color = '';
-                }
-            }
+            // Trigger the oninput event logic correctly via dispatchEvent
+            mutationSlider.dispatchEvent(new Event('input'));
         }
     }
 }
