@@ -1295,12 +1295,25 @@ window.playAiVinyl = function() {
         if (typeof window.stopAllAudio === 'function') {
             window.stopAllAudio();
         }
+        let wasAiPlaying = window.isPlayingAiVinyl;
         window.vinylIsPlaying = false;
+        window.isPlayingAiVinyl = false;
         if (btnAiPlay) {
             btnAiPlay.style.background = '';
             btnAiPlay.style.color = '';
         }
-        return;
+        let btnPlay = document.getElementById('btn-vinyl-play');
+        if (btnPlay) {
+            btnPlay.style.background = '';
+            btnPlay.style.color = '';
+        }
+
+        // If they were playing normal vinyl, and clicked AI play, switch immediately.
+        if (!wasAiPlaying) {
+            // fall through to play
+        } else {
+            return;
+        }
     }
 
     window.vinylIsPlaying = true;
@@ -1349,12 +1362,24 @@ window.playVinyl = function() {
         if (typeof window.stopAllAudio === 'function') {
             window.stopAllAudio();
         }
+        let wasAiPlaying = window.isPlayingAiVinyl;
         window.vinylIsPlaying = false;
+        window.isPlayingAiVinyl = false;
         if (btnPlay) {
             btnPlay.style.background = '';
             btnPlay.style.color = '';
         }
-        return;
+        let btnAiPlay = document.getElementById('btn-ai-play');
+        if (btnAiPlay) {
+            btnAiPlay.style.background = '';
+            btnAiPlay.style.color = '';
+        }
+
+        if (wasAiPlaying) {
+            // fall through to play normal
+        } else {
+            return;
+        }
     }
 
     window.vinylIsPlaying = true;

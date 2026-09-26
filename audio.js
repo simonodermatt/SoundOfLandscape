@@ -791,6 +791,10 @@ window.scheduleAiVinylAudioEvents = function(rpm, startTime) {
         } else {
             osc.start(adjustedStartTime);
             osc.stop(adjustedEndTime + 0.1);
+            if (osc2) {
+                osc2.start(adjustedStartTime);
+                osc2.stop(adjustedEndTime + 0.1);
+            }
             window.activeAiOscillators.push(osc);
             window.activeOscillators.push(osc);
         }
