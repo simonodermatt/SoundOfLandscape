@@ -1200,15 +1200,15 @@ window.startVinylDotAnimation = function() {
             // BUT wait, the base canvas spins.
             // So if we draw the dot here on the static overlay, we just need to place it
             // where the needle WOULD be if it wasn't spinning, then add the global vinylRotationAngle.
-            let globalAngleRad = (window.vinylRotationAngle || 0) * (Math.PI / 180);
+            // The vinyl spins, but the needle should just progress linearly along a fixed line (e.g. at 0 degrees, right side)
+            let fixedAngleRad = 0; // Point needle to the right
 
             let normalizedY = (window.vinylArray[index] - minY) / rangeY;
             let variation = (normalizedY - 0.5) * 4;
             currentRadius += variation;
 
-            let totalAngle = angle + globalAngleRad;
-            let x = cx + currentRadius * Math.cos(totalAngle);
-            let y = cy + currentRadius * Math.sin(totalAngle);
+            let x = cx + currentRadius * Math.cos(fixedAngleRad);
+            let y = cy + currentRadius * Math.sin(fixedAngleRad);
 
             ctx.beginPath();
             ctx.arc(x, y, 4, 0, 2 * Math.PI);
@@ -1295,6 +1295,7 @@ window.playAiVinyl = function() {
         if (typeof window.stopAllAudio === 'function') {
             window.stopAllAudio();
         }
+        window.vinylIsPlaying = false;
         if (btnAiPlay) {
             btnAiPlay.style.background = '';
             btnAiPlay.style.color = '';
@@ -1347,6 +1348,11 @@ window.playVinyl = function() {
         window.stopVinylRotation();
         if (typeof window.stopAllAudio === 'function') {
             window.stopAllAudio();
+        }
+        window.vinylIsPlaying = false;
+        if (btnPlay) {
+            btnPlay.style.background = '';
+            btnPlay.style.color = '';
         }
         return;
     }
