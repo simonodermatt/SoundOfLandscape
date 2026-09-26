@@ -113,6 +113,7 @@ window.stopAllAudio = function() {
             if (window.vinylAudioState.osc) { window.vinylAudioState.osc.stop(); window.vinylAudioState.osc.disconnect(); }
             if (window.vinylAudioState.osc2) { window.vinylAudioState.osc2.stop(); window.vinylAudioState.osc2.disconnect(); }
             if (window.vinylAudioState.noise) { window.vinylAudioState.noise.stop(); window.vinylAudioState.noise.disconnect(); }
+            if (window.vinylAudioState.stopTimeoutId) { clearTimeout(window.vinylAudioState.stopTimeoutId); window.vinylAudioState.stopTimeoutId = null; }
         } catch(e) {}
     }
 
@@ -659,9 +660,15 @@ window.scheduleVinylAudioEvents = function(rpm, scheduleFromTime) {
 
     // Automatically stop rotation when audio finishes
     state.stopTimeoutId = setTimeout(() => {
+        if (typeof window.stopAllAudio === 'function') {
+            window.stopAllAudio();
+        }
         if (typeof window.stopVinylRotation === 'function') {
             window.stopVinylRotation();
         }
+        window.vinylIsPlaying = false;
+        let btnPlay = document.getElementById('btn-vinyl-play');
+        if (btnPlay) { btnPlay.style.background = ''; btnPlay.style.color = ''; }
     }, remainderTime * 1000);
     window.audioTimeouts.push(state.stopTimeoutId);
 };
@@ -744,33 +751,18 @@ window.scheduleAiVinylAudioEvents = function(rpm, startTime) {
         let osc2 = null;
         let noise = null;
 
-        if (state.synthSettings.wave === 'darkpad') {
-            osc.type = 'sawtooth';
-        } else if (state.synthSettings.wave === 'chime') {
-            osc.type = 'sine';
-            osc2 = actx.createOscillator();
-            osc2.type = 'triangle';
-            osc2.frequency.value = freq * 2;
-        } else if (state.synthSettings.wave === 'noise') {
-            const bufferSize = actx.sampleRate * 2.0;
-            const buffer = actx.createBuffer(1, bufferSize, actx.sampleRate);
-            const data = buffer.getChannelData(0);
-            for (let j = 0; j < bufferSize; j++) { data[j] = Math.random() * 2 - 1; }
-            noise = actx.createBufferSource();
-            noise.buffer = buffer;
-            noise.loop = true;
-            filter = actx.createBiquadFilter();
-            filter.type = 'bandpass'; filter.Q.value = 10;
-            filter.frequency.value = freq;
-            noise.connect(filter);
-        } else if (state.synthSettings.wave === 'detuned_saw') {
-            osc.type = 'sawtooth';
-            osc2 = actx.createOscillator();
-            osc2.type = 'sawtooth';
-            osc2.frequency.value = freq * 1.01;
-        } else {
-            osc.type = state.synthSettings.wave;
-        }
+        // Force a distinct AI Arp sound so it does not sound like regular vinyl playback
+        osc.type = 'square';
+        osc2 = actx.createOscillator();
+        osc2.type = 'sawtooth';
+        osc2.frequency.value = freq * 1.005; // slight detune
+
+        filter = actx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.Q.value = 5;
+        // Envelope for filter to make it plucky
+        filter.frequency.setValueAtTime(4000, adjustedStartTime);
+        filter.frequency.exponentialRampToValueAtTime(300, adjustedEndTime);
 
         const noteGain = actx.createGain();
 
@@ -819,9 +811,15 @@ window.scheduleAiVinylAudioEvents = function(rpm, startTime) {
     });
 
     state.stopTimeoutId = setTimeout(() => {
+        if (typeof window.stopAllAudio === 'function') {
+            window.stopAllAudio();
+        }
         if (typeof window.stopVinylRotation === 'function') {
             window.stopVinylRotation();
         }
+        window.vinylIsPlaying = false;
+        let btnAiPlay = document.getElementById('btn-ai-play');
+        if (btnAiPlay) { btnAiPlay.style.background = ''; btnAiPlay.style.color = ''; }
     }, remainderAdjustedTime * 1000);
     window.audioTimeouts.push(state.stopTimeoutId);
 };
