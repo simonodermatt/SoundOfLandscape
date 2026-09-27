@@ -275,6 +275,27 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
                     o.stop(t3 + 0.2);
                     window.activeOscillators.push(o);
                 });
+
+                // MIDI Send Logic
+                if (window.midiOutput && typeof window.sendMidiNote === 'function') {
+                    let midiPitch = window.freqToMidiPitch(freq);
+                    let midiVelocity = 80;
+
+                    if (indexPos > 0) {
+                        let prevPunkt = allePunkte[indexPos - 1];
+                        let diff = Math.abs(punkt.hoehe - prevPunkt.hoehe);
+                        let diffNorm = diff / (s.range || 100);
+                        midiVelocity = Math.min(127, Math.max(40, 40 + Math.round(diffNorm * 400)));
+                    }
+
+                    let delayMs = (t0 - now) * 1000;
+                    let durationMs = (t3 - t0 + 0.2) * 1000;
+
+                    let chInput = document.getElementById('num_midi_channel');
+                    let channel = chInput ? parseInt(chInput.value) : 1;
+
+                    window.sendMidiNote(midiPitch, midiVelocity, durationMs, delayMs, channel);
+                }
             });
         });
 
@@ -632,7 +653,14 @@ window.scheduleVinylAudioEvents = function(rpm, scheduleFromTime) {
         // MIDI Send Logic
         if (window.midiOutput && typeof window.sendMidiNote === 'function') {
             let midiPitch = window.freqToMidiPitch(freq);
-            let midiVelocity = 100; // default for non-AI
+            let midiVelocity = 80; // default for the first note
+
+            if (i > startIndex) {
+                let prevP = state.points[i - 1];
+                let diff = Math.abs(p.hoehe - prevP.hoehe);
+                let diffNorm = diff / (state.synthSettings.range || 100);
+                midiVelocity = Math.min(127, Math.max(40, 40 + Math.round(diffNorm * 400)));
+            }
 
             // Calculate note duration (time until next note, or small gap)
             let noteDurationMs = (timePerPoint * 1000) * 0.9;
