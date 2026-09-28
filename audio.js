@@ -667,6 +667,7 @@ window.scheduleVinylAudioEvents = function(rpm, scheduleFromTime) {
             window.stopVinylRotation();
         }
         window.vinylIsPlaying = false;
+        window.isPlayingAiVinyl = false;
         let btnPlay = document.getElementById('btn-vinyl-play');
         if (btnPlay) { btnPlay.style.background = ''; btnPlay.style.color = ''; }
     }, remainderTime * 1000);
@@ -822,6 +823,7 @@ window.scheduleAiVinylAudioEvents = function(rpm, startTime) {
             window.stopVinylRotation();
         }
         window.vinylIsPlaying = false;
+        window.isPlayingAiVinyl = false;
         let btnAiPlay = document.getElementById('btn-ai-play');
         if (btnAiPlay) { btnAiPlay.style.background = ''; btnAiPlay.style.color = ''; }
     }, remainderAdjustedTime * 1000);

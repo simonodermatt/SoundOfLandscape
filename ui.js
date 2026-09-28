@@ -638,6 +638,18 @@ window.toggleVinylMode = function() {
         if (typeof window.stopAllAudio === 'function') {
             window.stopAllAudio();
         }
+        window.vinylIsPlaying = false;
+        window.isPlayingAiVinyl = false;
+        let btnPlay = document.getElementById('btn-vinyl-play');
+        if (btnPlay) { btnPlay.style.background = ''; btnPlay.style.color = ''; }
+        let btnAiPlay = document.getElementById('btn-ai-play');
+        if (btnAiPlay) { btnAiPlay.style.background = ''; btnAiPlay.style.color = ''; }
+
+        let overlayCanvas = document.getElementById('vinyl-overlay-canvas');
+        if (overlayCanvas) {
+            let ctx = overlayCanvas.getContext('2d');
+            ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        }
     }
 };
 
@@ -1004,14 +1016,12 @@ window.aiComposeVinyl = async function() {
                    let diff = Math.abs(note.pitch - prevPitch);
                    let diffNorm = diff / (SAFE_MAX - SAFE_MIN);
                    velocity = Math.min(127, Math.max(40, 40 + Math.round(diffNorm * 400)));
-                   if (diffNorm < 0.02) continue;
                 }
 
                 if (prevRawPoint !== null && currRawPoint !== null) {
                     let diff = Math.abs(currRawPoint - prevRawPoint);
                     let diffNorm = diff / (range || 1);
                     velocity = Math.min(127, Math.max(40, 40 + Math.round(diffNorm * 400)));
-                    if (diffNorm < 0.02) continue;
                 }
             }
 
@@ -1308,12 +1318,10 @@ window.playAiVinyl = function() {
             btnPlay.style.color = '';
         }
 
-        // If they were playing normal vinyl, and clicked AI play, switch immediately.
-        if (!wasAiPlaying) {
-            // fall through to play
-        } else {
+        if (wasAiPlaying) {
             return;
         }
+        // If they were playing normal vinyl, let it fall through to start AI immediately.
     }
 
     window.vinylIsPlaying = true;
@@ -1375,11 +1383,10 @@ window.playVinyl = function() {
             btnAiPlay.style.color = '';
         }
 
-        if (wasAiPlaying) {
-            // fall through to play normal
-        } else {
+        if (!wasAiPlaying) {
             return;
         }
+        // If they were playing AI vinyl, let it fall through to start Normal immediately.
     }
 
     window.vinylIsPlaying = true;
