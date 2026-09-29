@@ -460,6 +460,7 @@ window.loadVinylPresets = async function() {
 };
 
 window.loadVinyl = function() {
+    const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
     let checkedBox = document.querySelector(`input[name="vinyl_preset_rb"]:checked`);
     if (!checkedBox) {
         alert(t.alert_load_vinyl_preset_empty || "Bitte markiere ein Vinyl Preset zum Laden.");
