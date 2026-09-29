@@ -1370,15 +1370,15 @@ window.playAiVinyl = function() {
         return;
     }
 
+    if (typeof window.playVinylAudio === 'function') {
+        window.playVinylAudio(window.vinylArray);
+    }
+
     window.vinylIsPlaying = true;
     window.isPlayingAiVinyl = true; // Flag for audio.js
     if (btnAiPlay) {
         btnAiPlay.style.background = '#FF6600';
         btnAiPlay.style.color = '#1a1a1a';
-    }
-
-    if (typeof window.playVinylAudio === 'function') {
-        window.playVinylAudio(window.vinylArray);
     }
 
     let canvas = document.getElementById('vinyl-canvas');
@@ -1425,15 +1425,15 @@ window.playVinyl = function() {
         return;
     }
 
+    if (typeof window.playVinylAudio === 'function') {
+        window.playVinylAudio(window.vinylArray);
+    }
+
     window.vinylIsPlaying = true;
     window.isPlayingAiVinyl = false;
     if (btnPlay) {
         btnPlay.style.background = '#FF6600';
         btnPlay.style.color = '#1a1a1a';
-    }
-
-    if (typeof window.playVinylAudio === 'function') {
-        window.playVinylAudio(window.vinylArray);
     }
 
     let canvas = document.getElementById('vinyl-canvas');

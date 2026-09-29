@@ -1,1 +1,0 @@
-Step 3 is logically achieved by tracking progress over time properly and aligning the duration.

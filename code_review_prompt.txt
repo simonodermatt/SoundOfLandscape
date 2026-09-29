@@ -1,9 +1,0 @@
-I have fixed the vinyl needle animation in `ui.js`.
-The user wanted the needle (orange dot) to start at the outer edge (3 o'clock) and slowly move inwards as the vinyl plays, similar to a real turntable.
-Previously, the needle was tracking the angle of the spiral, but not properly moving inwards due to incorrect progress interpolation logic, and it also crashed for AI sound presets when `vinylArray` was empty.
-I've updated `startVinylDotAnimation` to:
-- Use `progress` to linearly interpolate `currentRadius` between `maxRadius` and `minRadius`.
-- Force the needle to stay at `fixedAngleRad = 0` (3 o'clock).
-- Add robust guards `window.vinylArray && window.vinylArray.length > 0` for calculating min/max Y variations so it works for AI sound presets without crashing.
-
-Please review my changes in `ui.js`.
