@@ -116,6 +116,7 @@ function findePunkte(kurve, maxAnzahl, minAbstand, sensibilitaet, typ) {
 }
 
 const map = L.map('map').setView([46.8182, 8.2275], 8);
+map.attributionControl.setPrefix(false);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
 const markerClusterGroup = L.markerClusterGroup({ maxClusterRadius: 40, spiderfyOnMaxZoom: true });
 map.addLayer(markerClusterGroup);
@@ -1690,6 +1691,7 @@ Dieses Modul verwaltet die Leaflet-Karte, das Canvas-Overlay, das HTML-Popup und
 JavaScript
 // ui.js - Karte, Canvas und GUI-Generierung
 const map = L.map('map').setView([46.8182, 8.2275], 8);
+map.attributionControl.setPrefix(false);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
 window.markerClusterGroup = L.markerClusterGroup({ maxClusterRadius: 40, spiderfyOnMaxZoom: true });
 map.addLayer(window.markerClusterGroup);
@@ -4372,6 +4374,7 @@ modalStyle.innerHTML = `
 document.head.appendChild(modalStyle);
 
 const map = L.map('map').setView([46.8182, 8.2275], 8);
+map.attributionControl.setPrefix(false);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
 window.markerClusterGroup = L.markerClusterGroup({ maxClusterRadius: 40, spiderfyOnMaxZoom: true });
 map.addLayer(window.markerClusterGroup);
@@ -4776,6 +4779,7 @@ modalStyle.innerHTML = `
 document.head.appendChild(modalStyle);
 
 const map = L.map('map').setView([46.8182, 8.2275], 8);
+map.attributionControl.setPrefix(false);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
 window.markerClusterGroup = L.markerClusterGroup({ maxClusterRadius: 40, spiderfyOnMaxZoom: true });
 map.addLayer(window.markerClusterGroup);
