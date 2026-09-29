@@ -659,7 +659,9 @@ window.scheduleVinylAudioEvents = function(rpm, scheduleFromTime) {
     }
 
     // Automatically stop rotation when audio finishes
+    console.log(`scheduleVinylAudioEvents: totalTime=${totalTime}, progress=${progress}, remainderTime=${remainderTime}, rpm=${rpm}`);
     state.stopTimeoutId = setTimeout(() => {
+        console.log("TIMEOUT FIRED! time elapsed: ", performance.now() - now);
         if (typeof window.stopAllAudio === 'function') {
             window.stopAllAudio();
         }
@@ -810,7 +812,9 @@ window.scheduleAiVinylAudioEvents = function(rpm, startTime) {
         }
     });
 
+    console.log(`scheduleVinylAudioEvents: totalTime=${totalTime}, progress=${progress}, remainderTime=${remainderTime}, rpm=${rpm}`);
     state.stopTimeoutId = setTimeout(() => {
+        console.log("TIMEOUT FIRED! time elapsed: ", performance.now() - now);
         if (typeof window.stopAllAudio === 'function') {
             window.stopAllAudio();
         }
