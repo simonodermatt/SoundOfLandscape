@@ -44,6 +44,8 @@
     <div class="menu-divider"></div>
     <button id="btn-vinyl-mode" onclick="toggleVinylMode()">Vinyl</button>
     <div class="menu-divider"></div>
+    <button id="btn-relief-mode" onclick="if(window.toggleReliefMode) window.toggleReliefMode()">🏔️ Relief scannen</button>
+    <div class="menu-divider"></div>
     <span id="user-display" style="color: #00BFFF; font-size: 11px; cursor: pointer; text-transform: uppercase; margin-right: 8px;" onclick="changeUserName()" title="Namen ändern">👤 Gast</span>    
     <div class="menu-divider"></div>
     <a href="datenschutz.html" target="_blank" style="color: #888; font-size: 11px; text-decoration: none; margin-left: 4px; text-transform: uppercase;">Datenschutz</a>    
@@ -159,5 +161,6 @@
 <script src="midi.js"></script>
 <script src="ui.js?v=11"></script>
     
+    <div id="relief-guidance-banner" style="display: none;">Klicke auf der Karte auf deinen Startpunkt und wähle danach das Ziel.</div>
 </body>
 </html>
