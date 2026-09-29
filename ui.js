@@ -1087,16 +1087,21 @@ window.drawVinylCanvas = function() {
         ctx.lineWidth = 0.5;
 
         // Spiral drawing logic
-        let totalPoints = window.vinylArray.length;
+        let totalPoints = window.vinylArray && window.vinylArray.length > 0 ? window.vinylArray.length : 1000;
         let rotations = 20; // Number of spirals
 
         // Find min/max for normalization (safe for large arrays)
         let maxY = -Infinity;
         let minY = Infinity;
-        for (let i = 0; i < window.vinylArray.length; i++) {
-            let val = window.vinylArray[i];
-            if (val > maxY) maxY = val;
-            if (val < minY) minY = val;
+        if (window.vinylArray && window.vinylArray.length > 0) {
+            for (let i = 0; i < window.vinylArray.length; i++) {
+                let val = window.vinylArray[i];
+                if (val > maxY) maxY = val;
+                if (val < minY) minY = val;
+            }
+        } else {
+            maxY = 1;
+            minY = -1;
         }
         let rangeY = maxY - minY || 1;
 
@@ -1141,7 +1146,7 @@ window.startVinylDotAnimation = function() {
     ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
 
-    let totalPoints = window.vinylArray.length;
+    let totalPoints = window.vinylArray && window.vinylArray.length > 0 ? window.vinylArray.length : 1000;
 
     // Duration in ms based on 20 rotations and current RPM (or AI generated sequence time).
     let getDuration = () => {
@@ -1162,10 +1167,15 @@ window.startVinylDotAnimation = function() {
 
     let maxY = -Infinity;
     let minY = Infinity;
-    for (let i = 0; i < window.vinylArray.length; i++) {
-        let val = window.vinylArray[i];
-        if (val > maxY) maxY = val;
-        if (val < minY) minY = val;
+    if (window.vinylArray && window.vinylArray.length > 0) {
+        for (let i = 0; i < window.vinylArray.length; i++) {
+            let val = window.vinylArray[i];
+            if (val > maxY) maxY = val;
+            if (val < minY) minY = val;
+        }
+    } else {
+        maxY = 1;
+        minY = -1;
     }
     let rangeY = maxY - minY || 1;
 
@@ -1190,22 +1200,29 @@ window.startVinylDotAnimation = function() {
 
         let progress = Math.min(window.vinylProgress, 1.0);
 
+        let actualTotalPoints = window.vinylArray && window.vinylArray.length > 0 ? window.vinylArray.length : 1000;
+
         if (progress < 1.0 && window.vinylIsPlaying) {
-            let index = Math.floor(progress * totalPoints);
-            if (index >= totalPoints) index = totalPoints - 1;
+            let index = Math.floor(progress * actualTotalPoints);
+            if (index >= actualTotalPoints) index = actualTotalPoints - 1;
 
+            // Needle moves inwards
             let currentRadius = maxRadius - (progress * (maxRadius - minRadius));
-            let angle = progress * rotations * 2 * Math.PI;
+            let fixedAngleRad = 0; // Point needle to the right (3 o'clock)
 
-            // Reapply rotation from the spinning vinyl base to keep the dot synced on the groove
-            // BUT wait, the base canvas spins.
-            // So if we draw the dot here on the static overlay, we just need to place it
-            // where the needle WOULD be if it wasn't spinning, then add the global vinylRotationAngle.
-            // The vinyl spins, but the needle should just progress linearly along a fixed line (e.g. at 0 degrees, right side)
-            let fixedAngleRad = 0; // Point needle to the right
-
-            let normalizedY = (window.vinylArray[index] - minY) / rangeY;
+            let normalizedY = 0.5;
+            if (window.vinylArray && window.vinylArray.length > 0) {
+                normalizedY = (window.vinylArray[index] - minY) / rangeY;
+            }
             let variation = (normalizedY - 0.5) * 4;
+
+            // To make the needle exactly on the groove, we add the variation.
+            // But wait, the record spins. The groove that is currently at 3 o'clock
+            // corresponds to a specific point on the spiral.
+            // Since the spiral is drawn with angle = progress * rotations * 2PI
+            // and then rotated by vinylRotationAngle...
+            // Actually, the simplest way is to just let currentRadius = maxRadius - progress * (maxRadius - minRadius)
+            // and add variation.
             currentRadius += variation;
 
             let x = cx + currentRadius * Math.cos(fixedAngleRad);
@@ -1219,24 +1236,38 @@ window.startVinylDotAnimation = function() {
             window.vinylDotAnimationReq = requestAnimationFrame(drawDot);
         } else {
             if (!window.vinylIsPlaying && progress < 1.0) {
-                let index = Math.floor(progress * totalPoints);
-                if (index >= totalPoints) index = totalPoints - 1;
+                let index = Math.floor(progress * actualTotalPoints);
+                if (index >= actualTotalPoints) index = actualTotalPoints - 1;
+
                 let currentRadius = maxRadius - (progress * (maxRadius - minRadius));
-                let normalizedY = (window.vinylArray && window.vinylArray.length > 0 ? (window.vinylArray[index] - minY) / rangeY : 0.5);
+                let normalizedY = 0.5;
+                if (window.vinylArray && window.vinylArray.length > 0) {
+                    normalizedY = (window.vinylArray[index] - minY) / rangeY;
+                }
                 let variation = (normalizedY - 0.5) * 4;
                 currentRadius += variation;
+
                 let fixedAngleRad = 0; // Point needle to the right
                 let x = cx + currentRadius * Math.cos(fixedAngleRad);
                 let y = cy + currentRadius * Math.sin(fixedAngleRad);
+
                 ctx.beginPath();
                 ctx.arc(x, y, 4, 0, 2 * Math.PI);
                 ctx.fillStyle = '#FF6600';
                 ctx.fill();
+
                 window.vinylDotAnimationReq = requestAnimationFrame(drawDot);
             } else {
                 ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
                 if (progress >= 1.0) {
                     window.stopVinylRotation();
+                    if (window.vinylIsPlaying) {
+                        window.vinylIsPlaying = false;
+                        let btnPlay = document.getElementById('btn-vinyl-play');
+                        if (btnPlay) { btnPlay.style.background = ''; btnPlay.style.color = ''; }
+                        let btnAiPlay = document.getElementById('btn-ai-play');
+                        if (btnAiPlay) { btnAiPlay.style.background = ''; btnAiPlay.style.color = ''; }
+                    }
                 }
             }
         }
