@@ -652,6 +652,7 @@ window.generateVinyl = async function() {
     btnGen.innerHTML = "⧖";
 
     // Scratching animation
+    if (window.vinylSpinOutReq) { cancelAnimationFrame(window.vinylSpinOutReq); window.vinylSpinOutReq = null; }
     window.vinylRotationInterval = setInterval(() => {
         window.vinylRotationAngle += 15;
         let canvas = document.getElementById('vinyl-canvas');
@@ -1221,14 +1222,12 @@ window.startVinylDotAnimation = function() {
                 let index = Math.floor(progress * totalPoints);
                 if (index >= totalPoints) index = totalPoints - 1;
                 let currentRadius = maxRadius - (progress * (maxRadius - minRadius));
-                let angle = progress * rotations * 2 * Math.PI;
-                let globalAngleRad = (window.vinylRotationAngle || 0) * (Math.PI / 180);
                 let normalizedY = (window.vinylArray && window.vinylArray.length > 0 ? (window.vinylArray[index] - minY) / rangeY : 0.5);
                 let variation = (normalizedY - 0.5) * 4;
                 currentRadius += variation;
-                let totalAngle = angle + globalAngleRad;
-                let x = cx + currentRadius * Math.cos(totalAngle);
-                let y = cy + currentRadius * Math.sin(totalAngle);
+                let fixedAngleRad = 0; // Point needle to the right
+                let x = cx + currentRadius * Math.cos(fixedAngleRad);
+                let y = cy + currentRadius * Math.sin(fixedAngleRad);
                 ctx.beginPath();
                 ctx.arc(x, y, 4, 0, 2 * Math.PI);
                 ctx.fillStyle = '#FF6600';
@@ -1252,11 +1251,48 @@ window.updateVinylSpeed = function(newRPM) {
     }
 };
 
+window.vinylRotationSpeed = 0; // Current actual speed for easing
+window.vinylSpinOutReq = null;
+
 window.stopVinylRotation = function() {
     if (window.vinylRotationInterval) {
         clearInterval(window.vinylRotationInterval);
         window.vinylRotationInterval = null;
     }
+
+    // Start spin out animation
+    let rpm = parseFloat(document.getElementById('range_vinyl_speed')?.value || 33);
+    window.vinylRotationSpeed = rpm; // Start easing out from current RPM
+
+    if (window.vinylSpinOutReq) {
+        cancelAnimationFrame(window.vinylSpinOutReq);
+    }
+
+    let canvas = document.getElementById('vinyl-canvas');
+    let lastTime = performance.now();
+
+    function spinOut(time) {
+        if (!canvas) return;
+
+        let delta = time - lastTime;
+        lastTime = time;
+
+        window.vinylRotationSpeed *= 0.95; // Friction factor
+
+        if (window.vinylRotationSpeed > 0.1) {
+            let speedPerMs = window.vinylRotationSpeed / 60000;
+            let degreesDelta = (speedPerMs * 360) * delta;
+            window.vinylRotationAngle += degreesDelta;
+            canvas.style.transform = `rotate(${window.vinylRotationAngle}deg)`;
+
+            window.vinylSpinOutReq = requestAnimationFrame(spinOut);
+        } else {
+            window.vinylRotationSpeed = 0;
+            window.vinylSpinOutReq = null;
+        }
+    }
+    window.vinylSpinOutReq = requestAnimationFrame(spinOut);
+
     if (window.vinylDotAnimationReq) {
         cancelAnimationFrame(window.vinylDotAnimationReq);
         window.vinylDotAnimationReq = null;
@@ -1317,6 +1353,7 @@ window.playAiVinyl = function() {
     let canvas = document.getElementById('vinyl-canvas');
     if (canvas) {
         let angle = window.vinylRotationAngle || 0;
+        if (window.vinylSpinOutReq) { cancelAnimationFrame(window.vinylSpinOutReq); window.vinylSpinOutReq = null; }
         if (window.vinylRotationInterval) clearInterval(window.vinylRotationInterval);
         window.vinylRotationLastTime = performance.now();
         window.vinylRotationInterval = setInterval(() => {
@@ -1371,6 +1408,7 @@ window.playVinyl = function() {
     let canvas = document.getElementById('vinyl-canvas');
     if (canvas) {
         let angle = window.vinylRotationAngle || 0;
+        if (window.vinylSpinOutReq) { cancelAnimationFrame(window.vinylSpinOutReq); window.vinylSpinOutReq = null; }
         if (window.vinylRotationInterval) clearInterval(window.vinylRotationInterval);
         window.vinylRotationLastTime = performance.now();
         window.vinylRotationInterval = setInterval(() => {
