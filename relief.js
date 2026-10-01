@@ -1,3 +1,26 @@
+
+// Convert WGS84 to LV95
+function WGStoLV95(lat, lng) {
+    // Convert to seconds
+    const phi = (lat * 3600 - 169028.66) / 10000;
+    const lambda = (lng * 3600 - 26782.5) / 10000;
+
+    const E = 2600072.37
+            + 211455.93 * lambda
+            - 10938.51 * lambda * phi
+            - 0.36 * lambda * Math.pow(phi, 2)
+            - 44.54 * Math.pow(lambda, 3);
+
+    const N = 1200147.07
+            + 308807.95 * phi
+            + 3745.25 * Math.pow(lambda, 2)
+            + 76.63 * Math.pow(phi, 2)
+            - 194.56 * Math.pow(lambda, 2) * phi
+            + 119.79 * Math.pow(phi, 3);
+
+    return [E, N];
+}
+
 // relief.js - Relief Scanner Logic
 
 window.reliefState = 0; // 0: IDLE, 1: SELECT_START, 2: SELECT_END, 3: CONFIRM_LINE, 4: LOADING_API
@@ -167,17 +190,17 @@ window.confirmReliefLine = function() {
     // API Call
     // https://api3.geo.admin.ch/rest/services/profile.json?geom={"type":"LineString","coordinates":[[lon1,lat1],[lon2,lat2]]}&sr=4326&nb_points=300
 
-    const lon1 = reliefStart.lng;
-    const lat1 = reliefStart.lat;
-    const lon2 = reliefEnd.lng;
-    const lat2 = reliefEnd.lat;
+
+    const startLV95 = WGStoLV95(reliefStart.lat, reliefStart.lng);
+    const endLV95 = WGStoLV95(reliefEnd.lat, reliefEnd.lng);
 
     const geom = JSON.stringify({
         type: "LineString",
-        coordinates: [[lon1, lat1], [lon2, lat2]]
+        coordinates: [startLV95, endLV95]
     });
 
-    const url = `https://api3.geo.admin.ch/rest/services/profile.json?geom=${encodeURIComponent(geom)}&sr=4326&nb_points=300`;
+    const url = `https://api3.geo.admin.ch/rest/services/profile.json?geom=${encodeURIComponent(geom)}&sr=2056&nb_points=300`;
+
 
     fetch(url)
         .then(response => {
