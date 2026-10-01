@@ -589,3 +589,56 @@ input:checked + .te-slider:before {
 #map-overlay-content .bild-container.raster-mode {
     aspect-ratio: unset; /* let it stretch in fullscreen */
 }
+
+/* Relief Scanner Styles */
+.relief-marker-start {
+    background-color: #FF6600 !important;
+    border: 2px solid #1a1a1a !important;
+    border-radius: 0 !important;
+    box-shadow: 2px 2px 0px #1a1a1a;
+    width: 24px !important;
+    height: 24px !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.relief-marker-start::after {
+    content: "A";
+    color: #1a1a1a;
+    font-family: monospace;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.relief-marker-end {
+    background-color: #00BFFF !important;
+    border: 2px solid #1a1a1a !important;
+    border-radius: 0 !important;
+    box-shadow: 2px 2px 0px #1a1a1a;
+    width: 24px !important;
+    height: 24px !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.relief-marker-end::after {
+    content: "B";
+    color: #1a1a1a;
+    font-family: monospace;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.cursor-crosshair {
+    cursor: crosshair !important;
+}
+.cursor-crosshair * {
+    cursor: crosshair !important;
+}
+
+.relief-polyline {
+    stroke: #FF6600;
+    stroke-width: 4;
+    stroke-linecap: square;
+    filter: drop-shadow(0px 0px 0px rgba(0,0,0,0)); /* TE style: no shadow */
+}

@@ -342,7 +342,47 @@ window.toggleViewMode = function(panoId, isRaster) {
     window.drawLines(panoId);
 };
 
+
 window.drawLines = function(panoId) {
+    if (window.panoDataCache && window.panoDataCache[panoId] && window.panoDataCache[panoId].is_relief) {
+        let rawData = window.panoDataCache[panoId].kurve_y_array;
+        let dataArray = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
+
+        let canvas = document.getElementById('canvas_' + panoId);
+        if (!canvas) return;
+        let ctx = canvas.getContext('2d');
+
+        // Ensure canvas dimensions match its container
+        let container = document.getElementById('relief-display');
+        if (container) {
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+        }
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.beginPath();
+        ctx.strokeStyle = '#00BFFF'; // Synth-blue
+        ctx.lineWidth = 2;
+        ctx.shadowColor = '#00BFFF';
+        ctx.shadowBlur = 10;
+
+        if (dataArray && dataArray.length > 0) {
+            let stepX = canvas.width / dataArray.length;
+            ctx.moveTo(0, dataArray[0].y);
+            for (let i = 1; i < dataArray.length; i++) {
+                ctx.lineTo(i * stepX, dataArray[i].y);
+            }
+            ctx.stroke();
+        }
+
+        // We still need to call the audio logic to analyze peaks and valleys
+        if (window.analyzeKurve) {
+             window.analyzeKurve(dataArray, window.activeSynth);
+        }
+
+        return; // Skip normal drawing
+    }
+
     const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
 
     const daten = window.panoDataCache[panoId];

@@ -20,6 +20,15 @@ const text = {
         alert_vinyl_loaded: "Vinyl geladen!",
         alert_vinyl_parse_error: "Fehler beim Parsen der Vinyl-Daten.",
 
+        btn_relief_scan: "Relief scannen",
+        guidance_start: "Startpunkt platzieren",
+        guidance_end: "Zielpunkt setzen",
+        btn_relief_query: "Relief abfragen",
+        btn_relief_reselect: "Neu selektieren",
+        btn_relief_cancel: "Abbrechen",
+        relief_loading: "[ * ANALYSIERE... ]",
+
+
         sprache: "Sprache:",
         ausschnitt: "🌍 Ausschnitt:",
         schweiz: "Schweiz",
