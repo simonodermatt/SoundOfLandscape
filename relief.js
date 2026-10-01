@@ -257,11 +257,32 @@ window.confirmReliefLine = function() {
                 kurve_y_array: JSON.stringify(normalizedArray)
             };
 
+
             // Add to cache
             if (!window.panoDataCache) {
                  window.panoDataCache = {};
             }
             window.panoDataCache[fakePano.id] = fakePano;
+
+            // Initialize activeSynth for the fake pano
+            if (!window.activeSynth) window.activeSynth = {};
+            window.activeSynth[fakePano.id] = {
+                mode: 'chord',
+                scale: 'lydian',
+                wave: 'sine',
+                peaks: 1,
+                valleys: 1,
+                spacing: 1,
+                attack: 0.1,
+                release: 0.5,
+                volume: 0.5,
+                echo: 0,
+                sensibilitaet: 1,
+                mutation: 1.0,
+                oktaven: 4,
+                bpm: 60
+            };
+
 
             // We set it as the active pano and open modal
             // Need to make sure openPanoModal works with this
