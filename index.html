@@ -44,7 +44,8 @@
     <div class="menu-divider"></div>
     <button id="btn-vinyl-mode" onclick="toggleVinylMode()">Vinyl</button>
     <div class="menu-divider"></div>
-    <button id="btn-relief-mode" onclick="if(window.toggleReliefMode) window.toggleReliefMode()">🏔️ Relief scannen</button>
+    <button id="btn-relief-scan" onclick="window.startReliefScan()">Relief scannen</button>
+
     <div class="menu-divider"></div>
     <span id="user-display" style="color: #00BFFF; font-size: 11px; cursor: pointer; text-transform: uppercase; margin-right: 8px;" onclick="changeUserName()" title="Namen ändern">👤 Gast</span>    
     <div class="menu-divider"></div>
@@ -135,6 +136,17 @@
     <div id="vinyl-presets-list" style="margin-top: 10px; max-height: 100px; overflow-y: auto; overflow-x: hidden; width: 100%; box-sizing: border-box;"></div>
 </div>
 
+
+<div id="relief-guidance-banner" style="display: none; position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 1000; background: #FF6600; color: #1a1a1a; padding: 10px 20px; font-family: monospace; font-size: 14px; text-transform: uppercase; border: 2px solid #1a1a1a;">
+    <span id="relief-guidance-text"></span>
+</div>
+
+<div id="relief-overlay-menu" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000; background: #1a1a1a; border: 2px solid #FF6600; padding: 15px; flex-direction: column; gap: 10px; width: fit-content;">
+    <button class="icon-btn" id="btn-relief-query" onclick="window.confirmReliefLine()" style="width: 100%; border-radius: 0; padding: 8px;">Relief abfragen</button>
+    <button class="icon-btn" id="btn-relief-reselect" onclick="window.startReliefScan()" style="width: 100%; border-radius: 0; padding: 8px;">Neu selektieren</button>
+    <button class="icon-btn" id="btn-relief-cancel" onclick="window.cancelReliefScan()" style="width: 100%; border-radius: 0; padding: 8px;">Abbrechen</button>
+</div>
+
 <div id="map-container">
     <div id="map"></div>
     <div id="map-label">[ MAP_DATA ]</div>
@@ -158,6 +170,7 @@
 <script src="config.js?v=6"></script>
 <script src="api.js?v=6"></script>
 <script src="audio.js?v=2"></script>
+<script src="relief.js"></script>
 <script src="midi.js"></script>
 <script src="ui.js?v=11"></script>
     
