@@ -165,6 +165,12 @@ window.changeLanguage = function(lang) {
     let btnVinylMode = document.getElementById('btn-vinyl-mode');
     if (btnVinylMode) btnVinylMode.innerText = text[lang].vinyl_mode || "Vinyl";
 
+    let btnReliefMode = document.getElementById('btn-relief-mode');
+    if (btnReliefMode) btnReliefMode.innerText = text[lang].relief_mode || "🏔️ Relief scannen";
+
+    let reliefBanner = document.getElementById('relief-guidance-banner');
+    if (reliefBanner) reliefBanner.innerText = text[lang].relief_guidance || "Klicke auf der Karte auf deinen Startpunkt und wähle danach das Ziel.";
+
     let btnGen = document.getElementById('btn-vinyl-generate');
     if (btnGen) btnGen.title = text[lang].vinyl_generate || "Generate";
     let btnPlay = document.getElementById('btn-vinyl-play');

@@ -86,7 +86,10 @@ const text = {
         vinyl_play: "Abspielen",
         vinyl_save: "Speichern",
         vinyl_load: "Laden",
-        vinyl_mutation: "Mutation"
+        vinyl_mutation: "Mutation",
+        relief_mode: "🏔️ Relief scannen",
+        relief_guidance: "Klicke auf der Karte auf deinen Startpunkt und wähle danach das Ziel.",
+        relief_analyzing: "[ * ANALYSIERE... ]"
     },
     fr: {
         oktave_1: "1 Octave",
@@ -165,7 +168,10 @@ const text = {
         vinyl_play: "Jouer",
         vinyl_save: "Sauvegarder",
         vinyl_load: "Charger",
-        vinyl_mutation: "Mutation"
+        vinyl_mutation: "Mutation",
+        relief_mode: "🏔️ Analyser le relief",
+        relief_guidance: "Cliquez sur la carte sur votre point de départ puis choisissez la destination.",
+        relief_analyzing: "[ * ANALYSE... ]"
     },
     it: {
         oktave_1: "1 Ottava",
@@ -244,7 +250,10 @@ const text = {
         vinyl_play: "Giocare",
         vinyl_save: "Salvare",
         vinyl_load: "Caricare",
-        vinyl_mutation: "Mutazione"
+        vinyl_mutation: "Mutazione",
+        relief_mode: "🏔️ Scansione rilievo",
+        relief_guidance: "Clicca sulla mappa il tuo punto di partenza e poi scegli la destinazione.",
+        relief_analyzing: "[ * ANALISI... ]"
     },
     en: {
         oktave_1: "1 Octave",
@@ -323,7 +332,10 @@ const text = {
         vinyl_play: "Play",
         vinyl_save: "Save",
         vinyl_load: "Load",
-        vinyl_mutation: "Mutation"
+        vinyl_mutation: "Mutation",
+        relief_mode: "🏔️ Scan Relief",
+        relief_guidance: "Click on the map on your starting point and then choose the destination.",
+        relief_analyzing: "[ * ANALYZING... ]"
     },
     uk: {
         oktave_1: "1 Октава",
@@ -402,7 +414,10 @@ const text = {
         vinyl_play: "Відтворити",
         vinyl_save: "Зберегти",
         vinyl_load: "Завантажити",
-        vinyl_mutation: "Мутація"
+        vinyl_mutation: "Мутація",
+        relief_mode: "🏔️ Сканувати рельєф",
+        relief_guidance: "Клацніть на карті на вашу початкову точку, а потім виберіть місце призначення.",
+        relief_analyzing: "[ * АНАЛІЗ... ]"
     },
     ru: {
         oktave_1: "1 Октава",
@@ -481,6 +496,9 @@ const text = {
         vinyl_play: "Воспроизвести",
         vinyl_save: "Сохранить",
         vinyl_load: "Загрузить",
-        vinyl_mutation: "Мутация"
+        vinyl_mutation: "Мутация",
+        relief_mode: "🏔️ Сканировать рельеф",
+        relief_guidance: "Нажмите на карту на начальной точке, а затем выберите пункт назначения.",
+        relief_analyzing: "[ * АНАЛИЗ... ]"
     }
 };
