@@ -250,8 +250,8 @@ window.confirmReliefLine = function() {
                 id: 'relief_' + Date.now(),
                 titel: 'Relief Scan',
                 datum: new Date().toLocaleDateString(),
-                lat: (lat1 + lat2) / 2,
-                lng: (lon1 + lon2) / 2,
+                lat: (reliefStart.lat + reliefEnd.lat) / 2,
+                lng: (reliefStart.lng + reliefEnd.lng) / 2,
                 is_relief: true,
                 // We'll store the data somewhere accessible, e.g., in a global cache
                 kurve_y_array: JSON.stringify(normalizedArray)
