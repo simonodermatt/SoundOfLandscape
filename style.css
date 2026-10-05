@@ -590,82 +590,55 @@ input:checked + .te-slider:before {
     aspect-ratio: unset; /* let it stretch in fullscreen */
 }
 
-/* -----------------------------------------
-   RELIEF MODE
------------------------------------------- */
-#btn-relief-mode {
-    background: #2a2a2a;
-    color: #fff;
-    border: 1px solid #444;
-    border-radius: 4px;
-    padding: 4px 8px;
-    font-size: 11px;
-    cursor: pointer;
-    text-transform: uppercase;
+/* Relief Scanner Styles */
+.relief-marker-start {
+    background-color: #FF6600 !important;
+    border: 2px solid #1a1a1a !important;
+    border-radius: 0 !important;
+    box-shadow: 2px 2px 0px #1a1a1a;
+    width: 24px !important;
+    height: 24px !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
-#btn-relief-mode:hover {
-    background: #444;
-}
-
-#relief-guidance-banner {
-    position: absolute;
-    bottom: 30px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 2000;
-    background: #1a1a1a;
-    color: #FF6600; /* Neon Orange */
-    border: 2px solid #FF6600;
-    padding: 10px 20px;
-    font-family: 'Space Mono', 'Courier New', Courier, monospace;
-    font-size: 14px;
+.relief-marker-start::after {
+    content: "A";
+    color: #1a1a1a;
+    font-family: monospace;
     font-weight: bold;
-    text-transform: uppercase;
-    text-align: center;
-    box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.8);
-    pointer-events: none; /* Let clicks pass through to map */
+    font-size: 14px;
 }
 
-/* Leaflet Polyline */
+.relief-marker-end {
+    background-color: #00BFFF !important;
+    border: 2px solid #1a1a1a !important;
+    border-radius: 0 !important;
+    box-shadow: 2px 2px 0px #1a1a1a;
+    width: 24px !important;
+    height: 24px !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.relief-marker-end::after {
+    content: "B";
+    color: #1a1a1a;
+    font-family: monospace;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.cursor-crosshair {
+    cursor: crosshair !important;
+}
+.cursor-crosshair * {
+    cursor: crosshair !important;
+}
+
 .relief-polyline {
-    stroke: #FF6600; /* Neon Orange */
-    stroke-width: 4px;
-    stroke-opacity: 1;
-    stroke-linejoin: round;
+    stroke: #FF6600;
+    stroke-width: 4;
     stroke-linecap: square;
-}
-
-/* Leaflet DivIcon Marker */
-.relief-marker {
-    background: #FF6600; /* Neon Orange */
-    border: 2px solid #1a1a1a;
-    border-radius: 0; /* Teenage Engineering block style */
-    box-sizing: border-box;
-    width: 12px;
-    height: 12px;
-    box-shadow: 2px 2px 0px rgba(0, 0, 0, 0.8);
-}
-
-/* Oszilloskop Display Container (relief-display) */
-.relief-display {
-    width: 100%;
-    height: 200px; /* Base height, adjust as needed or allow flex to scale */
-    background-color: #1a1a1a; /* Very dark grey / black */
-    background-image:
-        linear-gradient(#333 1px, transparent 1px),
-        linear-gradient(90deg, #333 1px, transparent 1px);
-    background-size: 20px 20px;
-    background-position: center center;
-    border: 1px solid #333;
-    position: relative;
-    overflow: hidden;
-    box-sizing: border-box;
-}
-
-.relief-display canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    filter: drop-shadow(0px 0px 0px rgba(0,0,0,0)); /* TE style: no shadow */
 }
