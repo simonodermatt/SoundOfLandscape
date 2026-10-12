@@ -122,7 +122,8 @@ window.loadSelectedPreset = function(panoId) {
             peaks: parseInt(p.peaks) || 4, 
             valleys: parseInt(p.valleys) || 2, 
             spacing: parseInt(p.spacing) || 35,
-            sensibilitaet: parseInt(p.sensibilitaet) || 0, 
+            sensibilitaet: parseInt(p.sensibilitaet) || 0,
+            gridLines: parseInt(p.gridLines) || 5, 
             mode: p.mode ? String(p.mode).trim().toLowerCase() : 'chord', 
             scale: p.scale ? String(p.scale).trim().toLowerCase() : 'lydian',
             oktaven: parseInt(p.oktaven) || 3, 
@@ -153,7 +154,7 @@ window.loadSelectedPreset = function(panoId) {
             waveSel.dispatchEvent(new Event('change'));
         }
 
-        const sliderKeys = ['peaks', 'valleys', 'spacing', 'sensibilitaet', 'oktaven', 'range', 'duration', 'echo', 'attack', 'release', 'volume'];
+        const sliderKeys = ['peaks', 'valleys', 'spacing', 'sensibilitaet', 'gridLines', 'oktaven', 'range', 'duration', 'echo', 'attack', 'release', 'volume'];
         sliderKeys.forEach(key => {
             let rangeInput = document.getElementById(`range_${key}_${panoId}`);
             if (rangeInput) {
@@ -275,7 +276,7 @@ function processPanoramaData(data) {
 
         window.activeSynth[pano.id] = {
             peaks: parseInt(pano.peaks) || 4, valleys: parseInt(pano.valleys) || 2, spacing: parseInt(pano.spacing) || 35,
-            sensibilitaet: parseInt(pano.sensibilitaet) || 0, mode: pano.mode || 'chord', scale: pano.scale || 'lydian',
+            sensibilitaet: parseInt(pano.sensibilitaet) || 0, gridLines: parseInt(pano.gridLines) || 5, mode: pano.mode || 'chord', scale: pano.scale || 'lydian',
             oktaven: parseInt(pano.oktaven) || 3, range: parseInt(pano.range) || 100, wave: pano.wave || 'darkpad',
             volume: parseFloat(pano.volume) || 0.2, duration: parseFloat(pano.duration) || 5.0, attack: parseFloat(pano.attack) || 1.0,
             release: parseFloat(pano.release) || 2.0, echo: parseFloat(pano.echo) || 0.3, mutation: parseFloat(pano.mutation) || 1.0

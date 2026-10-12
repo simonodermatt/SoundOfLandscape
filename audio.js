@@ -27,6 +27,39 @@ function generateScale(scaleName, octaves) {
     return freqs;
 }
 
+
+window.findeSchnittpunkte = function(kurve, numLines, maxHoehe) {
+    if (!kurve || kurve.length === 0 || numLines <= 0) return [];
+    
+    let punkte = [];
+    let lineYs = [];
+    for (let i = 1; i <= numLines; i++) {
+        lineYs.push((i / (numLines + 1)) * maxHoehe);
+    }
+    
+    let maxY = Math.max(...kurve); 
+    let minY = Math.min(...kurve);
+    let span = maxY - minY || 1;
+
+    for (let i = 1; i < kurve.length; i++) {
+        let y1 = kurve[i-1];
+        let y2 = kurve[i];
+        
+        for (let j = 0; j < lineYs.length; j++) {
+            let lineY = lineYs[j];
+            if ((y1 <= lineY && y2 >= lineY) || (y1 >= lineY && y2 <= lineY)) {
+                // Intersect found
+                // Exact X interpolation
+                let fraction = (lineY - y1) / (y2 - y1) || 0;
+                let exactX = (i - 1) + fraction;
+                let hoehe = ((maxY - lineY) / span) * 100; // Map height like findePunkte
+                punkte.push({ x: exactX, y: lineY, hoehe: hoehe });
+            }
+        }
+    }
+    return punkte;
+};
+
 window.findePunkte = function(kurve, maxAnzahl, minAbstand, sensibilitaet, typ) {
     if (!kurve || kurve.length === 0) return [];
     
@@ -203,7 +236,9 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
                 let panner = actx.createStereoPanner ? actx.createStereoPanner() : actx.createGain();
                 if(panner.pan) panner.pan.value = (punkt.x / daten.bild_breite) * 2 - 1;
 
-                const startDelay = (s.mode === 'chord') ? 0 : (indexPos * 0.25);
+                let startDelay = 0;
+                if (s.mode === 'lr') startDelay = (punkt.x / daten.bild_breite) * s.duration;
+                else if (s.mode === 'rl') startDelay = (1 - (punkt.x / daten.bild_breite)) * s.duration;
                 const t0 = now + startDelay + 0.1; 
                 const t1 = t0 + Math.max(0.01, s.attack);
                 const t2 = t1 + Math.max(0.01, s.duration); 
