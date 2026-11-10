@@ -1,9 +1,13 @@
-// api.js - Datenverwaltung, Netzwerk und Nutzer
+// api.js - Datenverwaltung, Netzwerk und Nutzer (Supabase REST)
 window.currentLang = 'de';
 window.panoramenDaten = [];
 window.activeSynth = {}; 
 window.panoDataCache = {}; 
 window.currentPresets = []; 
+
+// Supabase Konfiguration (wird primär aus config.js bezogen)
+const SB_URL = (typeof SUPABASE_URL !== 'undefined') ? SUPABASE_URL : "https://hdwbfkukcmrddrkrghiy.supabase.co";
+const SB_KEY = (typeof SUPABASE_ANON_KEY !== 'undefined') ? SUPABASE_ANON_KEY : "sb_publishable_rUM-8j5OTgPsKH3XtbD0VQ_cCFM39SO";
 
 function escapeHTML(str) {
     if (typeof str !== 'string') return '';
@@ -51,12 +55,27 @@ window.loadPresets = async function(panoId) {
     container.innerHTML = "<div style='font-size:11px; color:#888;'>Lade Community Presets...</div>";
     
     try {
-        // HIER IST DER FIX: action=presets wurde hinzugefügt
-        let res = await fetch(`${API_URL}?action=presets&pano_id=${panoId}`);
+        let res = await fetch(`${SB_URL}/rest/v1/presets?select=*&pano_id=eq.${encodeURIComponent(panoId)}&order=created_at.desc`, {
+            method: 'GET',
+            headers: {
+                "apikey": SB_KEY,
+                "Authorization": `Bearer ${SB_KEY}`
+            }
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         let presets = await res.json();
         
-        // Sicherheits-Filter: Wir garantieren, dass nur Presets für DIESES Panorama bleiben
-        window.currentPresets = presets.filter(p => String(p.pano_id) === String(panoId)); 
+        // Mappe Supabase Attribute auf das bisherige Presets-Format
+        window.currentPresets = presets
+            .map(p => ({
+                ...p,
+                preset_id: p.preset_id || p.id,
+                timestamp: p.timestamp || p.created_at,
+                sensibilitaet: (p.sensibility !== undefined && p.sensibility !== null) ? p.sensibility : (p.sensibilitaet || 0),
+                oktaven: (p.octaves !== undefined && p.octaves !== null) ? p.octaves : (p.oktaven || 3),
+                gridLines: (p.grid_lines !== undefined && p.grid_lines !== null) ? p.grid_lines : (p.gridLines || 5)
+            }))
+            .filter(p => String(p.pano_id) === String(panoId)); 
         
         if (window.currentPresets.length === 0) {
             container.innerHTML = "<div style='font-size:11px; color:#888;'>Noch keine Presets vorhanden.</div>";
@@ -97,6 +116,7 @@ window.loadPresets = async function(panoId) {
         });
         container.innerHTML = html;
     } catch(e) { 
+        console.error("loadPresets error:", e);
         container.innerHTML = "<div style='font-size:11px; color:red;'>Fehler beim Laden.</div>"; 
     }
 };
@@ -115,18 +135,18 @@ window.loadSelectedPreset = function(panoId) {
     }
     
     let presetId = checkedBoxes[0].value;
-    let p = window.currentPresets.find(pr => String(pr.preset_id) === String(presetId));
+    let p = window.currentPresets.find(pr => String(pr.preset_id) === String(presetId) || String(pr.id) === String(presetId));
     
     if (p) {
         window.activeSynth[panoId] = {
             peaks: parseInt(p.peaks) || 4, 
             valleys: parseInt(p.valleys) || 2, 
             spacing: parseInt(p.spacing) || 35,
-            sensibilitaet: parseInt(p.sensibilitaet) || 0,
-            gridLines: parseInt(p.gridLines) || 5, 
+            sensibilitaet: parseInt(p.sensibilitaet !== undefined ? p.sensibilitaet : p.sensibility) || 0,
+            gridLines: parseInt(p.gridLines !== undefined ? p.gridLines : p.grid_lines) || 5, 
             mode: p.mode ? String(p.mode).trim().toLowerCase() : 'chord', 
             scale: p.scale ? String(p.scale).trim().toLowerCase() : 'lydian',
-            oktaven: parseInt(p.oktaven) || 3, 
+            oktaven: parseInt(p.oktaven !== undefined ? p.oktaven : p.octaves) || 3, 
             range: parseInt(p.range) || 100, 
             wave: p.wave ? String(p.wave).trim().toLowerCase() : 'darkpad',
             volume: parseFloat(p.volume) || 0.2, 
@@ -208,63 +228,121 @@ window.savePreset = async function(panoId) {
     let presetName = prompt(msg);
     if (!presetName) return;
 
-    let s = window.activeSynth[panoId];
-    let aiSeq = window.panoAiSequences && window.panoAiSequences[panoId] ? window.panoAiSequences[panoId] : null;
+    let s = window.activeSynth[panoId] || {};
     let payload = {
-        action: "save", pano_id: panoId, preset_name: presetName,
-        user_name: name, user_id: getUserId(), timestamp: new Date().toISOString(), ...s
+        pano_id: String(panoId),
+        preset_name: presetName,
+        user_name: name,
+        user_id: getUserId(),
+        peaks: parseInt(s.peaks) || 4,
+        valleys: parseInt(s.valleys) || 2,
+        spacing: parseInt(s.spacing) || 35,
+        sensibility: parseInt(s.sensibilitaet !== undefined ? s.sensibilitaet : (s.sensibility || 0)) || 0,
+        grid_lines: parseInt(s.gridLines !== undefined ? s.gridLines : (s.grid_lines || 5)) || 5,
+        mode: s.mode ? String(s.mode).trim().toLowerCase() : 'chord',
+        scale: s.scale ? String(s.scale).trim().toLowerCase() : 'lydian',
+        octaves: parseInt(s.oktaven !== undefined ? s.oktaven : (s.octaves || 3)) || 3,
+        range: parseInt(s.range) || 100,
+        wave: s.wave ? String(s.wave).trim().toLowerCase() : 'darkpad',
+        volume: (parseFloat(s.volume) !== undefined && !isNaN(parseFloat(s.volume))) ? parseFloat(s.volume) : 0.2,
+        duration: (parseFloat(s.duration) !== undefined && !isNaN(parseFloat(s.duration))) ? parseFloat(s.duration) : 5.0,
+        attack: (parseFloat(s.attack) !== undefined && !isNaN(parseFloat(s.attack))) ? parseFloat(s.attack) : 1.0,
+        release: (parseFloat(s.release) !== undefined && !isNaN(parseFloat(s.release))) ? parseFloat(s.release) : 2.0,
+        echo: (parseFloat(s.echo) !== undefined && !isNaN(parseFloat(s.echo))) ? parseFloat(s.echo) : 0.3
     };
-
-    if (aiSeq) {
-        payload.is_ai = true;
-        payload.ai_sound = JSON.stringify(aiSeq);
-    } else {
-        payload.is_ai = false;
-        payload.ai_sound = "";
-    }
 
     let btn = document.getElementById(`save-btn-${panoId}`);
     if (btn) { btn.innerText = "⧗"; }
     
     try {
-        await fetch(API_URL, { 
-            method: 'POST', mode: 'no-cors',
-            headers: { 'Content-Type': 'text/plain' },
+        let res = await fetch(`${SB_URL}/rest/v1/presets`, { 
+            method: 'POST',
+            headers: {
+                "apikey": SB_KEY,
+                "Authorization": `Bearer ${SB_KEY}`,
+                "Content-Type": "application/json",
+                "Prefer": "return=representation"
+            },
             body: JSON.stringify(payload) 
         });
         
+        if (!res.ok) {
+            let errText = await res.text();
+            throw new Error(`HTTP ${res.status}: ${errText}`);
+        }
+        
         let successMsg = (t.alert_saved || "Erfolg! '{preset}' wurde gespeichert.").replace('{preset}', presetName);
         alert(successMsg);
-        setTimeout(() => { loadPresets(panoId); }, 1500);
+        await window.loadPresets(panoId);
     } catch(e) { 
+        console.error("savePreset error:", e);
         alert(t.alert_net_error || "Netzwerkfehler beim Speichern."); 
+    } finally {
+        if (btn) { btn.innerText = "⚑"; }
     }
-    if (btn) { btn.innerText = "⚑"; }
 };
 
 window.deletePreset = async function(presetId, panoId) {
     const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
     if(!confirm(t.alert_delete || "Möchtest du dieses Preset wirklich löschen?")) return;
     try {
-        await fetch(API_URL, { 
-            method: 'POST', mode: 'no-cors',
-            headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({ action: "delete", preset_id: presetId, user_id: getUserId() }) 
+        let res = await fetch(`${SB_URL}/rest/v1/presets?id=eq.${encodeURIComponent(presetId)}&user_id=eq.${encodeURIComponent(getUserId())}`, { 
+            method: 'DELETE',
+            headers: {
+                "apikey": SB_KEY,
+                "Authorization": `Bearer ${SB_KEY}`
+            }
         });
-        setTimeout(() => { loadPresets(panoId); }, 1500);
-    } catch(e) { alert(t.alert_delete_error || "Fehler beim Löschen."); }
+        if (!res.ok) {
+            let errText = await res.text();
+            throw new Error(`HTTP ${res.status}: ${errText}`);
+        }
+        await window.loadPresets(panoId);
+    } catch(e) { 
+        console.error("deletePreset error:", e);
+        alert(t.alert_delete_error || "Fehler beim Löschen."); 
+    }
 };
 
-
 function processPanoramaData(data) {
-    window.panoramenDaten = data;
+    if (!Array.isArray(data)) {
+        console.error("processPanoramaData erwartet ein Array:", data);
+        return;
+    }
+
+    window.panoramenDaten = data.map(p => {
+        let pano = { ...p };
+        // Feld-Aliase synchronisieren für lückenlose UI- und Audio-Kompatibilität
+        pano.titel = pano.titel || pano.title || "";
+        pano.title = pano.title || pano.titel || "";
+        pano.datum = pano.datum || pano.date_added || "";
+        pano.date_added = pano.date_added || pano.datum || "";
+        pano.bildUrl = pano.bildUrl || pano.image_url || "";
+        pano.image_url = pano.image_url || pano.bildUrl || "";
+        pano.arrayUrl = pano.arrayUrl || pano.array_url || "";
+        pano.array_url = pano.array_url || pano.arrayUrl || "";
+        if (!pano.position && pano.lat && pano.lng) {
+            pano.position = `${pano.lat}, ${pano.lng}`;
+        }
+        return pano;
+    });
+
     if(window.markerClusterGroup) window.markerClusterGroup.clearLayers();
 
     window.panoramenDaten.forEach(pano => {
         // Leere Zeilen abfangen
         if (!pano.id) return;
 
-        const coords = pano.position ? pano.position.split(',').map(c => parseFloat(c.trim())) : [46.8182, 8.2275];
+        let coords = [46.8182, 8.2275];
+        if (pano.lat && pano.lng && !isNaN(parseFloat(pano.lat)) && !isNaN(parseFloat(pano.lng))) {
+            coords = [parseFloat(pano.lat), parseFloat(pano.lng)];
+        } else if (pano.position) {
+            coords = pano.position.split(',').map(c => parseFloat(c.trim()));
+            if (coords.length < 2 || isNaN(coords[0]) || isNaN(coords[1])) {
+                coords = [46.8182, 8.2275];
+            }
+        }
+
         const marker = L.marker(coords);
         marker.panoId = pano.id;
 
@@ -275,60 +353,49 @@ function processPanoramaData(data) {
         if(window.markerClusterGroup) window.markerClusterGroup.addLayer(marker);
 
         window.activeSynth[pano.id] = {
-            peaks: parseInt(pano.peaks) || 4, valleys: parseInt(pano.valleys) || 2, spacing: parseInt(pano.spacing) || 35,
-            sensibilitaet: parseInt(pano.sensibilitaet) || 0, gridLines: parseInt(pano.gridLines) || 5, mode: pano.mode || 'chord', scale: pano.scale || 'lydian',
-            oktaven: parseInt(pano.oktaven) || 3, range: parseInt(pano.range) || 100, wave: pano.wave || 'darkpad',
-            volume: parseFloat(pano.volume) || 0.2, duration: parseFloat(pano.duration) || 5.0, attack: parseFloat(pano.attack) || 1.0,
-            release: parseFloat(pano.release) || 2.0, echo: parseFloat(pano.echo) || 0.3, mutation: parseFloat(pano.mutation) || 1.0
+            peaks: parseInt(pano.peaks) || 4,
+            valleys: parseInt(pano.valleys) || 2,
+            spacing: parseInt(pano.spacing) || 35,
+            sensibilitaet: parseInt(pano.sensibilitaet !== undefined ? pano.sensibilitaet : (pano.sensibility || 0)) || 0,
+            gridLines: parseInt(pano.gridLines !== undefined ? pano.gridLines : (pano.grid_lines || 5)) || 5,
+            mode: pano.mode || 'chord',
+            scale: pano.scale || 'lydian',
+            oktaven: parseInt(pano.oktaven !== undefined ? pano.oktaven : (pano.octaves || 3)) || 3,
+            range: parseInt(pano.range) || 100,
+            wave: pano.wave || 'darkpad',
+            volume: parseFloat(pano.volume) || 0.2,
+            duration: parseFloat(pano.duration) || 5.0,
+            attack: parseFloat(pano.attack) || 1.0,
+            release: parseFloat(pano.release) || 2.0,
+            echo: parseFloat(pano.echo) || 0.3,
+            mutation: parseFloat(pano.mutation) || 1.0
         };
     });
 }
 
 window.ladePanoramenAusSheet = async function() {
-    // Option: Google Sheets v4 REST API (mit API-Key)
-    if (typeof SHEET_ID !== 'undefined' && typeof GOOGLE_API_KEY !== 'undefined' && GOOGLE_API_KEY.trim() !== '') {
-        const range = encodeURIComponent('Panoramen');
-        const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${GOOGLE_API_KEY}`;
-        try {
-            const res = await fetch(apiUrl);
-            const json = await res.json();
-            if (json.values && json.values.length > 1) {
-                const headers = json.values[0];
-                const parsedData = json.values.slice(1).map(row => {
-                    const obj = {};
-                    headers.forEach((h, i) => { obj[h] = row[i] !== undefined ? row[i] : ''; });
-                    return obj;
-                });
-                processPanoramaData(parsedData);
-                return;
-            }
-        } catch (err) {
-            console.warn("Google REST API Aufruf fehlgeschlagen, wechsle auf GViz:", err);
-        }
-    }
-
-    // Fallback: Wir nutzen hier wieder die GViz-Schnittstelle wie bei solargrafie.ch
-    const url = `https://docs.google.com/spreadsheets/d/${typeof SHEET_ID !== 'undefined' ? SHEET_ID : ''}/gviz/tq?tqx=out:csv&sheet=Panoramen`;
-
-    // PapaParse übernimmt den Download via XMLHttpRequest, was strikte Firewalls oft eher durchlassen als fetch()
-    if (typeof Papa !== 'undefined') {
-        Papa.parse(url, {
-            download: true,
-            header: true,
-            skipEmptyLines: true,
-            complete: function(results) {
-                processPanoramaData(results.data);
-            },
-            error: function(err) {
-                console.error("Fehler beim Abrufen der Tabellendaten über PapaParse:", err);
+    try {
+        let res = await fetch(`${SB_URL}/rest/v1/panoramas?select=*&order=id.asc`, {
+            method: 'GET',
+            headers: {
+                "apikey": SB_KEY,
+                "Authorization": `Bearer ${SB_KEY}`
             }
         });
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        let data = await res.json();
+        processPanoramaData(data);
+    } catch (err) {
+        console.error("Fehler beim Abrufen der Panoramen aus Supabase:", err);
     }
 };
-
+window.loadPanoramas = window.ladePanoramenAusSheet;
 
 window.saveVinyl = async function() {
     if (!window.vinylArray || window.vinylArray.length === 0) {
+        const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
         alert(t.alert_gen_vinyl_array_first || "Bitte generiere zuerst das Vinyl-Array!");
         return;
     }
@@ -346,62 +413,53 @@ window.saveVinyl = async function() {
     let presetName = prompt(msg, "My Vinyl Record");
     if (!presetName) return;
 
-    // Convert array to string for storage, might be large but fits in Google Sheet cell (up to 50k chars usually)
-    // To save space, we could sample it, but let's try full array as JSON string
-    let compressedArray = [];
-    let stepSize = 10;
-    for(let i=0; i<window.vinylArray.length; i+=stepSize) {
-        compressedArray.push(Math.round(window.vinylArray[i]));
-    }
-    let arrayData = { array: compressedArray };
-    if (window.vinylAiSequence) {
-        arrayData.aiSequence = window.vinylAiSequence;
-    }
-    let arrayString = JSON.stringify(arrayData);
-
     let payload = {
-        action: "save",
         pano_id: 'vinyl_mode_id',
         preset_name: presetName,
         user_name: name,
         user_id: getUserId(),
-        timestamp: new Date().toISOString(),
-        is_vinyl: true,
-        vinyl_array: arrayString,
         scale: document.getElementById('sel_vinyl_scale')?.value || 'pentatonic',
         wave: document.getElementById('sel_vinyl_wave')?.value || 'chime',
         duration: parseFloat(document.getElementById('range_vinyl_speed')?.value || 15),
-        oktaven: parseInt(document.getElementById('sel_vinyl_octaves')?.value) || 4,
-        // dummy values for required fields
-        peaks: 0, valleys: 0, spacing: 0, sensibilitaet: 0, mode: 'chord',
-        range: 0, volume: 0, attack: 0, release: 0, echo: 0
+        octaves: parseInt(document.getElementById('sel_vinyl_octaves')?.value) || 4,
+        peaks: 0,
+        valleys: 0,
+        spacing: 0,
+        sensibility: 0,
+        grid_lines: 5,
+        mode: 'chord',
+        range: 0,
+        volume: 0,
+        attack: 0,
+        release: 0,
+        echo: 0
     };
-
-    if (window.vinylAiSequence) {
-        payload.is_ai = true;
-        payload.ai_sound = JSON.stringify(window.vinylAiSequence);
-    } else {
-        payload.is_ai = false;
-        payload.ai_sound = "";
-    }
 
     let btn = document.getElementById(`btn-vinyl-save`);
     if (btn) { btn.innerText = "⧗"; }
 
     try {
-        await fetch(API_URL, {
-            method: 'POST', mode: 'no-cors',
-            headers: { 'Content-Type': 'text/plain' },
+        let res = await fetch(`${SB_URL}/rest/v1/presets`, {
+            method: 'POST',
+            headers: {
+                "apikey": SB_KEY,
+                "Authorization": `Bearer ${SB_KEY}`,
+                "Content-Type": "application/json",
+                "Prefer": "return=representation"
+            },
             body: JSON.stringify(payload)
         });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         let successMsg = (t.alert_saved || "Erfolg! '{preset}' wurde gespeichert.").replace('{preset}', presetName);
         alert(successMsg);
         window.loadVinylPresets();
     } catch(e) {
+        console.error("saveVinyl failed:", e);
         alert(t.alert_net_error || "Netzwerkfehler beim Speichern.");
+    } finally {
+        if (btn) { btn.innerText = "⚑"; }
     }
-    if (btn) { btn.innerText = "⚑"; }
 };
 
 window.loadVinylPresets = async function() {
@@ -410,11 +468,22 @@ window.loadVinylPresets = async function() {
     container.innerHTML = "<div style='font-size:11px; color:#888;'>Lade Vinyl Records...</div>";
 
     try {
-        let res = await fetch(`${API_URL}?action=presets&pano_id=vinyl_mode_id`);
-        let presets = await res.json();
+        let res = await fetch(`${SB_URL}/rest/v1/presets?select=*&pano_id=eq.vinyl_mode_id&order=created_at.desc`, {
+            method: 'GET',
+            headers: {
+                "apikey": SB_KEY,
+                "Authorization": `Bearer ${SB_KEY}`
+            }
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        let rawPresets = await res.json();
 
-        // Filter purely vinyl presets
-        let vinylPresets = presets.filter(p => p.is_vinyl === true || p.is_vinyl === 'true' || p.pano_id === 'vinyl_mode_id');
+        let vinylPresets = rawPresets.map(p => ({
+            ...p,
+            preset_id: p.preset_id || p.id,
+            timestamp: p.timestamp || p.created_at,
+            oktaven: p.octaves !== undefined ? p.octaves : p.oktaven
+        }));
         window.currentVinylPresets = vinylPresets;
 
         if (vinylPresets.length === 0) {
@@ -456,6 +525,7 @@ window.loadVinylPresets = async function() {
         });
         container.innerHTML = html;
     } catch(e) {
+        console.error("loadVinylPresets error:", e);
         container.innerHTML = "<div style='font-size:11px; color:red;'>Fehler beim Laden.</div>";
     }
 };
@@ -469,7 +539,7 @@ window.loadVinyl = function() {
     }
 
     let presetId = checkedBox.value;
-    let p = window.currentVinylPresets.find(pr => String(pr.preset_id) === String(presetId));
+    let p = window.currentVinylPresets.find(pr => String(pr.preset_id) === String(presetId) || String(pr.id) === String(presetId));
 
     if (p && p.vinyl_array) {
         try {
@@ -521,7 +591,7 @@ window.loadVinyl = function() {
                         window.vinylAiSequence = JSON.parse(p.ai_sound);
                     } catch(e) {
                         console.error("Error parsing ai_sound", e);
-                        window.vinylAiSequence = aiSeq || null; // Fallback to inner aiSeq if any
+                        window.vinylAiSequence = aiSeq || null;
                     }
                 } else {
                     window.vinylAiSequence = aiSeq || null;
@@ -563,11 +633,17 @@ window.deleteVinylPreset = async function(presetId) {
 
     if(!confirm("Möchtest du dieses Vinyl wirklich löschen?")) return;
     try {
-        await fetch(API_URL, {
-            method: 'POST', mode: 'no-cors',
-            headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({ action: "delete", preset_id: presetId, user_id: getUserId() })
+        let res = await fetch(`${SB_URL}/rest/v1/presets?id=eq.${encodeURIComponent(presetId)}&user_id=eq.${encodeURIComponent(getUserId())}`, {
+            method: 'DELETE',
+            headers: {
+                "apikey": SB_KEY,
+                "Authorization": `Bearer ${SB_KEY}`
+            }
         });
-        setTimeout(() => { window.loadVinylPresets(); }, 1500);
-    } catch(e) { alert(t.alert_delete_error || "Fehler beim Löschen."); }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        window.loadVinylPresets();
+    } catch(e) { 
+        console.error("deleteVinylPreset error:", e);
+        alert(t.alert_delete_error || "Fehler beim Löschen."); 
+    }
 };
