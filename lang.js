@@ -12,22 +12,21 @@ window.text = {
 };
 var text = window.text;
 
-// Supabase Konfiguration (wird primär aus config.js bezogen)
-const SB_URL = (typeof SUPABASE_URL !== 'undefined') ? SUPABASE_URL : "https://hdwbfkukcmrddrkrghiy.supabase.co";
-const SB_KEY = (typeof SUPABASE_ANON_KEY !== 'undefined') ? SUPABASE_ANON_KEY : "sb_publishable_rUM-8j5OTgPsKH3XtbD0VQ_cCFM39SO";
-
 /**
  * Lädt alle Übersetzungen asynchron aus der Supabase REST API
  * und mappt sie in die Struktur text[lang][key_name].
  */
 window.loadTranslations = async function() {
+    const sbUrl = (typeof SUPABASE_URL !== 'undefined') ? SUPABASE_URL : (window.SUPABASE_URL || "https://hdwbfkukcmrddrkrghiy.supabase.co");
+    const sbKey = (typeof SUPABASE_ANON_KEY !== 'undefined') ? SUPABASE_ANON_KEY : (window.SUPABASE_ANON_KEY || "sb_publishable_rUM-8j5OTgPsKH3XtbD0VQ_cCFM39SO");
+
     try {
-        const url = `${SB_URL}/rest/v1/translations?select=*`;
+        const url = `${sbUrl}/rest/v1/translations?select=*`;
         const res = await fetch(url, {
             method: 'GET',
             headers: {
-                "apikey": SB_KEY,
-                "Authorization": `Bearer ${SB_KEY}`
+                "apikey": sbKey,
+                "Authorization": `Bearer ${sbKey}`
             }
         });
 

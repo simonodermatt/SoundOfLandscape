@@ -5,9 +5,14 @@ window.activeSynth = {};
 window.panoDataCache = {}; 
 window.currentPresets = []; 
 
-// Supabase Konfiguration (wird primär aus config.js bezogen)
-const SB_URL = (typeof SUPABASE_URL !== 'undefined') ? SUPABASE_URL : "https://hdwbfkukcmrddrkrghiy.supabase.co";
-const SB_KEY = (typeof SUPABASE_ANON_KEY !== 'undefined') ? SUPABASE_ANON_KEY : "sb_publishable_rUM-8j5OTgPsKH3XtbD0VQ_cCFM39SO";
+// Supabase Hilfsfunktionen für URL und Key
+function getSupabaseUrl() {
+    return (typeof SUPABASE_URL !== 'undefined') ? SUPABASE_URL : (window.SUPABASE_URL || "https://hdwbfkukcmrddrkrghiy.supabase.co");
+}
+
+function getSupabaseKey() {
+    return (typeof SUPABASE_ANON_KEY !== 'undefined') ? SUPABASE_ANON_KEY : (window.SUPABASE_ANON_KEY || "sb_publishable_rUM-8j5OTgPsKH3XtbD0VQ_cCFM39SO");
+}
 
 function escapeHTML(str) {
     if (typeof str !== 'string') return '';
@@ -55,11 +60,13 @@ window.loadPresets = async function(panoId) {
     container.innerHTML = "<div style='font-size:11px; color:#888;'>Lade Community Presets...</div>";
     
     try {
-        let res = await fetch(`${SB_URL}/rest/v1/presets?select=*&pano_id=eq.${encodeURIComponent(panoId)}&order=created_at.desc`, {
+        const sbUrl = getSupabaseUrl();
+        const sbKey = getSupabaseKey();
+        let res = await fetch(`${sbUrl}/rest/v1/presets?select=*&pano_id=eq.${encodeURIComponent(panoId)}&order=created_at.desc`, {
             method: 'GET',
             headers: {
-                "apikey": SB_KEY,
-                "Authorization": `Bearer ${SB_KEY}`
+                "apikey": sbKey,
+                "Authorization": `Bearer ${sbKey}`
             }
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -255,11 +262,13 @@ window.savePreset = async function(panoId) {
     if (btn) { btn.innerText = "⧗"; }
     
     try {
-        let res = await fetch(`${SB_URL}/rest/v1/presets`, { 
+        const sbUrl = getSupabaseUrl();
+        const sbKey = getSupabaseKey();
+        let res = await fetch(`${sbUrl}/rest/v1/presets`, { 
             method: 'POST',
             headers: {
-                "apikey": SB_KEY,
-                "Authorization": `Bearer ${SB_KEY}`,
+                "apikey": sbKey,
+                "Authorization": `Bearer ${sbKey}`,
                 "Content-Type": "application/json",
                 "Prefer": "return=representation"
             },
@@ -286,11 +295,13 @@ window.deletePreset = async function(presetId, panoId) {
     const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
     if(!confirm(t.alert_delete || "Möchtest du dieses Preset wirklich löschen?")) return;
     try {
-        let res = await fetch(`${SB_URL}/rest/v1/presets?id=eq.${encodeURIComponent(presetId)}&user_id=eq.${encodeURIComponent(getUserId())}`, { 
+        const sbUrl = getSupabaseUrl();
+        const sbKey = getSupabaseKey();
+        let res = await fetch(`${sbUrl}/rest/v1/presets?id=eq.${encodeURIComponent(presetId)}&user_id=eq.${encodeURIComponent(getUserId())}`, { 
             method: 'DELETE',
             headers: {
-                "apikey": SB_KEY,
-                "Authorization": `Bearer ${SB_KEY}`
+                "apikey": sbKey,
+                "Authorization": `Bearer ${sbKey}`
             }
         });
         if (!res.ok) {
@@ -375,11 +386,13 @@ function processPanoramaData(data) {
 
 window.ladePanoramenAusSheet = async function() {
     try {
-        let res = await fetch(`${SB_URL}/rest/v1/panoramas?select=*&order=id.asc`, {
+        const sbUrl = getSupabaseUrl();
+        const sbKey = getSupabaseKey();
+        let res = await fetch(`${sbUrl}/rest/v1/panoramas?select=*&order=id.asc`, {
             method: 'GET',
             headers: {
-                "apikey": SB_KEY,
-                "Authorization": `Bearer ${SB_KEY}`
+                "apikey": sbKey,
+                "Authorization": `Bearer ${sbKey}`
             }
         });
         if (!res.ok) {
@@ -439,11 +452,13 @@ window.saveVinyl = async function() {
     if (btn) { btn.innerText = "⧗"; }
 
     try {
-        let res = await fetch(`${SB_URL}/rest/v1/presets`, {
+        const sbUrl = getSupabaseUrl();
+        const sbKey = getSupabaseKey();
+        let res = await fetch(`${sbUrl}/rest/v1/presets`, {
             method: 'POST',
             headers: {
-                "apikey": SB_KEY,
-                "Authorization": `Bearer ${SB_KEY}`,
+                "apikey": sbKey,
+                "Authorization": `Bearer ${sbKey}`,
                 "Content-Type": "application/json",
                 "Prefer": "return=representation"
             },
@@ -468,11 +483,13 @@ window.loadVinylPresets = async function() {
     container.innerHTML = "<div style='font-size:11px; color:#888;'>Lade Vinyl Records...</div>";
 
     try {
-        let res = await fetch(`${SB_URL}/rest/v1/presets?select=*&pano_id=eq.vinyl_mode_id&order=created_at.desc`, {
+        const sbUrl = getSupabaseUrl();
+        const sbKey = getSupabaseKey();
+        let res = await fetch(`${sbUrl}/rest/v1/presets?select=*&pano_id=eq.vinyl_mode_id&order=created_at.desc`, {
             method: 'GET',
             headers: {
-                "apikey": SB_KEY,
-                "Authorization": `Bearer ${SB_KEY}`
+                "apikey": sbKey,
+                "Authorization": `Bearer ${sbKey}`
             }
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -633,11 +650,13 @@ window.deleteVinylPreset = async function(presetId) {
 
     if(!confirm("Möchtest du dieses Vinyl wirklich löschen?")) return;
     try {
-        let res = await fetch(`${SB_URL}/rest/v1/presets?id=eq.${encodeURIComponent(presetId)}&user_id=eq.${encodeURIComponent(getUserId())}`, {
+        const sbUrl = getSupabaseUrl();
+        const sbKey = getSupabaseKey();
+        let res = await fetch(`${sbUrl}/rest/v1/presets?id=eq.${encodeURIComponent(presetId)}&user_id=eq.${encodeURIComponent(getUserId())}`, {
             method: 'DELETE',
             headers: {
-                "apikey": SB_KEY,
-                "Authorization": `Bearer ${SB_KEY}`
+                "apikey": sbKey,
+                "Authorization": `Bearer ${sbKey}`
             }
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
