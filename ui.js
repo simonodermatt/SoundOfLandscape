@@ -1557,7 +1557,19 @@ window.playVinyl = function() {
 
 
 // --- START SETUP ---
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
+    // 0. Auf Übersetzungen warten
+    if (window.translationsPromise) {
+        try {
+            await window.translationsPromise;
+        } catch (e) {
+            console.error("Fehler beim Warten auf Übersetzungen:", e);
+        }
+    }
+    if (typeof window.changeLanguage === 'function') {
+        window.changeLanguage(window.currentLang || 'de');
+    }
+
     // 1. Benutzernamen oben rechts initialisieren
     if (typeof window.updateUserNameDisplay === 'function') {
         window.updateUserNameDisplay();
