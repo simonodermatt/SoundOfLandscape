@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="de" class="h-full bg-neutral-950 text-neutral-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard | Panorama Synthesizer</title>
+    
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%231e1e1e'/><path d='M15,75 L35,30 L55,55 L75,20 L85,60' fill='none' stroke='%23FFD700' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/><circle cx='55' cy='55' r='8' fill='%2300BFFF'/></svg>">
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            orange: '#FF6600',
+                            blue: '#00BFFF',
+                            gold: '#FFD700',
+                            dark: '#121212',
+                            card: '#1a1a1a',
+                            border: '#2e2e2e'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Supabase JS Client v2 CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- App Configuration -->
+    <script src="config.js?v=8"></script>
+</head>
+<body class="h-full flex flex-col font-sans antialiased bg-neutral-950 text-neutral-100">
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- ============================================================== -->
+    <!-- VIEW 1: LOADING STATE -->
+    <!-- ============================================================== -->
+    <div id="view-loading" class="flex-1 flex flex-col items-center justify-center p-6">
+        <div class="flex items-center gap-3">
+            <svg class="animate-spin h-7 w-7 text-brand-orange" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span class="text-sm font-mono tracking-wider text-neutral-400 uppercase" id="lbl-loading-text">[ Initialisiere Dashboard... ]</span>
+        </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- VIEW 2: LOGIN STATE -->
+    <!-- ============================================================== -->
+    <div id="view-login" class="hidden flex-1 flex items-center justify-center p-6">
+        <div class="w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-xl p-8 shadow-2xl text-center">
+            <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-neutral-800 border border-neutral-700 mb-6 text-brand-orange shadow-inner">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                </svg>
+            </div>
+            
+            <h1 class="text-2xl font-bold tracking-tight text-white mb-2" id="lbl-login-title">Admin Dashboard</h1>
+            <p class="text-sm text-neutral-400 mb-8" id="lbl-login-subtitle">Melde dich mit deinem autorisierten Google-Konto an, um die App-Datenbank zu verwalten.</p>
+
+            <button id="btn-login-google" type="button" class="w-full flex items-center justify-center gap-3 bg-white hover:bg-neutral-100 text-neutral-900 font-medium px-5 py-3 rounded-lg transition-all shadow-md active:scale-[0.99]">
+                <svg class="w-5 h-5" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
+                    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 10.04 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                </svg>
+                <span id="lbl-btn-google">Login mit Google</span>
+            </button>
+
+            <div class="mt-8 pt-6 border-t border-neutral-800 text-xs text-neutral-500">
+                <span>Sound of Landscape &bull; Panorama Synthesizer Admin Portal</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- VIEW 3: ACCESS DENIED STATE -->
+    <!-- ============================================================== -->
+    <div id="view-access-denied" class="hidden flex-1 flex items-center justify-center p-6">
+        <div class="w-full max-w-md bg-neutral-900 border border-red-900/50 rounded-xl p-8 shadow-2xl text-center">
+            <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-red-950/60 border border-red-800 mb-6 text-red-500">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+                </svg>
+            </div>
+            
+            <h2 class="text-xl font-bold text-white mb-2" id="lbl-denied-title">Zugriff verweigert</h2>
+            <p class="text-sm text-neutral-300 mb-2">Deine E-Mail-Adresse ist nicht als Administrator autorisiert:</p>
+            <p id="denied-user-email" class="font-mono text-sm text-brand-orange bg-neutral-950 py-1.5 px-3 rounded border border-neutral-800 mb-6 break-all"></p>
+
+            <p class="text-xs text-neutral-400 mb-6" id="lbl-denied-help">Wende dich an einen Superadmin, um deine E-Mail zur Tabelle <code>admin_users</code> hinzuzufügen.</p>
+
+            <button id="btn-denied-logout" type="button" class="w-full bg-neutral-800 hover:bg-neutral-700 text-white font-medium px-4 py-2.5 rounded-lg transition-colors border border-neutral-700">
+                Abmelden &amp; anderes Konto wählen
+            </button>
+        </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- VIEW 4: MAIN DASHBOARD -->
+    <!-- ============================================================== -->
+    <div id="view-dashboard" class="hidden flex-1 flex flex-col h-full overflow-hidden">
+        
+        <!-- Top Navigation Bar -->
+        <header class="h-16 bg-neutral-900 border-b border-neutral-800 px-6 flex items-center justify-between shrink-0">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-neutral-800 border border-neutral-700 flex items-center justify-center text-brand-gold font-bold">
+                    P
+                </div>
+                <div>
+                    <h1 class="text-sm font-semibold text-white tracking-wide flex items-center gap-2">
+                        <span>Panorama Synthesizer</span>
+                        <span class="text-[10px] uppercase tracking-wider font-mono px-1.5 py-0.5 rounded bg-brand-orange/20 text-brand-orange border border-brand-orange/30">Admin</span>
+                    </h1>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-4">
+                <a href="index.html" class="hidden sm:inline-flex items-center gap-1.5 text-xs text-neutral-400 hover:text-white transition-colors bg-neutral-800/80 hover:bg-neutral-800 px-3 py-1.5 rounded-md border border-neutral-700">
+                    <span>Zur Web-App</span>
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                </a>
+
+                <div class="h-4 w-px bg-neutral-800"></div>
+
+                <!-- User Profile & Role -->
+                <div class="flex items-center gap-2">
+                    <span id="nav-user-email" class="text-xs text-neutral-300 font-medium"></span>
+                    <span id="nav-user-role" class="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full font-bold"></span>
+                </div>
+
+                <!-- Logout Button -->
+                <button id="btn-dashboard-logout" title="Abmelden" class="text-xs bg-neutral-800 hover:bg-red-950/60 hover:text-red-400 text-neutral-300 px-3 py-1.5 rounded-md border border-neutral-700 transition-colors flex items-center gap-1.5">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+                    <span class="hidden md:inline">Abmelden</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Dashboard Body with Sidebar + Content -->
+        <div class="flex-1 flex overflow-hidden">
+            
+            <!-- Sidebar Navigation -->
+            <aside class="w-64 bg-neutral-900/60 border-r border-neutral-800 flex flex-col shrink-0 p-4">
+                <div class="text-[11px] font-mono text-neutral-500 uppercase tracking-wider px-3 mb-2">Tabellen</div>
+                <nav class="space-y-1" id="sidebar-nav">
+                    <!-- User (SuperAdmin only) -->
+                    <button data-table="admin_users" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-neutral-400 hover:text-white hover:bg-neutral-800">
+                        <span class="text-lg">👥</span>
+                        <span>User</span>
+                    </button>
+
+                    <!-- Panoramen (All Admins) -->
+                    <button data-table="panoramas" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-neutral-400 hover:text-white hover:bg-neutral-800">
+                        <span class="text-lg">🏔️</span>
+                        <span>Panoramen</span>
+                    </button>
+
+                    <!-- Presets (All Admins) -->
+                    <button data-table="presets" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-neutral-400 hover:text-white hover:bg-neutral-800">
+                        <span class="text-lg">🎛️</span>
+                        <span>Presets</span>
+                    </button>
+
+                    <!-- Translations (SuperAdmin only) -->
+                    <button data-table="translations" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-neutral-400 hover:text-white hover:bg-neutral-800">
+                        <span class="text-lg">🌐</span>
+                        <span>Übersetzungen</span>
+                    </button>
+                </nav>
+
+                <div class="mt-auto pt-4 border-t border-neutral-800/80 text-[11px] text-neutral-500 px-3">
+                    <p>Status: <span class="text-emerald-400 font-mono">Verbunden</span></p>
+                    <p class="truncate font-mono text-[10px] text-neutral-600 mt-1" id="sidebar-endpoint-info"></p>
+                </div>
+            </aside>
+
+            <!-- Main Content View -->
+            <main class="flex-1 flex flex-col min-w-0 bg-neutral-950 overflow-hidden">
+                
+                <!-- Table Action Bar -->
+                <div class="p-6 pb-4 border-b border-neutral-800 flex flex-wrap items-center justify-between gap-4 shrink-0 bg-neutral-950">
+                    <div>
+                        <div class="flex items-center gap-3">
+                            <h2 id="current-table-title" class="text-xl font-bold text-white capitalize">Panoramen</h2>
+                            <span id="record-count-badge" class="px-2.5 py-0.5 rounded-full text-xs font-mono bg-neutral-800 text-neutral-300 border border-neutral-700">0 Einträge</span>
+                        </div>
+                        <p id="current-table-desc" class="text-xs text-neutral-400 mt-0.5">Datensätze anzeigen, filtern und verwalten.</p>
+                    </div>
+
+                    <div class="flex items-center gap-3">
+                        <!-- Real-time search box -->
+                        <div class="relative w-64 md:w-80">
+                            <input type="text" id="input-search" placeholder="Tabelle durchsuchen..." class="w-full bg-neutral-900 border border-neutral-800 rounded-lg pl-9 pr-3 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-brand-orange focus:ring-1 focus:ring-brand-orange transition-all">
+                            <svg class="w-4 h-4 text-neutral-500 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                        </div>
+
+                        <!-- Refresh Button -->
+                        <button id="btn-refresh-table" title="Aktualisieren" class="bg-neutral-900 hover:bg-neutral-800 text-neutral-300 p-2 rounded-lg border border-neutral-800 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                        </button>
+
+                        <!-- Add New Button -->
+                        <button id="btn-add-record" class="inline-flex items-center gap-2 bg-brand-orange hover:bg-orange-600 text-neutral-950 font-semibold px-4 py-2 rounded-lg transition-colors shadow-sm active:scale-[0.98]">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
+                            <span>Neu hinzufügen</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Table Container -->
+                <div class="flex-1 overflow-auto p-6 relative">
+                    
+                    <!-- Table Loading Overlay -->
+                    <div id="table-loading-overlay" class="hidden absolute inset-0 bg-neutral-950/80 backdrop-blur-xs flex items-center justify-center z-20">
+                        <div class="flex items-center gap-2.5 text-neutral-300 text-xs font-mono uppercase">
+                            <svg class="animate-spin h-5 w-5 text-brand-orange" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            <span>Lade Daten...</span>
+                        </div>
+                    </div>
+
+                    <!-- Dynamic HTML Table -->
+                    <div class="border border-neutral-800 rounded-lg overflow-hidden bg-neutral-900/40 shadow-sm">
+                        <table class="w-full text-left border-collapse text-xs">
+                            <thead id="dynamic-table-head" class="bg-neutral-900 border-b border-neutral-800 text-neutral-400 font-mono uppercase text-[11px] tracking-wider sticky top-0 z-10">
+                                <!-- Generated Dynamically -->
+                            </thead>
+                            <tbody id="dynamic-table-body" class="divide-y divide-neutral-800/60 font-sans text-neutral-200">
+                                <!-- Generated Dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Empty State -->
+                    <div id="table-empty-state" class="hidden py-16 text-center">
+                        <div class="w-12 h-12 rounded-full bg-neutral-900 flex items-center justify-center mx-auto mb-3 text-neutral-600">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        </div>
+                        <h3 class="text-sm font-medium text-neutral-300">Keine Datensätze gefunden</h3>
+                        <p class="text-xs text-neutral-500 mt-1">Passe deine Suche an oder erstelle einen neuen Eintrag.</p>
+                    </div>
+
+                </div>
+
+            </main>
+        </div>
+
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- MODAL: ADD / EDIT RECORD -->
+    <!-- ============================================================== -->
+    <div id="modal-edit-record" class="hidden fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+        <div class="w-full max-w-3xl bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            
+            <div class="px-6 py-4 border-b border-neutral-800 flex items-center justify-between shrink-0 bg-neutral-900">
+                <div class="flex items-center gap-2.5">
+                    <span id="modal-icon" class="text-brand-orange text-lg">✏️</span>
+                    <h3 id="modal-title" class="text-base font-semibold text-white">Eintrag bearbeiten</h3>
+                </div>
+                <button type="button" id="btn-close-modal" class="text-neutral-400 hover:text-white p-1 rounded-md hover:bg-neutral-800 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+
+            <form id="form-edit-record" class="flex-1 overflow-y-auto p-6 space-y-4">
+                <div id="form-fields-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Dynamic form inputs generated in admin.js -->
+                </div>
+            </form>
+
+            <div class="px-6 py-3.5 border-t border-neutral-800 flex items-center justify-end gap-3 shrink-0 bg-neutral-900/90">
+                <button type="button" id="btn-cancel-modal" class="px-4 py-2 rounded-lg text-xs font-medium text-neutral-300 hover:bg-neutral-800 transition-colors border border-neutral-700">
+                    Abbrechen
+                </button>
+                <button type="submit" form="form-edit-record" id="btn-save-modal" class="inline-flex items-center gap-2 bg-brand-orange hover:bg-orange-600 text-neutral-950 font-semibold px-5 py-2 rounded-lg text-xs transition-colors active:scale-[0.98]">
+                    <span>Speichern</span>
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- MODAL: DELETE CONFIRMATION -->
+    <!-- ============================================================== -->
+    <div id="modal-delete-confirm" class="hidden fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+        <div class="w-full max-w-md bg-neutral-900 border border-red-900/40 rounded-xl shadow-2xl p-6 text-center">
+            <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-950/80 text-red-400 border border-red-800 mb-4">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            </div>
+            
+            <h3 class="text-base font-semibold text-white mb-2">Eintrag unwiderruflich löschen?</h3>
+            <p class="text-xs text-neutral-400 mb-4" id="delete-confirm-text">Möchtest du diesen Datensatz wirklich aus der Datenbank entfernen?</p>
+
+            <div class="bg-neutral-950 p-2.5 rounded border border-neutral-800 mb-6 font-mono text-xs text-brand-orange break-all" id="delete-record-preview"></div>
+
+            <div class="flex items-center justify-center gap-3">
+                <button type="button" id="btn-cancel-delete" class="w-1/2 px-4 py-2 rounded-lg text-xs font-medium text-neutral-300 hover:bg-neutral-800 transition-colors border border-neutral-700">
+                    Abbrechen
+                </button>
+                <button type="button" id="btn-confirm-delete" class="w-1/2 bg-red-600 hover:bg-red-700 text-white font-medium px-4 py-2 rounded-lg text-xs transition-colors active:scale-[0.98]">
+                    Ja, löschen
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin JavaScript Logic -->
+    <script src="admin.js"></script>
+</body>
+</html>
