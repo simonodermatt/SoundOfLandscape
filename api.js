@@ -80,7 +80,11 @@ window.loadPresets = async function(panoId) {
                 timestamp: p.timestamp || p.created_at,
                 sensibilitaet: (p.sensibility !== undefined && p.sensibility !== null) ? p.sensibility : (p.sensibilitaet || 0),
                 oktaven: (p.octaves !== undefined && p.octaves !== null) ? p.octaves : (p.oktaven || 3),
-                gridLines: (p.grid_lines !== undefined && p.grid_lines !== null) ? p.grid_lines : (p.gridLines || 5)
+                gridLines: (p.grid_lines !== undefined && p.grid_lines !== null) ? p.grid_lines : (p.gridLines || 5),
+                is_vinyl: (p.is_vinyl === true || p.is_vinyl === 'true' || p.is_vinyl === 'TRUE'),
+                vinyl_array: p.vinyl_array || null,
+                is_ai: (p.is_ai === true || p.is_ai === 'true' || p.is_ai === 'TRUE'),
+                ai_sound: p.ai_sound || null
             }))
             .filter(p => String(p.pano_id) === String(panoId)); 
         
@@ -236,6 +240,8 @@ window.savePreset = async function(panoId) {
     if (!presetName) return;
 
     let s = window.activeSynth[panoId] || {};
+    let aiSeq = (window.panoAiSequences && window.panoAiSequences[panoId]) ? window.panoAiSequences[panoId] : null;
+
     let payload = {
         pano_id: String(panoId),
         preset_name: presetName,
@@ -255,7 +261,11 @@ window.savePreset = async function(panoId) {
         duration: (parseFloat(s.duration) !== undefined && !isNaN(parseFloat(s.duration))) ? parseFloat(s.duration) : 5.0,
         attack: (parseFloat(s.attack) !== undefined && !isNaN(parseFloat(s.attack))) ? parseFloat(s.attack) : 1.0,
         release: (parseFloat(s.release) !== undefined && !isNaN(parseFloat(s.release))) ? parseFloat(s.release) : 2.0,
-        echo: (parseFloat(s.echo) !== undefined && !isNaN(parseFloat(s.echo))) ? parseFloat(s.echo) : 0.3
+        echo: (parseFloat(s.echo) !== undefined && !isNaN(parseFloat(s.echo))) ? parseFloat(s.echo) : 0.3,
+        is_vinyl: false,
+        vinyl_array: null,
+        is_ai: Boolean(aiSeq),
+        ai_sound: aiSeq ? JSON.stringify(aiSeq) : null
     };
 
     let btn = document.getElementById(`save-btn-${panoId}`);
@@ -426,6 +436,13 @@ window.saveVinyl = async function() {
     let presetName = prompt(msg, "My Vinyl Record");
     if (!presetName) return;
 
+    let compressedArray = [];
+    let stepSize = 10;
+    for(let i=0; i<window.vinylArray.length; i+=stepSize) {
+        compressedArray.push(Math.round(window.vinylArray[i]));
+    }
+    let arrayString = JSON.stringify(compressedArray);
+
     let payload = {
         pano_id: 'vinyl_mode_id',
         preset_name: presetName,
@@ -445,7 +462,11 @@ window.saveVinyl = async function() {
         volume: 0,
         attack: 0,
         release: 0,
-        echo: 0
+        echo: 0,
+        is_vinyl: true,
+        vinyl_array: arrayString,
+        is_ai: Boolean(window.vinylAiSequence),
+        ai_sound: window.vinylAiSequence ? JSON.stringify(window.vinylAiSequence) : null
     };
 
     let btn = document.getElementById(`btn-vinyl-save`);
@@ -499,7 +520,11 @@ window.loadVinylPresets = async function() {
             ...p,
             preset_id: p.preset_id || p.id,
             timestamp: p.timestamp || p.created_at,
-            oktaven: p.octaves !== undefined ? p.octaves : p.oktaven
+            oktaven: p.octaves !== undefined ? p.octaves : p.oktaven,
+            is_vinyl: (p.is_vinyl === true || p.is_vinyl === 'true' || p.is_vinyl === 'TRUE'),
+            vinyl_array: p.vinyl_array || null,
+            is_ai: (p.is_ai === true || p.is_ai === 'true' || p.is_ai === 'TRUE'),
+            ai_sound: p.ai_sound || null
         }));
         window.currentVinylPresets = vinylPresets;
 
