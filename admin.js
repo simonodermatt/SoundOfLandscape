@@ -39,7 +39,7 @@
             pk: "id",
             icon: "🎛️",
             superadminOnly: false,
-            fallbackColumns: ['id', 'pano_id', 'preset_name', 'user_name', 'user_id', 'created_at', 'peaks', 'valleys', 'spacing', 'mode', 'scale', 'wave', 'volume', 'duration']
+            fallbackColumns: ['id', 'pano_id', 'preset_name', 'user_name', 'user_id', 'created_at', 'peaks', 'valleys', 'spacing', 'mode', 'scale', 'wave', 'volume', 'duration', 'is_vinyl', 'vinyl_array', 'is_ai', 'ai_sound']
         },
         translations: {
             title: "Übersetzungen",
@@ -351,15 +351,16 @@
         const cfg = TABLE_CONFIG[tableName];
         const keysSet = new Set();
 
+        // Fallback-Spalten als Grundgerüst initialisieren
+        if (cfg && cfg.fallbackColumns) {
+            cfg.fallbackColumns.forEach(k => keysSet.add(k));
+        }
+
+        // Alle weiteren aus den Datensätzen dynamisch hinzufügen
         if (records && records.length > 0) {
             records.forEach(row => {
                 Object.keys(row).forEach(k => keysSet.add(k));
             });
-        }
-
-        // Falls Tabelle noch leer ist, Fallback-Spalten nutzen
-        if (keysSet.size === 0 && cfg && cfg.fallbackColumns) {
-            cfg.fallbackColumns.forEach(k => keysSet.add(k));
         }
 
         const cols = Array.from(keysSet);
@@ -403,13 +404,15 @@
                 const isPk = (col === pk);
                 const rawVal = row[col];
                 let displayVal = rawVal;
+                const isBool = (typeof rawVal === 'boolean' || col === 'is_vinyl' || col === 'is_ai');
 
                 if (rawVal === null || rawVal === undefined) {
                     displayVal = '<span class="text-neutral-600 font-mono text-[10px]">NULL</span>';
-                } else if (typeof rawVal === 'boolean') {
-                    displayVal = rawVal 
-                        ? '<span class="text-emerald-400 font-mono">TRUE</span>' 
-                        : '<span class="text-neutral-500 font-mono">FALSE</span>';
+                } else if (isBool) {
+                    const isTrue = (rawVal === true || rawVal === 'true' || rawVal === 'TRUE' || rawVal === 1 || rawVal === '1');
+                    displayVal = isTrue 
+                        ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-950/70 text-emerald-400 border border-emerald-800/50">✓ Ja</span>' 
+                        : '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-neutral-900 text-neutral-400 border border-neutral-800">✕ Nein</span>';
                 } else if (typeof rawVal === 'object') {
                     displayVal = escapeHTML(JSON.stringify(rawVal));
                 } else {
@@ -419,7 +422,9 @@
                 // Truncate overly long values
                 const fullStr = (typeof rawVal === 'object') ? JSON.stringify(rawVal) : String(rawVal ?? '');
                 const isLong = fullStr.length > 55;
-                const shortText = isLong ? escapeHTML(fullStr.slice(0, 50)) + '…' : displayVal;
+                const shortText = (isBool || rawVal === null || rawVal === undefined) 
+                    ? displayVal 
+                    : (isLong ? escapeHTML(fullStr.slice(0, 50)) + '…' : displayVal);
 
                 html += `<td class="px-4 py-2.5 max-w-xs truncate ${isPk ? 'font-mono text-brand-orange font-medium' : ''}" title="${escapeHTML(fullStr)}">${shortText}</td>`;
             });
@@ -494,8 +499,23 @@
                 return;
             }
 
-            // Textarea für lange Werte (JSON, Arrays, Kommentare)
-            const isLongText = (col.includes('comment') || col.includes('json') || col.includes('array') || col.includes('url'));
+            // Checkbox für Booleans (is_vinyl, is_ai oder typeof boolean)
+            const isBoolCol = (col === 'is_vinyl' || col === 'is_ai' || typeof rawVal === 'boolean');
+            if (isBoolCol) {
+                const isChecked = (rawVal === true || rawVal === 'true' || rawVal === 'TRUE' || rawVal === 1 || rawVal === '1');
+                html += `
+                <div class="space-y-1">
+                    <label class="block text-xs font-mono font-medium text-neutral-300 capitalize">${escapeHTML(col)}</label>
+                    <label class="flex items-center gap-2.5 cursor-pointer bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2.5 hover:border-neutral-500 transition-colors">
+                        <input type="checkbox" name="${escapeHTML(col)}" id="input_${escapeHTML(col)}" class="w-4 h-4 rounded accent-orange-500 bg-neutral-900 border-neutral-600 focus:ring-brand-orange focus:ring-offset-neutral-900 cursor-pointer" ${isChecked ? 'checked' : ''}>
+                        <span class="text-xs font-mono text-neutral-200 select-none">${escapeHTML(col)} aktivieren</span>
+                    </label>
+                </div>`;
+                return;
+            }
+
+            // Textarea für lange Werte (JSON, Arrays, Kommentare, vinyl_array, ai_sound)
+            const isLongText = (col.includes('comment') || col.includes('json') || col.includes('array') || col.includes('url') || col === 'vinyl_array' || col === 'ai_sound');
             const isReadonlyPk = (mode === 'edit' && isPk);
 
             html += `
@@ -510,7 +530,7 @@
 
             if (isLongText) {
                 html += `
-                <textarea name="${escapeHTML(col)}" rows="2" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-brand-orange font-mono" ${isReadonlyPk ? 'readonly disabled' : ''}>${escapeHTML(valStr)}</textarea>`;
+                <textarea name="${escapeHTML(col)}" rows="3" placeholder="${escapeHTML(col)}" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-brand-orange font-mono" ${isReadonlyPk ? 'readonly disabled' : ''}>${escapeHTML(valStr)}</textarea>`;
             } else {
                 html += `
                 <input type="text" name="${escapeHTML(col)}" value="${escapeHTML(valStr)}" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-brand-orange font-mono ${isReadonlyPk ? 'bg-neutral-900 cursor-not-allowed opacity-60' : ''}" ${isReadonlyPk ? 'readonly' : ''} placeholder="${isPk && mode === 'create' ? '(Optional bei auto-generated ID)' : ''}">`;
@@ -541,6 +561,14 @@
         const payload = {};
 
         currentColumns.forEach(col => {
+            const inputEl = formEditRecord.elements[col] || formEditRecord.querySelector(`[name="${col}"]`);
+
+            // Checkbox-Behandlung: explizit als echter Boolean (true / false)
+            if (inputEl && inputEl.type === 'checkbox') {
+                payload[col] = Boolean(inputEl.checked);
+                return;
+            }
+
             const raw = formData.get(col);
             if (raw !== null && raw !== undefined) {
                 const trimmed = raw.trim();
@@ -548,14 +576,16 @@
                 if (modalMode === 'create' && col === pk && trimmed === '') {
                     return;
                 }
-                // Typkonvertierung prüfen (Zahlen erhalten)
-                if (trimmed !== '' && !isNaN(Number(trimmed)) && !col.includes('url') && !col.includes('date') && !col.includes('id') && !col.includes('key')) {
-                    payload[col] = Number(trimmed);
-                } else if (trimmed === '') {
+                // Typkonvertierung: Leere Strings als null übergeben
+                if (trimmed === '') {
                     payload[col] = null;
+                } else if (!isNaN(Number(trimmed)) && !col.includes('url') && !col.includes('date') && !col.includes('id') && !col.includes('key') && !col.includes('array') && !col.includes('sound') && !col.includes('name') && !col.includes('title')) {
+                    payload[col] = Number(trimmed);
                 } else {
                     payload[col] = trimmed;
                 }
+            } else {
+                payload[col] = null;
             }
         });
 
