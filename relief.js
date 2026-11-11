@@ -40,16 +40,20 @@ window.startReliefScan = function() {
     window.reliefState = 1;
 
     // Update UI
-    const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : text['de'];
+    const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : (text && text['de'] ? text['de'] : {});
     const banner = document.getElementById('relief-guidance-banner');
     const bannerText = document.getElementById('relief-guidance-text');
     const mapContainer = document.getElementById('map');
     const overlayMenu = document.getElementById('relief-overlay-menu');
 
-    overlayMenu.style.display = 'none';
-    banner.style.display = 'block';
-    bannerText.innerText = t.guidance_start || "Startpunkt platzieren";
-    mapContainer.classList.add('cursor-crosshair');
+    if (overlayMenu) overlayMenu.style.display = 'none';
+    if (banner) banner.style.display = 'block';
+    if (bannerText) {
+        bannerText.innerText = (t && t.guidance_start) ? t.guidance_start : "Startpunkt platzieren";
+    } else if (banner) {
+        banner.innerText = (t && t.guidance_start) ? t.guidance_start : "Startpunkt platzieren";
+    }
+    if (mapContainer) mapContainer.classList.add('cursor-crosshair');
 
     // Disable other map interactions slightly (e.g. pointer events on other markers)
     const otherMarkers = document.querySelectorAll('.leaflet-marker-icon:not(.relief-marker-start):not(.relief-marker-end)');
@@ -82,9 +86,14 @@ window.handleReliefMapClick = function(e) {
         window.reliefState = 2;
 
         // Update UI
-        const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : text['de'];
+        const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : (text && text['de'] ? text['de'] : {});
         const bannerText = document.getElementById('relief-guidance-text');
-        bannerText.innerText = t.guidance_end || "Zielpunkt setzen";
+        if (bannerText) {
+            bannerText.innerText = (t && t.guidance_end) ? t.guidance_end : "Zielpunkt setzen";
+        } else {
+            const banner = document.getElementById('relief-guidance-banner');
+            if (banner) banner.innerText = (t && t.guidance_end) ? t.guidance_end : "Zielpunkt setzen";
+        }
 
     } else if (window.reliefState === 2) {
         // SELECT_END
@@ -121,35 +130,43 @@ window.handleReliefMapClick = function(e) {
         const overlayMenu = document.getElementById('relief-overlay-menu');
         const mapContainer = document.getElementById('map');
 
-        banner.style.display = 'none';
-        mapContainer.classList.remove('cursor-crosshair');
+        if (banner) banner.style.display = 'none';
+        if (mapContainer) mapContainer.classList.remove('cursor-crosshair');
 
         // Restore marker pointer events
         const otherMarkers = document.querySelectorAll('.leaflet-marker-icon');
         otherMarkers.forEach(m => m.style.pointerEvents = 'auto');
 
         // Setup overlay menu texts
-        const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : text['de'];
-        document.getElementById('btn-relief-query').innerText = t.btn_relief_query || "Relief abfragen";
-        document.getElementById('btn-relief-reselect').innerText = t.btn_relief_reselect || "Neu selektieren";
-        document.getElementById('btn-relief-cancel').innerText = t.btn_relief_cancel || "Abbrechen";
+        const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : (text && text['de'] ? text['de'] : {});
+        const btnQuery = document.getElementById('btn-relief-query');
+        const btnReselect = document.getElementById('btn-relief-reselect');
+        const btnCancel = document.getElementById('btn-relief-cancel');
+        if (btnQuery) btnQuery.innerText = (t && t.btn_relief_query) ? t.btn_relief_query : "Relief abfragen";
+        if (btnReselect) btnReselect.innerText = (t && t.btn_relief_reselect) ? t.btn_relief_reselect : "Neu selektieren";
+        if (btnCancel) btnCancel.innerText = (t && t.btn_relief_cancel) ? t.btn_relief_cancel : "Abbrechen";
 
         // Show overlay menu
-        overlayMenu.style.display = 'flex';
+        if (overlayMenu) overlayMenu.style.display = 'flex';
     }
 }
 
 window.cancelReliefScan = function(internal = false) {
     window.reliefState = 0;
 
-    // Hide UI
-    document.getElementById('relief-guidance-banner').style.display = 'none';
-    document.getElementById('relief-overlay-menu').style.display = 'none';
-    document.getElementById('map').classList.remove('cursor-crosshair');
+    // Hide UI safely
+    const banner = document.getElementById('relief-guidance-banner');
+    const overlayMenu = document.getElementById('relief-overlay-menu');
+    const mapContainer = document.getElementById('map');
+    const queryBtn = document.getElementById('btn-relief-query');
+
+    if (banner) banner.style.display = 'none';
+    if (overlayMenu) overlayMenu.style.display = 'none';
+    if (mapContainer) mapContainer.classList.remove('cursor-crosshair');
 
     // Reset button text just in case
-    const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : text['de'];
-    document.getElementById('btn-relief-query').innerText = t.btn_relief_query || "Relief abfragen";
+    const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : (text && text['de'] ? text['de'] : {});
+    if (queryBtn) queryBtn.innerText = (t && t.btn_relief_query) ? t.btn_relief_query : "Relief abfragen";
 
     // Remove markers and line
     if (reliefStartMarker && window.map) window.map.removeLayer(reliefStartMarker);
@@ -183,9 +200,9 @@ window.confirmReliefLine = function() {
     window.reliefState = 4;
 
     // Update UI (Loading)
-    const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : text['de'];
+    const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : (text && text['de'] ? text['de'] : {});
     const queryBtn = document.getElementById('btn-relief-query');
-    queryBtn.innerText = t.relief_loading || "[ * ANALYSIERE... ]";
+    if (queryBtn) queryBtn.innerText = (t && t.relief_loading) ? t.relief_loading : "[ * ANALYSIERE... ]";
 
     // API Call
     // https://api3.geo.admin.ch/rest/services/profile.json?geom={"type":"LineString","coordinates":[[lon1,lat1],[lon2,lat2]]}&sr=4326&nb_points=300
@@ -298,7 +315,7 @@ window.confirmReliefLine = function() {
             console.error("Relief API Error:", error);
             alert("Fehler bei der Relief-Abfrage: " + error.message);
             // Reset button text
-            queryBtn.innerText = t.btn_relief_query || "Relief abfragen";
+            if (queryBtn) queryBtn.innerText = (t && t.btn_relief_query) ? t.btn_relief_query : "Relief abfragen";
             window.reliefState = 3;
         });
 };
