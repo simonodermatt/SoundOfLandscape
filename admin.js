@@ -61,6 +61,8 @@
     let editingRecord = null;
     let deletingRecord = null;
     let i18nTexts = {};
+    let realtimeChannel = null;
+    let realtimeDebounceTimer = null;
 
     // DOM-Elemente
     const viewLoading = document.getElementById('view-loading');
@@ -204,6 +206,10 @@
             if (event === 'SIGNED_IN' && newSession) {
                 await handleUserSession(newSession.user);
             } else if (event === 'SIGNED_OUT') {
+                if (realtimeChannel) {
+                    try { supabase.removeChannel(realtimeChannel); } catch(e) {}
+                    realtimeChannel = null;
+                }
                 currentAdminUser = null;
                 currentUserRole = 'normal';
                 showView('login');
@@ -243,6 +249,9 @@
 
             showView('dashboard');
             showToast(`Willkommen, ${adminData.username || userEmail}!`);
+
+            // Realtime-Abonnement initialisieren
+            setupRealtimeSubscription();
 
             // Starte mit der ersten erlaubten Tabelle
             const initialTable = (currentUserRole === 'superadmin') ? 'panoramas' : 'panoramas';
@@ -311,6 +320,54 @@
         if (inputSearch) inputSearch.value = '';
 
         await loadTableData();
+    }
+
+    // 6a. Realtime WebSocket-Subscriptions
+    function setupRealtimeSubscription() {
+        if (realtimeChannel) {
+            try { supabase.removeChannel(realtimeChannel); } catch(e) {}
+            realtimeChannel = null;
+        }
+
+        realtimeChannel = supabase
+            .channel('admin-db-changes')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'panoramas' },
+                payload => handleRealtimeChange('panoramas', payload)
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'presets' },
+                payload => handleRealtimeChange('presets', payload)
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'translations' },
+                payload => handleRealtimeChange('translations', payload)
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'admin_users' },
+                payload => handleRealtimeChange('admin_users', payload)
+            )
+            .subscribe((status) => {
+                console.log('[Admin Realtime] Subscription-Status:', status);
+            });
+    }
+
+    function handleRealtimeChange(table, payload) {
+        console.log(`[Admin Realtime] Event '${payload.eventType}' für Tabelle '${table}' empfangen`);
+
+        // Nur aktualisieren, wenn der Admin aktuell diese Tabelle geöffnet hat
+        if (currentTable === table) {
+            if (realtimeDebounceTimer) clearTimeout(realtimeDebounceTimer);
+            realtimeDebounceTimer = setTimeout(() => {
+                loadTableData();
+                const tableTitle = TABLE_CONFIG[table] ? TABLE_CONFIG[table].title : table;
+                showToast(`Live-Update: ${tableTitle} (${payload.eventType})`, 'info');
+            }, 300);
+        }
     }
 
     async function loadTableData() {
@@ -682,9 +739,17 @@
 
         // Logout Buttons
         btnDeniedLogout.addEventListener('click', async () => {
+            if (realtimeChannel) {
+                try { supabase.removeChannel(realtimeChannel); } catch(e) {}
+                realtimeChannel = null;
+            }
             await supabase.auth.signOut();
         });
         btnDashboardLogout.addEventListener('click', async () => {
+            if (realtimeChannel) {
+                try { supabase.removeChannel(realtimeChannel); } catch(e) {}
+                realtimeChannel = null;
+            }
             await supabase.auth.signOut();
         });
 

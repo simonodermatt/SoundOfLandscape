@@ -692,3 +692,74 @@ window.deleteVinylPreset = async function(presetId) {
         alert(t.alert_delete_error || "Fehler beim Löschen."); 
     }
 };
+
+// -----------------------------------------------------------------------------
+// Supabase Realtime (WebSocket Live-Subscriptions für Presets & Panoramen)
+// -----------------------------------------------------------------------------
+window.initAppRealtime = function() {
+    if (!window.supabase) {
+        console.warn("[App Realtime] Supabase CDN Client nicht geladen.");
+        return;
+    }
+    if (window._appRealtimeChannel) {
+        return; // Verhindere doppelte Subscriptions
+    }
+
+    try {
+        const sbUrl = getSupabaseUrl();
+        const sbKey = getSupabaseKey();
+        const client = window.supabase.createClient(sbUrl, sbKey);
+
+        let debouncePanoTimers = {};
+        let debounceVinylTimer = null;
+        let debouncePanoramasTimer = null;
+
+        window._appRealtimeChannel = client
+            .channel('app-realtime-changes')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'presets' },
+                payload => {
+                    console.log('[App Realtime] Preset-Event:', payload.eventType);
+                    const panoId = (payload.new && payload.new.pano_id) || (payload.old && payload.old.pano_id);
+
+                    if (panoId === 'vinyl_mode_id') {
+                        if (debounceVinylTimer) clearTimeout(debounceVinylTimer);
+                        debounceVinylTimer = setTimeout(() => {
+                            if (typeof window.loadVinylPresets === 'function') {
+                                window.loadVinylPresets();
+                            }
+                        }, 250);
+                    } else if (panoId) {
+                        const container = document.getElementById(`preset-list-${panoId}`);
+                        if (container) {
+                            if (debouncePanoTimers[panoId]) clearTimeout(debouncePanoTimers[panoId]);
+                            debouncePanoTimers[panoId] = setTimeout(() => {
+                                if (typeof window.loadPresets === 'function') {
+                                    window.loadPresets(panoId);
+                                }
+                            }, 250);
+                        }
+                    }
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'panoramas' },
+                payload => {
+                    console.log('[App Realtime] Panorama-Event:', payload.eventType);
+                    if (debouncePanoramasTimer) clearTimeout(debouncePanoramasTimer);
+                    debouncePanoramasTimer = setTimeout(() => {
+                        if (typeof window.loadPanoramas === 'function') {
+                            window.loadPanoramas();
+                        }
+                    }, 300);
+                }
+            )
+            .subscribe((status) => {
+                console.log('[App Realtime] Subscription-Status:', status);
+            });
+    } catch(err) {
+        console.error("[App Realtime] Fehler bei Initialisierung:", err);
+    }
+};
