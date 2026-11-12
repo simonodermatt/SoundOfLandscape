@@ -1584,4 +1584,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (typeof window.loadPanoramas === 'function') {
         window.loadPanoramas();
     }
+
+    // 3. Supabase Realtime für Live-Aktualisierungen initialisieren
+    if (typeof window.initAppRealtime === 'function') {
+        window.initAppRealtime();
+    }
 });
