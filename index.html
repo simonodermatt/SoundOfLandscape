@@ -4,7 +4,10 @@
     <meta charset="UTF-8">
     <title>Panorama Synthesizer</title>
     
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%231e1e1e'/><path d='M15,75 L35,30 L55,55 L75,20 L85,60' fill='none' stroke='%23FFD700' stroke-width='8' stroke-linecap='round' stroke-linejoin='round'/><circle cx='55' cy='55' r='8' fill='%2300BFFF'/></svg>">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+    <link rel="shortcut icon" href="favicon.ico">
     
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css" />
@@ -23,6 +26,10 @@
 
 <!-- Das Menü wurde kompakter gemacht -->
 <div id="ui-menu">
+    <a href="index.html" class="menu-logo-link" title="Panorama Synthesizer • Sound of Landscape">
+        <img src="Logo.png" alt="Panorama Synthesizer Logo" class="menu-logo-img">
+    </a>
+    <div class="menu-divider"></div>
     <label id="lbl-sprache" for="langSelect">Sprache:</label>
     <select id="langSelect" onchange="changeLanguage(this.value)">
         <option value="de">Deutsch</option>
@@ -50,7 +57,7 @@
     <div class="menu-divider"></div>
     <span id="user-display" style="color: #00BFFF; font-size: 11px; cursor: pointer; text-transform: uppercase; margin-right: 8px;" onclick="changeUserName()" title="Namen ändern">👤 Gast</span>    
     <div class="menu-divider"></div>
-    <a href="datenschutz.html" target="_blank" style="color: #888; font-size: 11px; text-decoration: none; margin-left: 4px; text-transform: uppercase;">Datenschutz</a>    
+    <a href="impressum.html" target="_blank" style="color: #888; font-size: 11px; text-decoration: none; margin-left: 4px; text-transform: uppercase;">Impressum &amp; Datenschutz</a>    
 </div>
 
 <div id="vinyl-menu" style="display: none;">
@@ -161,10 +168,8 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
-<!-- PapaParse Bibliothek für den CSV-Import -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <!-- Magenta Music für KI-Melodie-Generierung -->
-    <script src="https://cdn.jsdelivr.net/npm/@magenta/music@1.23.1/dist/magentamusic.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@magenta/music@1.23.1/dist/magentamusic.min.js"></script>
 
 <!-- Logik v=3 -->
 <script src="config.js?v=7"></script>
@@ -174,5 +179,13 @@
 <script src="relief.js"></script>
 <script src="midi.js"></script>
 <script src="ui.js?v=13"></script>
+
+<!-- Admin Shortcut (Schloss unten rechts) -->
+<a href="admin.html" id="admin-lock-btn" title="Admin Dashboard" aria-label="Admin Dashboard">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+    </svg>
+</a>
 </body>
 </html>
