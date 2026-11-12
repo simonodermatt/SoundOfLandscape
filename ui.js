@@ -1580,8 +1580,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         window.updateUserNameDisplay();
     }
     
-    // 2. Daten vom Google Sheet via Web-App abrufen und Karte füllen
-    if (typeof window.ladePanoramenAusSheet === 'function') {
-        window.ladePanoramenAusSheet();
+    // 2. Panoramen aus Supabase-Datenbank abrufen und Karte füllen
+    if (typeof window.loadPanoramas === 'function') {
+        window.loadPanoramas();
     }
 });

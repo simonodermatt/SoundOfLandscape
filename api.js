@@ -394,7 +394,7 @@ function processPanoramaData(data) {
     });
 }
 
-window.ladePanoramenAusSheet = async function() {
+window.loadPanoramas = async function() {
     try {
         const sbUrl = getSupabaseUrl();
         const sbKey = getSupabaseKey();
@@ -414,7 +414,8 @@ window.ladePanoramenAusSheet = async function() {
         console.error("Fehler beim Abrufen der Panoramen aus Supabase:", err);
     }
 };
-window.loadPanoramas = window.ladePanoramenAusSheet;
+// Alias für bestehende Aufrufer
+window.ladePanoramenAusSheet = window.loadPanoramas;
 
 window.saveVinyl = async function() {
     if (!window.vinylArray || window.vinylArray.length === 0) {

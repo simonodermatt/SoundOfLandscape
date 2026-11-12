@@ -91,8 +91,8 @@ html, body {
 /* Admin Lock Button unten rechts */
 #admin-lock-btn {
     position: fixed;
-    bottom: 24px;
-    right: 24px;
+    bottom: 58px;
+    right: 28px;
     z-index: 1001;
     width: 36px;
     height: 36px;
@@ -109,6 +109,12 @@ html, body {
     text-decoration: none;
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+@media (max-width: 767px) {
+    #admin-lock-btn {
+        bottom: 46px;
+        right: 16px;
+    }
 }
 #admin-lock-btn svg {
     width: 17px;
