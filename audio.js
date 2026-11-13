@@ -173,8 +173,14 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
 
     try {
         if (!window.panoDataCache[panoId]) {
-            const res = await fetch(dateiPfad);
-            window.panoDataCache[panoId] = await res.json();
+            if (typeof dateiPfad === 'string' && (dateiPfad.trim().startsWith('{') || dateiPfad.trim().startsWith('['))) {
+                window.panoDataCache[panoId] = JSON.parse(dateiPfad);
+            } else if (typeof dateiPfad === 'object' && dateiPfad !== null) {
+                window.panoDataCache[panoId] = dateiPfad;
+            } else if (dateiPfad) {
+                const res = await fetch(dateiPfad);
+                window.panoDataCache[panoId] = await res.json();
+            }
         }
         const daten = window.panoDataCache[panoId];
         let synthsToPlay = [];

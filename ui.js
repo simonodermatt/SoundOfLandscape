@@ -566,8 +566,15 @@ window.openPanoModal = async function(pano) {
 
         if(!window.panoDataCache[pano.id]) {
             try {
-                let r = await fetch(pano.arrayUrl);
-                window.panoDataCache[pano.id] = await r.json();
+                const rawArray = pano.arrayUrl || pano.array_url;
+                if (typeof rawArray === 'string' && (rawArray.trim().startsWith('{') || rawArray.trim().startsWith('['))) {
+                    window.panoDataCache[pano.id] = JSON.parse(rawArray);
+                } else if (typeof rawArray === 'object' && rawArray !== null) {
+                    window.panoDataCache[pano.id] = rawArray;
+                } else if (rawArray) {
+                    let r = await fetch(rawArray);
+                    window.panoDataCache[pano.id] = await r.json();
+                }
             } catch(e) { console.error(e); }
         }
         window.drawLines(pano.id);
@@ -767,12 +774,19 @@ window.generateVinyl = async function() {
 
     for (let i = 0; i < shuffledPanos.length; i++) {
         let pano = shuffledPanos[i];
-        if (!pano || !pano.id || !pano.arrayUrl) continue;
+        if (!pano || !pano.id || (!pano.arrayUrl && !pano.array_url)) continue;
 
         if (!window.panoDataCache[pano.id]) {
             try {
-                let res = await fetch(pano.arrayUrl);
-                window.panoDataCache[pano.id] = await res.json();
+                const rawArray = pano.arrayUrl || pano.array_url;
+                if (typeof rawArray === 'string' && (rawArray.trim().startsWith('{') || rawArray.trim().startsWith('['))) {
+                    window.panoDataCache[pano.id] = JSON.parse(rawArray);
+                } else if (typeof rawArray === 'object' && rawArray !== null) {
+                    window.panoDataCache[pano.id] = rawArray;
+                } else if (rawArray) {
+                    let res = await fetch(rawArray);
+                    window.panoDataCache[pano.id] = await res.json();
+                }
             } catch(e) {
                 console.error("Error fetching data for", pano.id);
             }

@@ -31,6 +31,10 @@
         }
     </script>
 
+    <!-- Leaflet CSS & JS CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+
     <!-- Supabase JS Client v2 CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -261,7 +265,7 @@
     <!-- MODAL: ADD / EDIT RECORD -->
     <!-- ============================================================== -->
     <div id="modal-edit-record" class="hidden fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
-        <div class="w-full max-w-3xl bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div class="w-full max-w-4xl bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             
             <div class="px-6 py-4 border-b border-neutral-800 flex items-center justify-between shrink-0 bg-neutral-900">
                 <div class="flex items-center gap-2.5">
@@ -273,7 +277,63 @@
                 </button>
             </div>
 
-            <form id="form-edit-record" class="flex-1 overflow-y-auto p-6 space-y-4">
+            <form id="form-edit-record" class="flex-1 overflow-y-auto p-6 space-y-6">
+                <!-- Specialized Panorama Builder Panel (Leaflet Map, Image Upload, Resize, Horizon Scan) -->
+                <div id="section-panorama-builder" class="hidden space-y-5 border-b border-neutral-800 pb-6 mb-2">
+                    <!-- 1. Leaflet Map Section -->
+                    <div class="bg-neutral-950/70 border border-neutral-800 rounded-xl p-4 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="text-brand-orange text-sm">📍</span>
+                                <span class="text-xs font-semibold uppercase tracking-wider text-neutral-200">Standort auf Karte wählen</span>
+                            </div>
+                            <span id="map-coords-display" class="text-[11px] font-mono text-neutral-400 bg-neutral-900 px-2 py-0.5 rounded border border-neutral-800">Keine Koordinate gewählt</span>
+                        </div>
+                        <p class="text-[11px] text-neutral-400">Klicke auf die Karte, um den Marker zu setzen. Die Koordinaten (lat, lng) werden automatisch in das Formular eingetragen.</p>
+                        <div id="admin-map-container" class="h-64 w-full rounded-lg border border-neutral-800 overflow-hidden relative z-0"></div>
+                    </div>
+
+                    <!-- 2. Image Upload, Resize & Horizon Scanner Section -->
+                    <div class="bg-neutral-950/70 border border-neutral-800 rounded-xl p-4 space-y-3">
+                        <div class="flex items-center justify-between flex-wrap gap-2">
+                            <div class="flex items-center gap-2">
+                                <span class="text-brand-orange text-sm">📷</span>
+                                <span class="text-xs font-semibold uppercase tracking-wider text-neutral-200">Panorama-Bild & Horizont-Relief</span>
+                            </div>
+                            <div id="upload-status-badge" class="hidden text-[11px] font-mono px-2 py-0.5 rounded border"></div>
+                        </div>
+                        <p class="text-[11px] text-neutral-400">Wähle ein Panoramabild aus. Es wird clientseitig auf maximal 2500px Breite skaliert, automatisch nach Supabase Storage ('panorama-images') hochgeladen und die Skyline (Relief) auf dem Canvas extrahiert.</p>
+                        
+                        <div class="flex flex-col sm:flex-row items-center gap-3">
+                            <label class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-100 rounded-lg text-xs font-medium cursor-pointer border border-neutral-700 transition-colors shadow-xs">
+                                <svg class="w-4 h-4 text-brand-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                                <span>Bild auswählen & analysieren...</span>
+                                <input type="file" id="input-panorama-file" accept="image/*" class="hidden">
+                            </label>
+
+                            <button type="button" id="btn-rescan-relief" class="hidden inline-flex items-center gap-1.5 px-3 py-2 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 rounded-lg text-xs border border-neutral-800 transition-colors">
+                                <svg class="w-3.5 h-3.5 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                                <span>Relief neu scannen</span>
+                            </button>
+
+                            <div id="scan-feedback-info" class="text-[11px] font-mono text-neutral-400 truncate flex-1"></div>
+                        </div>
+
+                        <!-- Canvas Preview with Interactive Correction -->
+                        <div id="scan-canvas-wrapper" class="hidden relative rounded-lg border border-neutral-800 overflow-hidden bg-neutral-950">
+                            <div class="px-3 py-1.5 bg-neutral-900/90 border-b border-neutral-800 flex items-center justify-between text-[11px] text-neutral-300">
+                                <span class="flex items-center gap-1.5">
+                                    <span class="inline-block w-2.5 h-2.5 rounded-full bg-[#FF0033] shadow-sm"></span>
+                                    <span><strong>Interaktive Korrektur:</strong> Ziehe mit der Maus oder Touch über das Bild, um ungenaue Stellen der roten Linie direkt zu überschreiben.</span>
+                                </span>
+                                <span class="text-[10px] font-mono text-neutral-400 bg-neutral-950 px-1.5 py-0.5 rounded border border-neutral-800">Maus / Touch Drag</span>
+                            </div>
+                            <canvas id="admin-scan-canvas" class="w-full max-h-72 object-contain block cursor-crosshair select-none touch-none"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- General Database Fields Container -->
                 <div id="form-fields-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <!-- Dynamic form inputs generated in admin.js -->
                 </div>

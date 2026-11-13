@@ -64,6 +64,17 @@
     let realtimeChannel = null;
     let realtimeDebounceTimer = null;
 
+    // Panorama Builder State (Leaflet Map, Horizon Scanner & Interaktives Zeichnen)
+    let adminLeafletMap = null;
+    let adminMapMarker = null;
+    let adminLoadedImage = null;
+    let isProcessingImage = false;
+    let currentPanoramaCurveY = null; // Aktuell bearbeitetes Relief-Array im State [y0, y1, ...]
+    let currentPanoramaWidth = 0;
+    let currentPanoramaHeight = 0;
+    let isDrawingRelief = false;
+    let lastDrawCoord = null;
+
     // DOM-Elemente
     const viewLoading = document.getElementById('view-loading');
     const viewLogin = document.getElementById('view-login');
@@ -101,6 +112,17 @@
     const btnCloseModal = document.getElementById('btn-close-modal');
     const btnCancelModal = document.getElementById('btn-cancel-modal');
     const btnSaveModal = document.getElementById('btn-save-modal');
+
+    // Panorama Builder Panel DOM
+    const sectionPanoramaBuilder = document.getElementById('section-panorama-builder');
+    const mapCoordsDisplay = document.getElementById('map-coords-display');
+    const adminMapContainer = document.getElementById('admin-map-container');
+    const inputPanoramaFile = document.getElementById('input-panorama-file');
+    const uploadStatusBadge = document.getElementById('upload-status-badge');
+    const btnRescanRelief = document.getElementById('btn-rescan-relief');
+    const scanFeedbackInfo = document.getElementById('scan-feedback-info');
+    const scanCanvasWrapper = document.getElementById('scan-canvas-wrapper');
+    const adminScanCanvas = document.getElementById('admin-scan-canvas');
 
     const modalDeleteConfirm = document.getElementById('modal-delete-confirm');
     const deleteRecordPreview = document.getElementById('delete-record-preview');
@@ -525,6 +547,577 @@
         renderTableBody(filtered);
     }
 
+    // ==============================================================
+    // LEAFLET MAP & HORIZON SCANNER FUNKTIONEN (PANORAMA BUILDER)
+    // ==============================================================
+
+    // Initialisiert oder aktualisiert die Leaflet-Karte im Admin-Modal
+    function initAdminMap(initialLat, initialLng) {
+        if (adminLeafletMap) {
+            try { adminLeafletMap.remove(); } catch(e) {}
+            adminLeafletMap = null;
+            adminMapMarker = null;
+        }
+
+        // Standard: Schweiz-Zentrierung [46.8182, 8.2275], Zoom 8
+        let center = [46.8182, 8.2275];
+        let zoom = 8;
+        const validLat = (initialLat !== null && initialLat !== undefined && initialLat !== '' && !isNaN(Number(initialLat)));
+        const validLng = (initialLng !== null && initialLng !== undefined && initialLng !== '' && !isNaN(Number(initialLng)));
+
+        if (validLat && validLng) {
+            center = [Number(initialLat), Number(initialLng)];
+            zoom = 12;
+        }
+
+        try {
+            adminLeafletMap = L.map('admin-map-container', {
+                zoomControl: true,
+                scrollWheelZoom: true
+            }).setView(center, zoom);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '© OpenStreetMap'
+            }).addTo(adminLeafletMap);
+
+            if (validLat && validLng) {
+                adminMapMarker = L.marker(center).addTo(adminLeafletMap);
+                if (mapCoordsDisplay) {
+                    mapCoordsDisplay.innerText = `${Number(initialLat).toFixed(5)}, ${Number(initialLng).toFixed(5)}`;
+                }
+            } else if (mapCoordsDisplay) {
+                mapCoordsDisplay.innerText = "Keine Koordinate gewählt";
+            }
+
+            // Klick auf die Karte platziert/verschiebt den Marker und befüllt lat & lng
+            adminLeafletMap.on('click', (e) => {
+                const lat = Number(e.latlng.lat).toFixed(6);
+                const lng = Number(e.latlng.lng).toFixed(6);
+
+                if (adminMapMarker) {
+                    adminMapMarker.setLatLng(e.latlng);
+                } else {
+                    adminMapMarker = L.marker(e.latlng).addTo(adminLeafletMap);
+                }
+
+                const latInput = formEditRecord.querySelector('input[name="lat"]');
+                const lngInput = formEditRecord.querySelector('input[name="lng"]');
+                if (latInput) latInput.value = lat;
+                if (lngInput) lngInput.value = lng;
+                if (mapCoordsDisplay) {
+                    mapCoordsDisplay.innerText = `${lat}, ${lng}`;
+                }
+                checkPanoramaFormReadiness();
+            });
+
+            // Wichtig: Leaflet Map neu berechnen, sobald Modal sichtbar ist
+            setTimeout(() => {
+                if (adminLeafletMap) {
+                    adminLeafletMap.invalidateSize();
+                }
+            }, 250);
+            setTimeout(() => {
+                if (adminLeafletMap) {
+                    adminLeafletMap.invalidateSize();
+                }
+            }, 600);
+
+        } catch (err) {
+            console.error("Fehler bei Leaflet-Initialisierung:", err);
+        }
+    }
+
+    // Bereinigt die Leaflet-Karte und Bildressourcen beim Schließen des Modals
+    function cleanupAdminMap() {
+        if (adminLeafletMap) {
+            try { adminLeafletMap.remove(); } catch(e) {}
+            adminLeafletMap = null;
+            adminMapMarker = null;
+        }
+        adminLoadedImage = null;
+        currentPanoramaCurveY = null;
+        currentPanoramaWidth = 0;
+        currentPanoramaHeight = 0;
+        isDrawingRelief = false;
+        lastDrawCoord = null;
+        isProcessingImage = false;
+        if (inputPanoramaFile) inputPanoramaFile.value = '';
+        if (uploadStatusBadge) uploadStatusBadge.classList.add('hidden');
+        if (scanCanvasWrapper) scanCanvasWrapper.classList.add('hidden');
+        if (btnRescanRelief) btnRescanRelief.classList.add('hidden');
+        if (scanFeedbackInfo) scanFeedbackInfo.innerText = '';
+        if (mapCoordsDisplay) mapCoordsDisplay.innerText = 'Keine Koordinate gewählt';
+    }
+
+    // Clientseitiger Skyline/Relief-Scanner: Extrahiert die Horizont-Linie aus dem Canvas
+    function scanSkylineRelief(ctx, width, height) {
+        const imgData = ctx.getImageData(0, 0, width, height);
+        const data = imgData.data;
+
+        // 1. Schätze Grundfarbe des Himmels im obersten Bereich (oberste 5% der Zeilen)
+        const skySampleRows = Math.max(3, Math.floor(height * 0.05));
+        let skyR = 0, skyG = 0, skyB = 0, count = 0;
+        for (let y = 0; y < skySampleRows; y++) {
+            for (let x = 0; x < width; x += 10) {
+                const idx = (y * width + x) * 4;
+                skyR += data[idx];
+                skyG += data[idx + 1];
+                skyB += data[idx + 2];
+                count++;
+            }
+        }
+        skyR = count > 0 ? skyR / count : 200;
+        skyG = count > 0 ? skyG / count : 220;
+        skyB = count > 0 ? skyB / count : 240;
+
+        function getLuma(x, y) {
+            const idx = (y * width + x) * 4;
+            return 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+        }
+
+        function colorDiffFromSky(x, y) {
+            const idx = (y * width + x) * 4;
+            const dr = data[idx] - skyR;
+            const dg = data[idx + 1] - skyG;
+            const db = data[idx + 2] - skyB;
+            return Math.sqrt(dr * dr + dg * dg + db * db);
+        }
+
+        const rawCurveY = new Array(width);
+        const startY = Math.max(1, Math.floor(height * 0.02));
+        const endY = Math.floor(height * 0.95);
+
+        for (let x = 0; x < width; x++) {
+            let bestY = Math.floor(height * 0.5);
+            let maxScore = -1;
+
+            for (let y = startY; y < endY; y++) {
+                const step = Math.min(2, endY - y);
+                const lumaDiff = Math.abs(getLuma(x, y + step) - getLuma(x, y));
+                const cDiff = colorDiffFromSky(x, y);
+
+                // Übergangsscore: Kontrastkante + Farbabstand zum Himmel, höherer Bergrücken bevorzugt
+                const score = (lumaDiff * 1.6 + cDiff * 0.9) * (1 - (y / height) * 0.35);
+
+                if (score > maxScore && (cDiff > 20 || lumaDiff > 16)) {
+                    maxScore = score;
+                    bestY = y;
+                }
+            }
+            rawCurveY[x] = bestY;
+        }
+
+        // Glättung über ein 9-Pixel-Fenster zur Rauschminderung
+        const smoothedCurveY = new Array(width);
+        const windowRadius = 4;
+        for (let x = 0; x < width; x++) {
+            let sum = 0;
+            let wCount = 0;
+            for (let w = -windowRadius; w <= windowRadius; w++) {
+                const nx = x + w;
+                if (nx >= 0 && nx < width) {
+                    sum += rawCurveY[nx];
+                    wCount++;
+                }
+            }
+            smoothedCurveY[x] = Math.round(sum / wCount);
+        }
+
+        return smoothedCurveY;
+    }
+
+    // Zeichnet das Bild und die gut sichtbare, dicke rote Horizontlinie auf den Vorschau-Canvas
+    function drawReliefOverlay(canvas, img, width, height, curveY) {
+        if (!canvas) return;
+        if (canvas.width !== width || canvas.height !== height) {
+            canvas.width = width;
+            canvas.height = height;
+        }
+        const ctx = canvas.getContext('2d');
+
+        // Basis-Bild zeichnen
+        ctx.drawImage(img, 0, 0, width, height);
+
+        if (!curveY || curveY.length !== width) return;
+
+        // Halbtransparenter Schatten unterhalb der Silhouette
+        ctx.beginPath();
+        ctx.moveTo(0, curveY[0]);
+        for (let x = 1; x < width; x++) {
+            ctx.lineTo(x, curveY[x]);
+        }
+        ctx.lineTo(width, height);
+        ctx.lineTo(0, height);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(255, 0, 51, 0.12)';
+        ctx.fill();
+
+        // Leuchtende, dicke rote Horizontlinie (Interaktiv korrigierbar)
+        ctx.beginPath();
+        ctx.moveTo(0, curveY[0]);
+        for (let x = 1; x < width; x++) {
+            ctx.lineTo(x, curveY[x]);
+        }
+        ctx.strokeStyle = '#FF0033'; // Signalrot für beste Sichtbarkeit
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.shadowColor = 'rgba(255, 0, 51, 0.6)';
+        ctx.shadowBlur = 6;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+    }
+
+    // Ermittelt die Pixel-Koordinaten auf dem Canvas aus Mouse-/Touch-Events
+    function getCanvasCoords(e, canvas) {
+        if (!canvas) return null;
+        const rect = canvas.getBoundingClientRect();
+        if (!rect.width || !rect.height) return null;
+
+        let clientX, clientY;
+        if (e.touches && e.touches.length > 0) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else if (e.changedTouches && e.changedTouches.length > 0) {
+            clientX = e.changedTouches[0].clientX;
+            clientY = e.changedTouches[0].clientY;
+        } else {
+            clientX = e.clientX;
+            clientY = e.clientY;
+        }
+
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+
+        const rawX = (clientX - rect.left) * scaleX;
+        const rawY = (clientY - rect.top) * scaleY;
+
+        const x = Math.max(0, Math.min(canvas.width - 1, Math.round(rawX)));
+        const y = Math.max(0, Math.min(canvas.height - 1, Math.round(rawY)));
+
+        return { x, y };
+    }
+
+    // Interaktives Zeichnen: Start bei MouseDown oder TouchStart
+    function handleReliefDrawStart(e) {
+        if (!adminLoadedImage || !currentPanoramaCurveY || !adminScanCanvas) return;
+        if (e.type === 'touchstart' && e.cancelable) {
+            e.preventDefault();
+        }
+        isDrawingRelief = true;
+        const pt = getCanvasCoords(e, adminScanCanvas);
+        if (!pt) return;
+
+        lastDrawCoord = pt;
+        currentPanoramaCurveY[pt.x] = pt.y;
+
+        drawReliefOverlay(adminScanCanvas, adminLoadedImage, currentPanoramaWidth, currentPanoramaHeight, currentPanoramaCurveY);
+    }
+
+    // Interaktives Zeichnen: Maus-/Touchbewegung überschreibt Horizontpunkte in Echtzeit mit linearer Interpolation
+    function handleReliefDrawMove(e) {
+        if (!isDrawingRelief || !adminLoadedImage || !currentPanoramaCurveY || !adminScanCanvas) return;
+        if (e.cancelable) e.preventDefault();
+
+        const pt = getCanvasCoords(e, adminScanCanvas);
+        if (!pt) return;
+
+        if (lastDrawCoord) {
+            const x1 = lastDrawCoord.x;
+            const y1 = lastDrawCoord.y;
+            const x2 = pt.x;
+            const y2 = pt.y;
+
+            const minX = Math.min(x1, x2);
+            const maxX = Math.max(x1, x2);
+
+            for (let x = minX; x <= maxX; x++) {
+                let interpY = y2;
+                if (x2 !== x1) {
+                    const t = (x - x1) / (x2 - x1);
+                    interpY = Math.round(y1 + t * (y2 - y1));
+                }
+                currentPanoramaCurveY[x] = Math.max(0, Math.min(currentPanoramaHeight - 1, interpY));
+            }
+        } else {
+            currentPanoramaCurveY[pt.x] = pt.y;
+        }
+
+        lastDrawCoord = pt;
+        drawReliefOverlay(adminScanCanvas, adminLoadedImage, currentPanoramaWidth, currentPanoramaHeight, currentPanoramaCurveY);
+    }
+
+    // Interaktives Zeichnen beenden
+    function handleReliefDrawEnd() {
+        if (isDrawingRelief) {
+            isDrawingRelief = false;
+            lastDrawCoord = null;
+        }
+    }
+
+    // Verarbeitet Bildauswahl: Resizing, Skyline-Scan und Supabase Storage Upload
+    async function handlePanoramaFileSelect(file) {
+        if (!file) return;
+
+        isProcessingImage = true;
+        checkPanoramaFormReadiness();
+
+        if (uploadStatusBadge) {
+            uploadStatusBadge.classList.remove('hidden');
+            uploadStatusBadge.className = 'text-[11px] font-mono px-2 py-0.5 rounded border bg-blue-950/70 text-blue-400 border-blue-800/60 animate-pulse';
+            uploadStatusBadge.innerText = 'Verarbeite Bild & skaliere...';
+        }
+        if (btnRescanRelief) btnRescanRelief.classList.add('hidden');
+        if (scanFeedbackInfo) scanFeedbackInfo.innerText = `${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+
+        const reader = new FileReader();
+        reader.onerror = () => {
+            isProcessingImage = false;
+            if (uploadStatusBadge) {
+                uploadStatusBadge.className = 'text-[11px] font-mono px-2 py-0.5 rounded border bg-red-950 text-red-400 border-red-800';
+                uploadStatusBadge.innerText = '✕ Lesefehler der Datei';
+            }
+            showToast('Fehler beim Lesen der Datei', 'error');
+            checkPanoramaFormReadiness();
+        };
+
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onerror = () => {
+                isProcessingImage = false;
+                if (uploadStatusBadge) {
+                    uploadStatusBadge.className = 'text-[11px] font-mono px-2 py-0.5 rounded border bg-red-950 text-red-400 border-red-800';
+                    uploadStatusBadge.innerText = '✕ Ungültiges Bildformat';
+                }
+                showToast('Das Bild konnte nicht geladen werden', 'error');
+                checkPanoramaFormReadiness();
+            };
+
+            img.onload = async () => {
+                adminLoadedImage = img;
+
+                // Clientseitiges Skalieren auf maximal 2500px Breite
+                const MAX_WIDTH = 2500;
+                let targetW = img.naturalWidth || img.width;
+                let targetH = img.naturalHeight || img.height;
+                if (targetW > MAX_WIDTH) {
+                    const ratio = MAX_WIDTH / targetW;
+                    targetW = MAX_WIDTH;
+                    targetH = Math.round(targetH * ratio);
+                }
+
+                // Offscreen Canvas für das saubere JPEG und die Skyline-Analyse
+                const offscreenCanvas = document.createElement('canvas');
+                offscreenCanvas.width = targetW;
+                offscreenCanvas.height = targetH;
+                const offCtx = offscreenCanvas.getContext('2d');
+                offCtx.drawImage(img, 0, 0, targetW, targetH);
+
+                // Relief / Skyline scannen
+                if (uploadStatusBadge) uploadStatusBadge.innerText = 'Scanne Relief-Linie...';
+                const curveY = scanSkylineRelief(offCtx, targetW, targetH);
+
+                // Relief-State aktualisieren
+                currentPanoramaCurveY = curveY;
+                currentPanoramaWidth = targetW;
+                currentPanoramaHeight = targetH;
+
+                // Vorschau auf dem UI-Canvas zeichnen mit dicker roter Linie
+                if (scanCanvasWrapper) scanCanvasWrapper.classList.remove('hidden');
+                drawReliefOverlay(adminScanCanvas, img, targetW, targetH, currentPanoramaCurveY);
+                if (btnRescanRelief) btnRescanRelief.classList.remove('hidden');
+
+                // Hinweistext im Formularfeld (JSON.stringify erfolgt erst beim Speichern)
+                const arrayUrlInput = formEditRecord.querySelector('textarea[name="array_url"], input[name="array_url"]');
+                if (arrayUrlInput) {
+                    arrayUrlInput.value = `[Relief im State aktiv: ${curveY.length} Datenpunkte. Wird beim Speichern automatisch als JSON gespeichert.]`;
+                }
+
+                if (scanFeedbackInfo) {
+                    scanFeedbackInfo.innerText = `${targetW}×${targetH}px | ${curveY.length} Punkte (Zeichne mit Maus/Touch für Korrekturen)`;
+                }
+
+                // Sauberes verkleinertes Bild in Supabase Storage Bucket 'panorama-images' hochladen
+                if (uploadStatusBadge) {
+                    uploadStatusBadge.innerText = 'Lade in Supabase Storage hoch...';
+                    uploadStatusBadge.className = 'text-[11px] font-mono px-2 py-0.5 rounded border bg-amber-950/70 text-amber-400 border-amber-800/60 animate-pulse';
+                }
+
+                offscreenCanvas.toBlob(async (blob) => {
+                    if (!blob) {
+                        isProcessingImage = false;
+                        if (uploadStatusBadge) {
+                            uploadStatusBadge.className = 'text-[11px] font-mono px-2 py-0.5 rounded border bg-red-950 text-red-400 border-red-800';
+                            uploadStatusBadge.innerText = '✕ Fehler beim Erstellen des Bild-Blobs';
+                        }
+                        showToast('Fehler bei Bild-Komprimierung', 'error');
+                        checkPanoramaFormReadiness();
+                        return;
+                    }
+
+                    try {
+                        const cleanExt = (file.name.split('.').pop() || 'jpg').toLowerCase();
+                        const safeBase = file.name.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_");
+                        const fileName = `${Date.now()}_${safeBase}.${cleanExt === 'jpeg' ? 'jpg' : cleanExt}`;
+                        const filePath = `public/${fileName}`;
+
+                        const { data: uploadData, error: uploadError } = await supabase.storage
+                            .from('panorama-images')
+                            .upload(filePath, blob, {
+                                contentType: 'image/jpeg',
+                                upsert: true
+                            });
+
+                        if (uploadError) throw uploadError;
+
+                        const { data: urlData } = supabase.storage
+                            .from('panorama-images')
+                            .getPublicUrl(filePath);
+
+                        const publicUrl = urlData.publicUrl;
+                        const imageUrlInput = formEditRecord.querySelector('textarea[name="image_url"], input[name="image_url"]');
+                        if (imageUrlInput) {
+                            imageUrlInput.value = publicUrl;
+                        }
+
+                        if (uploadStatusBadge) {
+                            uploadStatusBadge.innerText = '✓ Bild hochgeladen & Horizont gescannt';
+                            uploadStatusBadge.className = 'text-[11px] font-mono px-2 py-0.5 rounded border bg-emerald-950/80 text-emerald-400 border-emerald-800';
+                        }
+                        showToast('Bild erfolgreich gespeichert und gescannt!');
+
+                    } catch (err) {
+                        console.error("Storage Upload Fehler:", err);
+                        if (uploadStatusBadge) {
+                            uploadStatusBadge.innerText = `✕ Upload-Fehler: ${err.message}`;
+                            uploadStatusBadge.className = 'text-[11px] font-mono px-2 py-0.5 rounded border bg-red-950 text-red-400 border-red-800';
+                        }
+                        showToast(`Upload-Fehler: ${err.message}`, 'error');
+                    } finally {
+                        isProcessingImage = false;
+                        checkPanoramaFormReadiness();
+                    }
+                }, 'image/jpeg', 0.88);
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    // Erneuter Scan des aktuell geladenen Bildes
+    function handleRescanRelief() {
+        if (!adminLoadedImage) {
+            showToast('Kein Bild zum Scannen vorhanden', 'warning');
+            return;
+        }
+
+        const MAX_WIDTH = 2500;
+        let targetW = adminLoadedImage.naturalWidth || adminLoadedImage.width;
+        let targetH = adminLoadedImage.naturalHeight || adminLoadedImage.height;
+        if (targetW > MAX_WIDTH) {
+            const ratio = MAX_WIDTH / targetW;
+            targetW = MAX_WIDTH;
+            targetH = Math.round(targetH * ratio);
+        }
+
+        const offscreenCanvas = document.createElement('canvas');
+        offscreenCanvas.width = targetW;
+        offscreenCanvas.height = targetH;
+        const offCtx = offscreenCanvas.getContext('2d');
+        offCtx.drawImage(adminLoadedImage, 0, 0, targetW, targetH);
+
+        const curveY = scanSkylineRelief(offCtx, targetW, targetH);
+        currentPanoramaCurveY = curveY;
+        currentPanoramaWidth = targetW;
+        currentPanoramaHeight = targetH;
+
+        drawReliefOverlay(adminScanCanvas, adminLoadedImage, targetW, targetH, currentPanoramaCurveY);
+
+        const arrayUrlInput = formEditRecord.querySelector('textarea[name="array_url"], input[name="array_url"]');
+        if (arrayUrlInput) {
+            arrayUrlInput.value = `[Relief neu berechnet: ${curveY.length} Datenpunkte. Wird beim Speichern automatisch als JSON gespeichert.]`;
+        }
+
+        if (scanFeedbackInfo) {
+            scanFeedbackInfo.innerText = `${targetW}×${targetH}px | ${curveY.length} Datenpunkte neu berechnet`;
+        }
+
+        showToast('Horizont neu berechnet! Zeichne im Canvas für manuelle Korrekturen.');
+        checkPanoramaFormReadiness();
+    }
+
+    // Lädt ein bestehendes Panoramabild in den Canvas zur visuellen Kontrolle und Bearbeitung
+    function loadExistingPanoramaPreview(imageUrl, arrayUrl) {
+        if (!imageUrl) return;
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            adminLoadedImage = img;
+            currentPanoramaWidth = img.naturalWidth || img.width;
+            currentPanoramaHeight = img.naturalHeight || img.height;
+            currentPanoramaCurveY = null;
+
+            if (arrayUrl) {
+                try {
+                    const parsed = (typeof arrayUrl === 'string') ? JSON.parse(arrayUrl) : arrayUrl;
+                    if (parsed && Array.isArray(parsed.kurve_y)) {
+                        currentPanoramaCurveY = [...parsed.kurve_y];
+                        if (parsed.bild_breite) currentPanoramaWidth = parsed.bild_breite;
+                        if (parsed.bild_hoehe) currentPanoramaHeight = parsed.bild_hoehe;
+                    }
+                } catch(e) {}
+            }
+            if (scanCanvasWrapper) scanCanvasWrapper.classList.remove('hidden');
+            if (btnRescanRelief) btnRescanRelief.classList.remove('hidden');
+            drawReliefOverlay(adminScanCanvas, img, currentPanoramaWidth, currentPanoramaHeight, currentPanoramaCurveY);
+            if (scanFeedbackInfo) {
+                scanFeedbackInfo.innerText = `${currentPanoramaWidth}×${currentPanoramaHeight}px | Bereit für interaktive Korrekturen`;
+            }
+        };
+        img.onerror = () => {
+            console.warn("Konnte bestehendes Bild nicht im Canvas laden:", imageUrl);
+        };
+        img.src = imageUrl;
+    }
+
+    // Prüft, ob das Panorama-Formular speicherbereit ist
+    function checkPanoramaFormReadiness() {
+        if (currentTable !== 'panoramas') {
+            btnSaveModal.disabled = false;
+            btnSaveModal.classList.remove('opacity-50', 'cursor-not-allowed');
+            btnSaveModal.title = 'Speichern';
+            return true;
+        }
+
+        if (modalMode === 'edit') {
+            btnSaveModal.disabled = false;
+            btnSaveModal.classList.remove('opacity-50', 'cursor-not-allowed');
+            btnSaveModal.title = 'Speichern';
+            return true;
+        }
+
+        // Im Neuanlage-Modus: Bild-URL muss vorhanden sein und Relief-Array im State (oder im Feld)
+        const imgInput = formEditRecord.querySelector('[name="image_url"]');
+        const imgVal = (imgInput ? imgInput.value : '').trim();
+        const hasRelief = (currentPanoramaCurveY && currentPanoramaCurveY.length > 0) ||
+                          Boolean((formEditRecord.querySelector('[name="array_url"]')?.value || '').trim());
+
+        if (isProcessingImage || !imgVal || !hasRelief) {
+            btnSaveModal.disabled = true;
+            btnSaveModal.classList.add('opacity-50', 'cursor-not-allowed');
+            btnSaveModal.title = isProcessingImage 
+                ? 'Bild wird verarbeitet...' 
+                : 'Bitte lade zuerst ein Bild hoch und scanne die Horizontlinie';
+            return false;
+        } else {
+            btnSaveModal.disabled = false;
+            btnSaveModal.classList.remove('opacity-50', 'cursor-not-allowed');
+            btnSaveModal.title = 'Panorama speichern';
+            return true;
+        }
+    }
+
     // 8. Dynamisches Formular (Modal) für Neu & Bearbeiten
     function openRecordModal(mode, record = null) {
         modalMode = mode;
@@ -536,7 +1129,31 @@
         modalIcon.innerText = (mode === 'create') ? '➕' : '✏️';
         modalTitle.innerText = (mode === 'create') ? `${cfg.title}: Neuen Eintrag erstellen` : `${cfg.title}: Eintrag bearbeiten`;
 
-        // Baue Formularfelder dynamisch für ALLE Spalten auf
+        // 1. Panorama Builder Panel ein- oder ausblenden
+        if (currentTable === 'panoramas') {
+            if (sectionPanoramaBuilder) sectionPanoramaBuilder.classList.remove('hidden');
+            initAdminMap(record ? record.lat : null, record ? record.lng : null);
+
+            if (record && record.image_url) {
+                if (uploadStatusBadge) {
+                    uploadStatusBadge.classList.remove('hidden');
+                    uploadStatusBadge.className = 'text-[11px] font-mono px-2 py-0.5 rounded border bg-neutral-800 text-neutral-300 border-neutral-700';
+                    uploadStatusBadge.innerText = 'Bestehendes Bild verknüpft';
+                }
+                if (scanFeedbackInfo) scanFeedbackInfo.innerText = record.image_url;
+                loadExistingPanoramaPreview(record.image_url, record.array_url);
+            } else {
+                if (uploadStatusBadge) uploadStatusBadge.classList.add('hidden');
+                if (scanCanvasWrapper) scanCanvasWrapper.classList.add('hidden');
+                if (btnRescanRelief) btnRescanRelief.classList.add('hidden');
+                if (scanFeedbackInfo) scanFeedbackInfo.innerText = '';
+            }
+        } else {
+            if (sectionPanoramaBuilder) sectionPanoramaBuilder.classList.add('hidden');
+            cleanupAdminMap();
+        }
+
+        // 2. Baue Formularfelder dynamisch für ALLE Spalten auf
         let html = '';
         currentColumns.forEach(col => {
             const isPk = (col === pk);
@@ -571,6 +1188,36 @@
                 return;
             }
 
+            // Spezifische Behandlung für Panoramas: lat, lng, image_url, array_url sind READONLY
+            const isPanoAutoCol = (currentTable === 'panoramas' && ['lat', 'lng', 'image_url', 'array_url'].includes(col));
+            if (isPanoAutoCol) {
+                let badgeText = 'Automatisch befüllt';
+                if (col === 'lat' || col === 'lng') badgeText = '📍 Via Karte (readonly)';
+                else if (col === 'image_url') badgeText = '📷 Via Upload (readonly)';
+                else if (col === 'array_url') badgeText = '⛰️ Via Relief-Scan (readonly)';
+
+                const isLong = (col === 'image_url' || col === 'array_url');
+                html += `
+                <div class="${isLong ? 'md:col-span-2' : ''} space-y-1">
+                    <div class="flex items-center justify-between">
+                        <label class="block text-xs font-mono font-medium text-neutral-300 capitalize">
+                            <span>${escapeHTML(col)}</span>
+                        </label>
+                        <span class="text-[10px] text-brand-orange font-mono font-medium">${badgeText}</span>
+                    </div>`;
+
+                if (isLong) {
+                    html += `
+                    <textarea name="${escapeHTML(col)}" rows="2" readonly class="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-neutral-300 font-mono cursor-not-allowed select-all" placeholder="${col} wird automatisch befüllt...">${escapeHTML(valStr)}</textarea>`;
+                } else {
+                    html += `
+                    <input type="text" name="${escapeHTML(col)}" value="${escapeHTML(valStr)}" readonly class="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-neutral-300 font-mono cursor-not-allowed select-all" placeholder="${col} wird per Karte gesetzt...">`;
+                }
+
+                html += `</div>`;
+                return;
+            }
+
             // Textarea für lange Werte (JSON, Arrays, Kommentare, vinyl_array, ai_sound)
             const isLongText = (col.includes('comment') || col.includes('json') || col.includes('array') || col.includes('url') || col === 'vinyl_array' || col === 'ai_sound');
             const isReadonlyPk = (mode === 'edit' && isPk);
@@ -598,9 +1245,11 @@
 
         formFieldsContainer.innerHTML = html;
         modalEditRecord.classList.remove('hidden');
+        checkPanoramaFormReadiness();
     }
 
     function closeRecordModal() {
+        cleanupAdminMap();
         modalEditRecord.classList.add('hidden');
         editingRecord = null;
         formEditRecord.reset();
@@ -609,8 +1258,6 @@
     // Formular-Absenden (INSERT / UPDATE)
     async function handleFormSubmit(e) {
         e.preventDefault();
-        btnSaveModal.disabled = true;
-        btnSaveModal.innerText = 'Speichere...';
 
         const cfg = TABLE_CONFIG[currentTable];
         const pk = cfg.pk;
@@ -626,9 +1273,9 @@
                 return;
             }
 
-            const raw = formData.get(col);
+            const raw = inputEl ? inputEl.value : formData.get(col);
             if (raw !== null && raw !== undefined) {
-                const trimmed = raw.trim();
+                const trimmed = String(raw).trim();
                 // Leere Strings bei 'id' beim Neuanlegen weglassen, falls DB ein Default hat (z. B. UUID oder Serial)
                 if (modalMode === 'create' && col === pk && trimmed === '') {
                     return;
@@ -645,6 +1292,37 @@
                 payload[col] = null;
             }
         });
+
+        // 4. Anforderung: JSON.stringify() für 'array_url' erfolgt erst jetzt beim finalen Speichern aus dem State-Array!
+        if (currentTable === 'panoramas' && currentPanoramaCurveY && currentPanoramaCurveY.length > 0) {
+            const reliefPayload = {
+                bild_breite: currentPanoramaWidth || (adminScanCanvas ? adminScanCanvas.width : 2500),
+                bild_hoehe: currentPanoramaHeight || (adminScanCanvas ? adminScanCanvas.height : 400),
+                kurve_y: currentPanoramaCurveY
+            };
+            const jsonStr = JSON.stringify(reliefPayload);
+            payload['array_url'] = jsonStr;
+            const arrayUrlInput = formEditRecord.querySelector('textarea[name="array_url"], input[name="array_url"]');
+            if (arrayUrlInput) {
+                arrayUrlInput.value = jsonStr;
+            }
+        }
+
+        // Zusätzliche Validierung für Panoramen beim Neuanlegen
+        if (currentTable === 'panoramas' && modalMode === 'create') {
+            const imgInput = formEditRecord.querySelector('[name="image_url"]');
+            const imgVal = (imgInput ? imgInput.value : '').trim();
+            const hasArray = Boolean(payload['array_url'] || (formEditRecord.querySelector('[name="array_url"]')?.value || '').trim());
+
+            if (!imgVal || !hasArray) {
+                showToast('Bitte lade zuerst ein Bild hoch und scanne das Horizont-Relief.', 'error');
+                checkPanoramaFormReadiness();
+                return;
+            }
+        }
+
+        btnSaveModal.disabled = true;
+        btnSaveModal.innerText = 'Speichere...';
 
         try {
             if (modalMode === 'create') {
@@ -669,6 +1347,7 @@
         } finally {
             btnSaveModal.disabled = false;
             btnSaveModal.innerText = 'Speichern';
+            checkPanoramaFormReadiness();
         }
     }
 
@@ -785,6 +1464,36 @@
 
         // Formular Absenden
         formEditRecord.addEventListener('submit', handleFormSubmit);
+
+        // Formular-Eingaben überwachen zur Freischaltung des Speichern-Buttons
+        formEditRecord.addEventListener('input', checkPanoramaFormReadiness);
+
+        // Panorama Upload & Horizon-Rescan Event Listener
+        if (inputPanoramaFile) {
+            inputPanoramaFile.addEventListener('change', (e) => {
+                const file = e.target.files && e.target.files[0];
+                if (file) handlePanoramaFileSelect(file);
+            });
+        }
+        if (btnRescanRelief) {
+            btnRescanRelief.addEventListener('click', handleRescanRelief);
+        }
+
+        // Canvas Interaktive Korrektur (Mouse & Touch Listener)
+        if (adminScanCanvas) {
+            // Maus-Events
+            adminScanCanvas.addEventListener('mousedown', handleReliefDrawStart);
+            adminScanCanvas.addEventListener('mousemove', handleReliefDrawMove);
+            adminScanCanvas.addEventListener('mouseup', handleReliefDrawEnd);
+            adminScanCanvas.addEventListener('mouseleave', handleReliefDrawEnd);
+
+            // Touch-Events für mobile Geräte / Touchscreens
+            adminScanCanvas.addEventListener('touchstart', handleReliefDrawStart, { passive: false });
+            adminScanCanvas.addEventListener('touchmove', handleReliefDrawMove, { passive: false });
+            adminScanCanvas.addEventListener('touchend', handleReliefDrawEnd);
+            adminScanCanvas.addEventListener('touchcancel', handleReliefDrawEnd);
+        }
+        window.addEventListener('mouseup', handleReliefDrawEnd);
 
         // Aktionen in der Tabelle (Delegation für Edit / Delete)
         dynamicTableBody.addEventListener('click', (e) => {
