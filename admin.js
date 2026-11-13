@@ -1081,6 +1081,48 @@
         img.src = imageUrl;
     }
 
+    // Standardwerte für neue Panoramen
+    const PANORAMA_FIELD_DEFAULTS = {
+        peaks: 4,
+        valleys: 2,
+        spacing: 35,
+        sensibility: 0,
+        mode: 'chord',
+        scale: 'lydian',
+        octaves: 3,
+        range: 100,
+        wave: 'darkpad',
+        volume: 0.2,
+        duration: 5.0,
+        attack: 1.0,
+        release: 2.0,
+        echo: 0.3,
+        grid_lines: 5
+    };
+
+    // Ermittelt die nächste freie numerische Panorama-ID
+    function getNextPanoramaId() {
+        let maxId = 0;
+        if (currentRecords && currentRecords.length > 0) {
+            currentRecords.forEach(r => {
+                const num = parseInt(r.id, 10);
+                if (!isNaN(num) && num > maxId) {
+                    maxId = num;
+                }
+            });
+        }
+        return String(maxId > 0 ? maxId + 1 : 1);
+    }
+
+    // Formatiert das heutige Datum im Format DD.MM.YYYY
+    function getFormattedCurrentDate() {
+        const now = new Date();
+        const dd = String(now.getDate()).padStart(2, '0');
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const yyyy = now.getFullYear();
+        return `${dd}.${mm}.${yyyy}`;
+    }
+
     // Prüft, ob das Panorama-Formular speicherbereit ist
     function checkPanoramaFormReadiness() {
         if (currentTable !== 'panoramas') {
@@ -1102,13 +1144,19 @@
         const imgVal = (imgInput ? imgInput.value : '').trim();
         const hasRelief = (currentPanoramaCurveY && currentPanoramaCurveY.length > 0) ||
                           Boolean((formEditRecord.querySelector('[name="array_url"]')?.value || '').trim());
+        const titleInput = formEditRecord.querySelector('[name="title"]');
+        const titleVal = (titleInput ? titleInput.value : '').trim();
 
-        if (isProcessingImage || !imgVal || !hasRelief) {
+        if (isProcessingImage || !imgVal || !hasRelief || !titleVal) {
             btnSaveModal.disabled = true;
             btnSaveModal.classList.add('opacity-50', 'cursor-not-allowed');
-            btnSaveModal.title = isProcessingImage 
-                ? 'Bild wird verarbeitet...' 
-                : 'Bitte lade zuerst ein Bild hoch und scanne die Horizontlinie';
+            if (isProcessingImage) {
+                btnSaveModal.title = 'Bild wird verarbeitet...';
+            } else if (!imgVal || !hasRelief) {
+                btnSaveModal.title = 'Bitte lade zuerst ein Bild hoch und scanne die Horizontlinie';
+            } else if (!titleVal) {
+                btnSaveModal.title = 'Bitte gib einen Titel für das Panorama ein';
+            }
             return false;
         } else {
             btnSaveModal.disabled = false;
@@ -1157,7 +1205,19 @@
         let html = '';
         currentColumns.forEach(col => {
             const isPk = (col === pk);
-            const rawVal = record ? record[col] : '';
+            let rawVal = record ? record[col] : '';
+
+            // Vorbelegung für Neuanlage bei Panoramas
+            if (mode === 'create' && currentTable === 'panoramas') {
+                if (col === 'id') {
+                    rawVal = getNextPanoramaId();
+                } else if (col === 'date_added') {
+                    rawVal = getFormattedCurrentDate();
+                } else if (PANORAMA_FIELD_DEFAULTS[col] !== undefined && (rawVal === '' || rawVal === null || rawVal === undefined)) {
+                    rawVal = PANORAMA_FIELD_DEFAULTS[col];
+                }
+            }
+
             const valStr = (rawVal !== null && rawVal !== undefined) ? String(rawVal) : '';
 
             // Spezielle Behandlungen für Rollen-Dropdown
@@ -1222,22 +1282,44 @@
             const isLongText = (col.includes('comment') || col.includes('json') || col.includes('array') || col.includes('url') || col === 'vinyl_array' || col === 'ai_sound');
             const isReadonlyPk = (mode === 'edit' && isPk);
 
+            let pkBadge = '';
+            if (isPk) {
+                if (currentTable === 'panoramas' && mode === 'create') {
+                    pkBadge = '<span class="text-brand-orange ml-1 text-[10px]">(Primary Key - Auto-ID)</span>';
+                } else {
+                    pkBadge = '<span class="text-brand-orange ml-1 text-[10px]">(Primary Key)</span>';
+                }
+            }
+
+            let placeholderText = '';
+            if (isPk && mode === 'create') {
+                if (currentTable === 'panoramas') {
+                    placeholderText = `Auto-ID (z. B. ${valStr || getNextPanoramaId()})`;
+                } else if (currentTable === 'translations') {
+                    placeholderText = 'Eindeutiger Schlüssel (z. B. button_play)';
+                } else {
+                    placeholderText = '(Optional bei auto-generated UUID)';
+                }
+            } else {
+                placeholderText = col;
+            }
+
             html += `
             <div class="${isLongText ? 'md:col-span-2' : ''} space-y-1">
                 <div class="flex items-center justify-between">
                     <label class="block text-xs font-mono font-medium text-neutral-300 capitalize">
                         <span>${escapeHTML(col)}</span>
-                        ${isPk ? '<span class="text-brand-orange ml-1 text-[10px]">(Primary Key)</span>' : ''}
+                        ${pkBadge}
                     </label>
                     ${isReadonlyPk ? '<span class="text-[10px] text-neutral-500 font-mono">Nicht veränderbar</span>' : ''}
                 </div>`;
 
             if (isLongText) {
                 html += `
-                <textarea name="${escapeHTML(col)}" rows="3" placeholder="${escapeHTML(col)}" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-brand-orange font-mono" ${isReadonlyPk ? 'readonly disabled' : ''}>${escapeHTML(valStr)}</textarea>`;
+                <textarea name="${escapeHTML(col)}" rows="3" placeholder="${escapeHTML(placeholderText)}" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-brand-orange font-mono" ${isReadonlyPk ? 'readonly disabled' : ''}>${escapeHTML(valStr)}</textarea>`;
             } else {
                 html += `
-                <input type="text" name="${escapeHTML(col)}" value="${escapeHTML(valStr)}" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-brand-orange font-mono ${isReadonlyPk ? 'bg-neutral-900 cursor-not-allowed opacity-60' : ''}" ${isReadonlyPk ? 'readonly' : ''} placeholder="${isPk && mode === 'create' ? '(Optional bei auto-generated ID)' : ''}">`;
+                <input type="text" name="${escapeHTML(col)}" value="${escapeHTML(valStr)}" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-brand-orange font-mono ${isReadonlyPk ? 'bg-neutral-900 cursor-not-allowed opacity-60' : ''}" ${isReadonlyPk ? 'readonly' : ''} placeholder="${escapeHTML(placeholderText)}">`;
             }
 
             html += `</div>`;
@@ -1276,10 +1358,17 @@
             const raw = inputEl ? inputEl.value : formData.get(col);
             if (raw !== null && raw !== undefined) {
                 const trimmed = String(raw).trim();
-                // Leere Strings bei 'id' beim Neuanlegen weglassen, falls DB ein Default hat (z. B. UUID oder Serial)
+                
+                // Leere Strings bei 'id' beim Neuanlegen:
+                // Bei Tabellen mit auto-generierter UUID (presets, admin_users) weglassen -> Postgres vergibt UUID
+                // Bei Panoramas gibt es KEIN DB-Default -> hier auto-generierte ID zuweisen!
                 if (modalMode === 'create' && col === pk && trimmed === '') {
+                    if (currentTable === 'panoramas') {
+                        payload[pk] = getNextPanoramaId();
+                    }
                     return;
                 }
+
                 // Typkonvertierung: Leere Strings als null übergeben
                 if (trimmed === '') {
                     payload[col] = null;
@@ -1292,6 +1381,55 @@
                 payload[col] = null;
             }
         });
+
+        // Spezifische Pflichtfeld-Prüfungen & Ergänzungen für Panoramas
+        if (currentTable === 'panoramas') {
+            if (modalMode === 'create') {
+                // Sicherstellen, dass ID gesetzt ist (falls Feld gelöscht wurde)
+                if (!payload.id || String(payload.id).trim() === '') {
+                    payload.id = getNextPanoramaId();
+                }
+                // Datum setzen falls leer
+                if (!payload.date_added || String(payload.date_added).trim() === '') {
+                    payload.date_added = getFormattedCurrentDate();
+                }
+                // Standardwerte für Synthesizer-Parameter setzen falls null
+                Object.keys(PANORAMA_FIELD_DEFAULTS).forEach(param => {
+                    if (payload[param] === null || payload[param] === undefined) {
+                        payload[param] = PANORAMA_FIELD_DEFAULTS[param];
+                    }
+                });
+            }
+
+            // Validierung: Titel ist Pflichtfeld (NOT NULL in Supabase)
+            const titleVal = (payload.title !== null && payload.title !== undefined) ? String(payload.title).trim() : '';
+            if (!titleVal) {
+                showToast('Bitte gib einen Titel für das Panorama ein.', 'error');
+                const titleInput = formEditRecord.querySelector('[name="title"]');
+                if (titleInput) {
+                    titleInput.focus();
+                    titleInput.classList.add('border-red-500');
+                    setTimeout(() => titleInput.classList.remove('border-red-500'), 3000);
+                }
+                checkPanoramaFormReadiness();
+                return;
+            }
+        }
+
+        // Validierung für Translations: key_name ist Pflichtfeld
+        if (currentTable === 'translations' && modalMode === 'create') {
+            const keyVal = (payload.key_name !== null && payload.key_name !== undefined) ? String(payload.key_name).trim() : '';
+            if (!keyVal) {
+                showToast('Bitte gib einen eindeutigen "key_name" ein.', 'error');
+                const keyInput = formEditRecord.querySelector('[name="key_name"]');
+                if (keyInput) {
+                    keyInput.focus();
+                    keyInput.classList.add('border-red-500');
+                    setTimeout(() => keyInput.classList.remove('border-red-500'), 3000);
+                }
+                return;
+            }
+        }
 
         // 4. Anforderung: JSON.stringify() für 'array_url' erfolgt erst jetzt beim finalen Speichern aus dem State-Array!
         if (currentTable === 'panoramas' && currentPanoramaCurveY && currentPanoramaCurveY.length > 0) {
@@ -1342,8 +1480,15 @@
             await loadTableData();
 
         } catch (err) {
-            console.error("Speicherfehler:", err);
-            showToast(`Fehler: ${err.message}`, 'error');
+            console.error("Speicherfehler Details:", {
+                message: err.message,
+                details: err.details,
+                hint: err.hint,
+                code: err.code,
+                payload
+            });
+            const errMsg = err.details || err.message || (typeof err === 'object' ? JSON.stringify(err) : String(err));
+            showToast(`Fehler beim Speichern: ${errMsg}`, 'error');
         } finally {
             btnSaveModal.disabled = false;
             btnSaveModal.innerText = 'Speichern';
