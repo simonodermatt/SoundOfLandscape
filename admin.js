@@ -650,82 +650,75 @@
         if (mapCoordsDisplay) mapCoordsDisplay.innerText = 'Keine Koordinate gewählt';
     }
 
-    // Clientseitiger Skyline/Relief-Scanner: Extrahiert die Horizont-Linie aus dem Canvas
-    function scanSkylineRelief(ctx, width, height) {
+    // Relief- & Horizont-Scanner (autoScanRelief) nach bewährter Python-Backend Logik
+    // 1. Iteriert über jede Spalte X
+    // 2. In der Y-Schleife (von oben nach unten): Berechnet die Helligkeit des Pixels (Y) und eines Pixels (Y + 10)
+    // 3. Bedingung: lum1 > 100 && (lum1 - lum2) > 30 -> foundY = y; break;
+    // 4. Keine Kante gefunden: Y-Wert der vorherigen Spalte (X - 1) übernehmen (bzw. height/2 bei X=0)
+    // 5. GLÄTTUNG (Moving Average): Durchschnitt aus 5 linken und 5 rechten Nachbarn
+    function autoScanRelief(ctx, width, height) {
         const imgData = ctx.getImageData(0, 0, width, height);
         const data = imgData.data;
 
-        // 1. Schätze Grundfarbe des Himmels im obersten Bereich (oberste 5% der Zeilen)
-        const skySampleRows = Math.max(3, Math.floor(height * 0.05));
-        let skyR = 0, skyG = 0, skyB = 0, count = 0;
-        for (let y = 0; y < skySampleRows; y++) {
-            for (let x = 0; x < width; x += 10) {
-                const idx = (y * width + x) * 4;
-                skyR += data[idx];
-                skyG += data[idx + 1];
-                skyB += data[idx + 2];
-                count++;
-            }
-        }
-        skyR = count > 0 ? skyR / count : 200;
-        skyG = count > 0 ? skyG / count : 220;
-        skyB = count > 0 ? skyB / count : 240;
-
-        function getLuma(x, y) {
-            const idx = (y * width + x) * 4;
-            return 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-        }
-
-        function colorDiffFromSky(x, y) {
-            const idx = (y * width + x) * 4;
-            const dr = data[idx] - skyR;
-            const dg = data[idx + 1] - skyG;
-            const db = data[idx + 2] - skyB;
-            return Math.sqrt(dr * dr + dg * dg + db * db);
-        }
-
+        const step = 10;
         const rawCurveY = new Array(width);
-        const startY = Math.max(1, Math.floor(height * 0.02));
-        const endY = Math.floor(height * 0.95);
 
+        // 1. Iteriere über jede Spalte X
         for (let x = 0; x < width; x++) {
-            let bestY = Math.floor(height * 0.5);
-            let maxScore = -1;
+            let foundY = null;
 
-            for (let y = startY; y < endY; y++) {
-                const step = Math.min(2, endY - y);
-                const lumaDiff = Math.abs(getLuma(x, y + step) - getLuma(x, y));
-                const cDiff = colorDiffFromSky(x, y);
+            // 2. In der Y-Schleife (von oben nach unten)
+            for (let y = 0; y < height - step; y++) {
+                const idx1 = (y * width + x) * 4;
+                const r1 = data[idx1];
+                const g1 = data[idx1 + 1];
+                const b1 = data[idx1 + 2];
+                const lum1 = 0.299 * r1 + 0.587 * g1 + 0.114 * b1;
 
-                // Übergangsscore: Kontrastkante + Farbabstand zum Himmel, höherer Bergrücken bevorzugt
-                const score = (lumaDiff * 1.6 + cDiff * 0.9) * (1 - (y / height) * 0.35);
+                const idx2 = ((y + step) * width + x) * 4;
+                const r2 = data[idx2];
+                const g2 = data[idx2 + 1];
+                const b2 = data[idx2 + 2];
+                const lum2 = 0.299 * r2 + 0.587 * g2 + 0.114 * b2;
 
-                if (score > maxScore && (cDiff > 20 || lumaDiff > 16)) {
-                    maxScore = score;
-                    bestY = y;
+                // 3. Bedingung für Kante: Oberer Pixel sehr hell (Himmel/Sonne), unterer signifikant dunkler (Berg)
+                if (lum1 > 100 && (lum1 - lum2) > 30) {
+                    foundY = y;
+                    break;
                 }
             }
-            rawCurveY[x] = bestY;
+
+            // 4. Wenn in der gesamten Spalte keine Kante gefunden wurde:
+            // Setze Y nicht auf 0, sondern übernehme den Y-Wert der vorherigen Spalte (X - 1)
+            if (foundY === null) {
+                foundY = (x > 0) ? rawCurveY[x - 1] : Math.floor(height / 2);
+            }
+
+            rawCurveY[x] = foundY;
         }
 
-        // Glättung über ein 9-Pixel-Fenster zur Rauschminderung
+        // 5. GLÄTTUNG (MOVING AVERAGE):
+        // Berechne für jeden Punkt den Durchschnittswert aus seinen 5 linken und 5 rechten Nachbarn
         const smoothedCurveY = new Array(width);
-        const windowRadius = 4;
+        const windowRadius = 5; // 5 linke und 5 rechte Nachbarn
         for (let x = 0; x < width; x++) {
             let sum = 0;
-            let wCount = 0;
+            let count = 0;
             for (let w = -windowRadius; w <= windowRadius; w++) {
                 const nx = x + w;
                 if (nx >= 0 && nx < width) {
                     sum += rawCurveY[nx];
-                    wCount++;
+                    count++;
                 }
             }
-            smoothedCurveY[x] = Math.round(sum / wCount);
+            smoothedCurveY[x] = Math.round(sum / count);
         }
 
         return smoothedCurveY;
     }
+
+    // Alias für volle Rückwärtskompatibilität
+    const scanSkylineRelief = autoScanRelief;
 
     // Zeichnet das Bild und die gut sichtbare, dicke rote Horizontlinie auf den Vorschau-Canvas
     function drawReliefOverlay(canvas, img, width, height, curveY) {
@@ -916,7 +909,7 @@
 
                 // Relief / Skyline scannen
                 if (uploadStatusBadge) uploadStatusBadge.innerText = 'Scanne Relief-Linie...';
-                const curveY = scanSkylineRelief(offCtx, targetW, targetH);
+                const curveY = autoScanRelief(offCtx, targetW, targetH);
 
                 // Relief-State aktualisieren
                 currentPanoramaCurveY = curveY;
@@ -1027,7 +1020,7 @@
         const offCtx = offscreenCanvas.getContext('2d');
         offCtx.drawImage(adminLoadedImage, 0, 0, targetW, targetH);
 
-        const curveY = scanSkylineRelief(offCtx, targetW, targetH);
+        const curveY = autoScanRelief(offCtx, targetW, targetH);
         currentPanoramaCurveY = curveY;
         currentPanoramaWidth = targetW;
         currentPanoramaHeight = targetH;
@@ -1081,6 +1074,48 @@
         img.src = imageUrl;
     }
 
+    // Standardwerte für neue Panoramen
+    const PANORAMA_FIELD_DEFAULTS = {
+        peaks: 4,
+        valleys: 2,
+        spacing: 35,
+        sensibility: 0,
+        mode: 'chord',
+        scale: 'lydian',
+        octaves: 3,
+        range: 100,
+        wave: 'darkpad',
+        volume: 0.2,
+        duration: 5.0,
+        attack: 1.0,
+        release: 2.0,
+        echo: 0.3,
+        grid_lines: 5
+    };
+
+    // Ermittelt die nächste freie numerische Panorama-ID
+    function getNextPanoramaId() {
+        let maxId = 0;
+        if (currentRecords && currentRecords.length > 0) {
+            currentRecords.forEach(r => {
+                const num = parseInt(r.id, 10);
+                if (!isNaN(num) && num > maxId) {
+                    maxId = num;
+                }
+            });
+        }
+        return String(maxId > 0 ? maxId + 1 : 1);
+    }
+
+    // Formatiert das heutige Datum im Format DD.MM.YYYY
+    function getFormattedCurrentDate() {
+        const now = new Date();
+        const dd = String(now.getDate()).padStart(2, '0');
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const yyyy = now.getFullYear();
+        return `${dd}.${mm}.${yyyy}`;
+    }
+
     // Prüft, ob das Panorama-Formular speicherbereit ist
     function checkPanoramaFormReadiness() {
         if (currentTable !== 'panoramas') {
@@ -1102,13 +1137,19 @@
         const imgVal = (imgInput ? imgInput.value : '').trim();
         const hasRelief = (currentPanoramaCurveY && currentPanoramaCurveY.length > 0) ||
                           Boolean((formEditRecord.querySelector('[name="array_url"]')?.value || '').trim());
+        const titleInput = formEditRecord.querySelector('[name="title"]');
+        const titleVal = (titleInput ? titleInput.value : '').trim();
 
-        if (isProcessingImage || !imgVal || !hasRelief) {
+        if (isProcessingImage || !imgVal || !hasRelief || !titleVal) {
             btnSaveModal.disabled = true;
             btnSaveModal.classList.add('opacity-50', 'cursor-not-allowed');
-            btnSaveModal.title = isProcessingImage 
-                ? 'Bild wird verarbeitet...' 
-                : 'Bitte lade zuerst ein Bild hoch und scanne die Horizontlinie';
+            if (isProcessingImage) {
+                btnSaveModal.title = 'Bild wird verarbeitet...';
+            } else if (!imgVal || !hasRelief) {
+                btnSaveModal.title = 'Bitte lade zuerst ein Bild hoch und scanne die Horizontlinie';
+            } else if (!titleVal) {
+                btnSaveModal.title = 'Bitte gib einen Titel für das Panorama ein';
+            }
             return false;
         } else {
             btnSaveModal.disabled = false;
@@ -1157,7 +1198,19 @@
         let html = '';
         currentColumns.forEach(col => {
             const isPk = (col === pk);
-            const rawVal = record ? record[col] : '';
+            let rawVal = record ? record[col] : '';
+
+            // Vorbelegung für Neuanlage bei Panoramas
+            if (mode === 'create' && currentTable === 'panoramas') {
+                if (col === 'id') {
+                    rawVal = getNextPanoramaId();
+                } else if (col === 'date_added') {
+                    rawVal = getFormattedCurrentDate();
+                } else if (PANORAMA_FIELD_DEFAULTS[col] !== undefined && (rawVal === '' || rawVal === null || rawVal === undefined)) {
+                    rawVal = PANORAMA_FIELD_DEFAULTS[col];
+                }
+            }
+
             const valStr = (rawVal !== null && rawVal !== undefined) ? String(rawVal) : '';
 
             // Spezielle Behandlungen für Rollen-Dropdown
@@ -1222,22 +1275,44 @@
             const isLongText = (col.includes('comment') || col.includes('json') || col.includes('array') || col.includes('url') || col === 'vinyl_array' || col === 'ai_sound');
             const isReadonlyPk = (mode === 'edit' && isPk);
 
+            let pkBadge = '';
+            if (isPk) {
+                if (currentTable === 'panoramas' && mode === 'create') {
+                    pkBadge = '<span class="text-brand-orange ml-1 text-[10px]">(Primary Key - Auto-ID)</span>';
+                } else {
+                    pkBadge = '<span class="text-brand-orange ml-1 text-[10px]">(Primary Key)</span>';
+                }
+            }
+
+            let placeholderText = '';
+            if (isPk && mode === 'create') {
+                if (currentTable === 'panoramas') {
+                    placeholderText = `Auto-ID (z. B. ${valStr || getNextPanoramaId()})`;
+                } else if (currentTable === 'translations') {
+                    placeholderText = 'Eindeutiger Schlüssel (z. B. button_play)';
+                } else {
+                    placeholderText = '(Optional bei auto-generated UUID)';
+                }
+            } else {
+                placeholderText = col;
+            }
+
             html += `
             <div class="${isLongText ? 'md:col-span-2' : ''} space-y-1">
                 <div class="flex items-center justify-between">
                     <label class="block text-xs font-mono font-medium text-neutral-300 capitalize">
                         <span>${escapeHTML(col)}</span>
-                        ${isPk ? '<span class="text-brand-orange ml-1 text-[10px]">(Primary Key)</span>' : ''}
+                        ${pkBadge}
                     </label>
                     ${isReadonlyPk ? '<span class="text-[10px] text-neutral-500 font-mono">Nicht veränderbar</span>' : ''}
                 </div>`;
 
             if (isLongText) {
                 html += `
-                <textarea name="${escapeHTML(col)}" rows="3" placeholder="${escapeHTML(col)}" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-brand-orange font-mono" ${isReadonlyPk ? 'readonly disabled' : ''}>${escapeHTML(valStr)}</textarea>`;
+                <textarea name="${escapeHTML(col)}" rows="3" placeholder="${escapeHTML(placeholderText)}" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-brand-orange font-mono" ${isReadonlyPk ? 'readonly disabled' : ''}>${escapeHTML(valStr)}</textarea>`;
             } else {
                 html += `
-                <input type="text" name="${escapeHTML(col)}" value="${escapeHTML(valStr)}" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-brand-orange font-mono ${isReadonlyPk ? 'bg-neutral-900 cursor-not-allowed opacity-60' : ''}" ${isReadonlyPk ? 'readonly' : ''} placeholder="${isPk && mode === 'create' ? '(Optional bei auto-generated ID)' : ''}">`;
+                <input type="text" name="${escapeHTML(col)}" value="${escapeHTML(valStr)}" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-brand-orange font-mono ${isReadonlyPk ? 'bg-neutral-900 cursor-not-allowed opacity-60' : ''}" ${isReadonlyPk ? 'readonly' : ''} placeholder="${escapeHTML(placeholderText)}">`;
             }
 
             html += `</div>`;
@@ -1276,10 +1351,17 @@
             const raw = inputEl ? inputEl.value : formData.get(col);
             if (raw !== null && raw !== undefined) {
                 const trimmed = String(raw).trim();
-                // Leere Strings bei 'id' beim Neuanlegen weglassen, falls DB ein Default hat (z. B. UUID oder Serial)
+                
+                // Leere Strings bei 'id' beim Neuanlegen:
+                // Bei Tabellen mit auto-generierter UUID (presets, admin_users) weglassen -> Postgres vergibt UUID
+                // Bei Panoramas gibt es KEIN DB-Default -> hier auto-generierte ID zuweisen!
                 if (modalMode === 'create' && col === pk && trimmed === '') {
+                    if (currentTable === 'panoramas') {
+                        payload[pk] = getNextPanoramaId();
+                    }
                     return;
                 }
+
                 // Typkonvertierung: Leere Strings als null übergeben
                 if (trimmed === '') {
                     payload[col] = null;
@@ -1292,6 +1374,55 @@
                 payload[col] = null;
             }
         });
+
+        // Spezifische Pflichtfeld-Prüfungen & Ergänzungen für Panoramas
+        if (currentTable === 'panoramas') {
+            if (modalMode === 'create') {
+                // Sicherstellen, dass ID gesetzt ist (falls Feld gelöscht wurde)
+                if (!payload.id || String(payload.id).trim() === '') {
+                    payload.id = getNextPanoramaId();
+                }
+                // Datum setzen falls leer
+                if (!payload.date_added || String(payload.date_added).trim() === '') {
+                    payload.date_added = getFormattedCurrentDate();
+                }
+                // Standardwerte für Synthesizer-Parameter setzen falls null
+                Object.keys(PANORAMA_FIELD_DEFAULTS).forEach(param => {
+                    if (payload[param] === null || payload[param] === undefined) {
+                        payload[param] = PANORAMA_FIELD_DEFAULTS[param];
+                    }
+                });
+            }
+
+            // Validierung: Titel ist Pflichtfeld (NOT NULL in Supabase)
+            const titleVal = (payload.title !== null && payload.title !== undefined) ? String(payload.title).trim() : '';
+            if (!titleVal) {
+                showToast('Bitte gib einen Titel für das Panorama ein.', 'error');
+                const titleInput = formEditRecord.querySelector('[name="title"]');
+                if (titleInput) {
+                    titleInput.focus();
+                    titleInput.classList.add('border-red-500');
+                    setTimeout(() => titleInput.classList.remove('border-red-500'), 3000);
+                }
+                checkPanoramaFormReadiness();
+                return;
+            }
+        }
+
+        // Validierung für Translations: key_name ist Pflichtfeld
+        if (currentTable === 'translations' && modalMode === 'create') {
+            const keyVal = (payload.key_name !== null && payload.key_name !== undefined) ? String(payload.key_name).trim() : '';
+            if (!keyVal) {
+                showToast('Bitte gib einen eindeutigen "key_name" ein.', 'error');
+                const keyInput = formEditRecord.querySelector('[name="key_name"]');
+                if (keyInput) {
+                    keyInput.focus();
+                    keyInput.classList.add('border-red-500');
+                    setTimeout(() => keyInput.classList.remove('border-red-500'), 3000);
+                }
+                return;
+            }
+        }
 
         // 4. Anforderung: JSON.stringify() für 'array_url' erfolgt erst jetzt beim finalen Speichern aus dem State-Array!
         if (currentTable === 'panoramas' && currentPanoramaCurveY && currentPanoramaCurveY.length > 0) {
@@ -1342,8 +1473,15 @@
             await loadTableData();
 
         } catch (err) {
-            console.error("Speicherfehler:", err);
-            showToast(`Fehler: ${err.message}`, 'error');
+            console.error("Speicherfehler Details:", {
+                message: err.message,
+                details: err.details,
+                hint: err.hint,
+                code: err.code,
+                payload
+            });
+            const errMsg = err.details || err.message || (typeof err === 'object' ? JSON.stringify(err) : String(err));
+            showToast(`Fehler beim Speichern: ${errMsg}`, 'error');
         } finally {
             btnSaveModal.disabled = false;
             btnSaveModal.innerText = 'Speichern';
