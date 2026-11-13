@@ -650,97 +650,57 @@
         if (mapCoordsDisplay) mapCoordsDisplay.innerText = 'Keine Koordinate gewählt';
     }
 
-    // Lokale Kantenerkennung mit Sonnen- & Wolken-Filter und Kontinuitäts-Prüfung (autoScanRelief)
-    // 1. Speichert lastY der vorherigen Spalte
-    // 2. Holt Pixel_A (bei Y) und Pixel_B (bei Y + 10)
-    // 3. Berechnet Luminanz beider Pixel
-    // 4. SONNEN- & WOLKEN-FILTER: Wenn BEIDE Pixel sehr hell sind (> 200), überspringe (continue)
-    // 5. KANTEN-TRIGGER: Delta Helligkeit (> 30) oder RGB (> 45)
-    // 6. KONTINUITÄTS-PRÜFUNG: Bei Sprung > 40px zum Nachbarn lastY -> Kante ignorieren und Y-Schleife nach unten fortsetzen!
-    // 7. NOTFALL-FALLBACK: Wenn unten ohne Treffer -> exakt lastY übernehmen (kein 0-Spike)
-    // 8. Glättung per Moving Average über 7 Pixel (Radius 3)
+    // Relief- & Horizont-Scanner (autoScanRelief) nach bewährter Python-Backend Logik
+    // 1. Iteriert über jede Spalte X
+    // 2. In der Y-Schleife (von oben nach unten): Berechnet die Helligkeit des Pixels (Y) und eines Pixels (Y + 10)
+    // 3. Bedingung: lum1 > 100 && (lum1 - lum2) > 30 -> foundY = y; break;
+    // 4. Keine Kante gefunden: Y-Wert der vorherigen Spalte (X - 1) übernehmen (bzw. height/2 bei X=0)
+    // 5. GLÄTTUNG (Moving Average): Durchschnitt aus 5 linken und 5 rechten Nachbarn
     function autoScanRelief(ctx, width, height) {
         const imgData = ctx.getImageData(0, 0, width, height);
         const data = imgData.data;
 
         const step = 10;
-        const LUMA_BRIGHT_THRESHOLD = 200;
-        const DELTA_LUMA_THRESHOLD = 30;
-        const DELTA_RGB_THRESHOLD = 45;
-        const MAX_JUMP = 40; // Maximaler vertikaler Sprung zum Nachbarn (Kontinuitätsprüfung)
-        const INIT_COLS = 15; // Initiale Spalten zum Finden der ersten Baseline
-
         const rawCurveY = new Array(width);
-        let lastY = null; // 1. Behalte den finalen Y-Wert der vorherigen Spalte im Speicher
 
-        // 1. Iteriere über jede Spalte X (von oben nach unten, starte bei Y=0)
+        // 1. Iteriere über jede Spalte X
         for (let x = 0; x < width; x++) {
             let foundY = null;
 
+            // 2. In der Y-Schleife (von oben nach unten)
             for (let y = 0; y < height - step; y++) {
-                // 2. Hole Pixeldaten für Pixel_A (bei Y) und Pixel_B (bei Y + 10)
-                const idxA = (y * width + x) * 4;
-                const rA = data[idxA];
-                const gA = data[idxA + 1];
-                const bA = data[idxA + 2];
+                const idx1 = (y * width + x) * 4;
+                const r1 = data[idx1];
+                const g1 = data[idx1 + 1];
+                const b1 = data[idx1 + 2];
+                const lum1 = 0.299 * r1 + 0.587 * g1 + 0.114 * b1;
 
-                const idxB = ((y + step) * width + x) * 4;
-                const rB = data[idxB];
-                const gB = data[idxB + 1];
-                const bB = data[idxB + 2];
+                const idx2 = ((y + step) * width + x) * 4;
+                const r2 = data[idx2];
+                const g2 = data[idx2 + 1];
+                const b2 = data[idx2 + 2];
+                const lum2 = 0.299 * r2 + 0.587 * g2 + 0.114 * b2;
 
-                // 3. Berechne die Helligkeit (Luminanz) für beide Pixel
-                const lumaA = 0.299 * rA + 0.587 * gA + 0.114 * bA;
-                const lumaB = 0.299 * rB + 0.587 * gB + 0.114 * bB;
-
-                // 4. SONNEN- & WOLKEN-FILTER (WICHTIG):
-                // Wenn BEIDE Pixel sehr hell sind (z.B. Helligkeit > 200 oder alle RGB-Werte hoch),
-                // überspringe diesen Y-Schritt einfach (continue).
-                // Das verhindert, dass die Sonne oder helle Wolken als Horizont erkannt werden.
-                const isBrightSunOrCloud = (lumaA > LUMA_BRIGHT_THRESHOLD && lumaB > LUMA_BRIGHT_THRESHOLD) ||
-                                           (rA > 210 && gA > 210 && bA > 210 && rB > 210 && gB > 210 && bB > 210);
-                if (isBrightSunOrCloud) {
-                    continue;
-                }
-
-                // 5. KANTEN-TRIGGER:
-                // Berechne den absoluten Unterschied (Delta) der RGB-Werte oder Helligkeit zwischen Y und Y+10
-                const deltaLuma = Math.abs(lumaA - lumaB);
-                const deltaRGB = Math.abs(rA - rB) + Math.abs(gA - gB) + Math.abs(bA - bB);
-
-                // 6. Sobald das Delta einen Schwellenwert übersteigt UND der Sonnen-Filter nicht blockiert hat:
-                if (deltaLuma > DELTA_LUMA_THRESHOLD || deltaRGB > DELTA_RGB_THRESHOLD) {
-                    // KONTINUITÄTS-PRÜFUNG & SPIKE-FILTER:
-                    // Wenn eine Kante bei y gefunden wird, prüfe den vertikalen Abstand zum Nachbarn: Math.abs(y - lastY).
-                    // Wenn der Sprung unrealistisch groß ist (> 40px) und wir nicht in den ersten Spalten sind:
-                    // Fehler (Sonnen-Halo, Rauschen oder Äste ganz oben) -> Ignoriere diese Kante und setze Y-Schleife nach unten fort!
-                    if (lastY !== null && x > INIT_COLS) {
-                        const jump = Math.abs(y - lastY);
-                        if (jump > MAX_JUMP) {
-                            continue; // 4. Kante ignorieren und Y-Schleife weiter nach unten fortsetzen
-                        }
-                    }
-
+                // 3. Bedingung für Kante: Oberer Pixel sehr hell (Himmel/Sonne), unterer signifikant dunkler (Berg)
+                if (lum1 > 100 && (lum1 - lum2) > 30) {
                     foundY = y;
-                    break; // Echter Horizont gefunden! Y in State-Array speichern und Y-Schleife sofort beenden
+                    break;
                 }
             }
 
-            // 7. NOTFALL-FALLBACK / ANTI-SPIKE:
-            // Wenn die Schleife unten ankommt und wegen des Spike-Filters oder Überstrahlung keine
-            // gültige Kante gefunden hat, setze den Wert für diese Spalte exakt auf lastY (flache Interpolation),
-            // anstatt auf 0 zu springen. Falls X = 0, nimm height / 2.
+            // 4. Wenn in der gesamten Spalte keine Kante gefunden wurde:
+            // Setze Y nicht auf 0, sondern übernehme den Y-Wert der vorherigen Spalte (X - 1)
             if (foundY === null) {
-                foundY = (lastY !== null) ? lastY : Math.floor(height / 2);
+                foundY = (x > 0) ? rawCurveY[x - 1] : Math.floor(height / 2);
             }
 
             rawCurveY[x] = foundY;
-            lastY = foundY; // 1. Speichere finalen Y-Wert für Kontinuitätsprüfung der nächsten Spalte
         }
 
-        // 8. Glättungsfunktion (Moving Average über ca. 7 Pixel: Radius 3)
+        // 5. GLÄTTUNG (MOVING AVERAGE):
+        // Berechne für jeden Punkt den Durchschnittswert aus seinen 5 linken und 5 rechten Nachbarn
         const smoothedCurveY = new Array(width);
-        const windowRadius = 3; // 7 Werte: [x-3, x-2, x-1, x, x+1, x+2, x+3]
+        const windowRadius = 5; // 5 linke und 5 rechte Nachbarn
         for (let x = 0; x < width; x++) {
             let sum = 0;
             let count = 0;
