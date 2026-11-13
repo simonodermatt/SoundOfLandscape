@@ -74,6 +74,7 @@
     let currentPanoramaHeight = 0;
     let isDrawingRelief = false;
     let lastDrawCoord = null;
+    let currentPreviewRequestId = 0; // Verhindert Race Conditions beim asynchronen Laden von Vorschauen
 
     // DOM-Elemente
     const viewLoading = document.getElementById('view-loading');
@@ -405,14 +406,33 @@
 
             if (error) throw error;
 
-            currentRecords = data || [];
-            recordCountBadge.innerText = `${currentRecords.length} Einträge`;
+            let records = data || [];
+            // Bei Panoramen numerisch nach ID sortieren, damit 1, 2, ... 189, ... 4554 in natürlicher Reihenfolge stehen
+            if (currentTable === 'panoramas') {
+                records.sort((a, b) => {
+                    const numA = parseInt(a.id, 10);
+                    const numB = parseInt(b.id, 10);
+                    if (!isNaN(numA) && !isNaN(numB)) {
+                        return numA - numB;
+                    }
+                    return String(a.id).localeCompare(String(b.id));
+                });
+            }
+
+            currentRecords = records;
 
             // Dynamische Spaltenerkennung: Extrahiert alle existierenden und neu hinzugekommenen Spalten
             currentColumns = discoverColumns(currentRecords, currentTable);
 
             renderTableHeader(currentColumns);
-            renderTableBody(currentRecords);
+
+            // Aktiven Suchfilter beibehalten falls Text im Suchfeld steht
+            if (inputSearch && inputSearch.value.trim()) {
+                handleSearch();
+            } else {
+                recordCountBadge.innerText = `${currentRecords.length} Einträge`;
+                renderTableBody(currentRecords);
+            }
 
         } catch (err) {
             console.error(`Fehler beim Laden von ${currentTable}:`, err);
@@ -508,14 +528,14 @@
                 html += `<td class="px-4 py-2.5 max-w-xs truncate ${isPk ? 'font-mono text-brand-orange font-medium' : ''}" title="${escapeHTML(fullStr)}">${shortText}</td>`;
             });
 
-            // Action Buttons
+            // Action Buttons (Identifikation direkt über Primärschlüssel data-pk statt instabilem Array-Index)
             html += `
             <td class="px-4 py-2.5 text-right whitespace-nowrap sticky right-0 bg-neutral-950 group-hover:bg-neutral-900/90 transition-colors border-l border-neutral-800/40">
                 <div class="inline-flex items-center gap-1.5">
-                    <button type="button" data-action="edit" data-idx="${idx}" class="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded transition-colors" title="Bearbeiten">
+                    <button type="button" data-action="edit" data-pk="${escapeHTML(String(pkVal))}" class="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded transition-colors" title="Bearbeiten">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                     </button>
-                    <button type="button" data-action="delete" data-idx="${idx}" class="p-1.5 text-neutral-400 hover:text-red-400 hover:bg-red-950/40 rounded transition-colors" title="Löschen">
+                    <button type="button" data-action="delete" data-pk="${escapeHTML(String(pkVal))}" class="p-1.5 text-neutral-400 hover:text-red-400 hover:bg-red-950/40 rounded transition-colors" title="Löschen">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                     </button>
                 </div>
@@ -630,6 +650,7 @@
 
     // Bereinigt die Leaflet-Karte und Bildressourcen beim Schließen des Modals
     function cleanupAdminMap() {
+        currentPreviewRequestId++; // Laufende asynchrone Bild-/Array-Loads für vorherige Modals entwerten
         if (adminLeafletMap) {
             try { adminLeafletMap.remove(); } catch(e) {}
             adminLeafletMap = null;
@@ -1043,9 +1064,11 @@
     // Lädt ein bestehendes Panoramabild in den Canvas zur visuellen Kontrolle und Bearbeitung
     function loadExistingPanoramaPreview(imageUrl, arrayUrl) {
         if (!imageUrl) return;
+        const requestId = ++currentPreviewRequestId;
         const img = new Image();
         img.crossOrigin = 'anonymous';
-        img.onload = () => {
+        img.onload = async () => {
+            if (requestId !== currentPreviewRequestId) return;
             adminLoadedImage = img;
             currentPanoramaWidth = img.naturalWidth || img.width;
             currentPanoramaHeight = img.naturalHeight || img.height;
@@ -1053,14 +1076,33 @@
 
             if (arrayUrl) {
                 try {
-                    const parsed = (typeof arrayUrl === 'string') ? JSON.parse(arrayUrl) : arrayUrl;
-                    if (parsed && Array.isArray(parsed.kurve_y)) {
+                    let parsed = null;
+                    if (typeof arrayUrl === 'object' && arrayUrl !== null) {
+                        parsed = arrayUrl;
+                    } else if (typeof arrayUrl === 'string') {
+                        const trimmed = arrayUrl.trim();
+                        if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+                            parsed = JSON.parse(trimmed);
+                        } else if (trimmed) {
+                            // Pfad oder URL zu .json (z.B. "daten/...json")
+                            const res = await fetch(trimmed);
+                            if (res.ok) {
+                                parsed = await res.json();
+                            }
+                        }
+                    }
+
+                    if (requestId === currentPreviewRequestId && parsed && Array.isArray(parsed.kurve_y)) {
                         currentPanoramaCurveY = [...parsed.kurve_y];
                         if (parsed.bild_breite) currentPanoramaWidth = parsed.bild_breite;
                         if (parsed.bild_hoehe) currentPanoramaHeight = parsed.bild_hoehe;
                     }
-                } catch(e) {}
+                } catch(e) {
+                    console.warn("Konnte Relief-Array nicht laden:", e);
+                }
             }
+
+            if (requestId !== currentPreviewRequestId) return;
             if (scanCanvasWrapper) scanCanvasWrapper.classList.remove('hidden');
             if (btnRescanRelief) btnRescanRelief.classList.remove('hidden');
             drawReliefOverlay(adminScanCanvas, img, currentPanoramaWidth, currentPanoramaHeight, currentPanoramaCurveY);
@@ -1069,7 +1111,9 @@
             }
         };
         img.onerror = () => {
-            console.warn("Konnte bestehendes Bild nicht im Canvas laden:", imageUrl);
+            if (requestId === currentPreviewRequestId) {
+                console.warn("Konnte bestehendes Bild nicht im Canvas laden:", imageUrl);
+            }
         };
         img.src = imageUrl;
     }
@@ -1161,6 +1205,7 @@
 
     // 8. Dynamisches Formular (Modal) für Neu & Bearbeiten
     function openRecordModal(mode, record = null) {
+        cleanupAdminMap(); // Vorherige Map-, Bild- und Relief-Zustände zwingend komplett zurücksetzen
         modalMode = mode;
         editingRecord = record;
 
@@ -1633,14 +1678,20 @@
         }
         window.addEventListener('mouseup', handleReliefDrawEnd);
 
-        // Aktionen in der Tabelle (Delegation für Edit / Delete)
+        // Aktionen in der Tabelle (Delegation für Edit / Delete anhand des Primary Keys data-pk)
         dynamicTableBody.addEventListener('click', (e) => {
             const btn = e.target.closest('button[data-action]');
             if (!btn) return;
             const action = btn.getAttribute('data-action');
-            const idx = parseInt(btn.getAttribute('data-idx'), 10);
-            const record = currentRecords[idx];
-            if (!record) return;
+            const pkVal = btn.getAttribute('data-pk');
+            if (pkVal === null || pkVal === undefined) return;
+
+            const pk = TABLE_CONFIG[currentTable].pk;
+            const record = currentRecords.find(r => String(r[pk]) === String(pkVal));
+            if (!record) {
+                console.warn(`Datensatz mit ${pk}="${pkVal}" nicht gefunden.`);
+                return;
+            }
 
             if (action === 'edit') {
                 openRecordModal('edit', record);
