@@ -650,82 +650,97 @@
         if (mapCoordsDisplay) mapCoordsDisplay.innerText = 'Keine Koordinate gewählt';
     }
 
-    // Clientseitiger Skyline/Relief-Scanner: Extrahiert die Horizont-Linie aus dem Canvas
-    function scanSkylineRelief(ctx, width, height) {
+    // Top-Down Relief- & Horizont-Scanner (autoScanRelief)
+    // 1. Iteriert über jede Spalte (X)
+    // 2. Startet zwingend GANZ OBEN (Y = 0) und läuft nach UNTEN (Y++)
+    // 3. Berechnet Luminanz: 0.299*R + 0.587*G + 0.114*B
+    // 4. Vergleicht mit Pixel Y + 5, um Rauschen/Wolken zu ignorieren
+    // 5. Bedingung: Delta Luma/RGB >= Threshold ODER Helligkeitssturz (blauer Himmel zu dunklem Berg)
+    // 6. SOFORTIGES break; beim ersten Treffer (sucht niemals weiter nach unten im Bodenbereich)
+    // 7. Leichte Glättung per Moving Average über 5 benachbarte X-Werte
+    function autoScanRelief(ctx, width, height) {
         const imgData = ctx.getImageData(0, 0, width, height);
         const data = imgData.data;
 
-        // 1. Schätze Grundfarbe des Himmels im obersten Bereich (oberste 5% der Zeilen)
-        const skySampleRows = Math.max(3, Math.floor(height * 0.05));
-        let skyR = 0, skyG = 0, skyB = 0, count = 0;
-        for (let y = 0; y < skySampleRows; y++) {
-            for (let x = 0; x < width; x += 10) {
-                const idx = (y * width + x) * 4;
-                skyR += data[idx];
-                skyG += data[idx + 1];
-                skyB += data[idx + 2];
-                count++;
-            }
-        }
-        skyR = count > 0 ? skyR / count : 200;
-        skyG = count > 0 ? skyG / count : 220;
-        skyB = count > 0 ? skyB / count : 240;
+        // Schrittweite für Tiefenvergleich (Y + 5)
+        const step = 5;
 
-        function getLuma(x, y) {
-            const idx = (y * width + x) * 4;
-            return 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-        }
-
-        function colorDiffFromSky(x, y) {
-            const idx = (y * width + x) * 4;
-            const dr = data[idx] - skyR;
-            const dg = data[idx + 1] - skyG;
-            const db = data[idx + 2] - skyB;
-            return Math.sqrt(dr * dr + dg * dg + db * db);
-        }
+        // Schwellenwerte für Kantenerkennung und Helligkeitssturz
+        const DELTA_LUMA_THRESHOLD = 25;      // Kanten-Helligkeitsdifferenz
+        const DELTA_RGB_THRESHOLD = 35;       // RGB-Farbdifferenz (z.B. Himmelsblau zu Fels/Schnee)
+        const DARK_LUMA_THRESHOLD = 85;       // Schwellenwert für dunkle Berge vor blauem Himmel
 
         const rawCurveY = new Array(width);
-        const startY = Math.max(1, Math.floor(height * 0.02));
-        const endY = Math.floor(height * 0.95);
 
+        // 1. Iteriere über jede Spalte (X)
         for (let x = 0; x < width; x++) {
-            let bestY = Math.floor(height * 0.5);
-            let maxScore = -1;
+            let foundY = null;
 
-            for (let y = startY; y < endY; y++) {
-                const step = Math.min(2, endY - y);
-                const lumaDiff = Math.abs(getLuma(x, y + step) - getLuma(x, y));
-                const cDiff = colorDiffFromSky(x, y);
+            // 2. Starte in jeder Spalte zwingend GANZ OBEN (Y = 0) und laufe nach UNTEN (Y++)
+            for (let y = 0; y < height - step; y++) {
+                const idx1 = (y * width + x) * 4;
+                const r1 = data[idx1];
+                const g1 = data[idx1 + 1];
+                const b1 = data[idx1 + 2];
 
-                // Übergangsscore: Kontrastkante + Farbabstand zum Himmel, höherer Bergrücken bevorzugt
-                const score = (lumaDiff * 1.6 + cDiff * 0.9) * (1 - (y / height) * 0.35);
+                // 3. Berechne die Helligkeit (Luminanz = 0.299*R + 0.587*G + 0.114*B) des aktuellen Pixels
+                const luma1 = 0.299 * r1 + 0.587 * g1 + 0.114 * b1;
 
-                if (score > maxScore && (cDiff > 20 || lumaDiff > 16)) {
-                    maxScore = score;
-                    bestY = y;
+                // 4. Vergleiche den aktuellen Pixel mit einem Pixel ein paar Schritte weiter unten (Y + 5)
+                const idx2 = ((y + step) * width + x) * 4;
+                const r2 = data[idx2];
+                const g2 = data[idx2 + 1];
+                const b2 = data[idx2 + 2];
+                const luma2 = 0.299 * r2 + 0.587 * g2 + 0.114 * b2;
+
+                const deltaLuma = Math.abs(luma1 - luma2);
+                const dr = r1 - r2;
+                const dg = g1 - g2;
+                const db = b1 - b2;
+                const deltaRGB = Math.sqrt(dr * dr + dg * dg + db * db);
+
+                // 5. BEDINGUNG:
+                // Sobald die Differenz (Delta) der Helligkeit oder der RGB-Werte zwischen oben und unten einen Schwellenwert überschreitet
+                // ODER die Helligkeit unter einen bestimmten Wert fällt (blauer Himmel zu dunklem Berg), ist der Horizont gefunden.
+                const isEdgeDetected = (deltaLuma >= DELTA_LUMA_THRESHOLD) || (deltaRGB >= DELTA_RGB_THRESHOLD);
+                const isDarkMountain = (luma2 < DARK_LUMA_THRESHOLD && luma1 >= DARK_LUMA_THRESHOLD);
+
+                if (isEdgeDetected || isDarkMountain) {
+                    // 6. WICHTIGSTES DETAIL: Speichere diesen Y-Wert im Array und nutze SOFORT ein break;
+                    foundY = y;
+                    break;
                 }
             }
-            rawCurveY[x] = bestY;
+
+            // Fallback, falls in dieser Spalte keine Kante bis zum Boden gefunden wurde:
+            // Übernehme sanft den vorherigen X-Wert oder Bildmitte
+            if (foundY === null) {
+                foundY = (x > 0) ? rawCurveY[x - 1] : Math.floor(height * 0.5);
+            }
+            rawCurveY[x] = foundY;
         }
 
-        // Glättung über ein 9-Pixel-Fenster zur Rauschminderung
+        // 7. Wende ganz am Ende eine leichte Glättung (Moving Average über 5 benachbarte X-Werte) an
         const smoothedCurveY = new Array(width);
-        const windowRadius = 4;
+        const windowRadius = 2; // Radius 2 -> 5 benachbarte Werte: [x-2, x-1, x, x+1, x+2]
         for (let x = 0; x < width; x++) {
             let sum = 0;
-            let wCount = 0;
+            let count = 0;
             for (let w = -windowRadius; w <= windowRadius; w++) {
                 const nx = x + w;
                 if (nx >= 0 && nx < width) {
                     sum += rawCurveY[nx];
-                    wCount++;
+                    count++;
                 }
             }
-            smoothedCurveY[x] = Math.round(sum / wCount);
+            smoothedCurveY[x] = Math.round(sum / count);
         }
 
         return smoothedCurveY;
     }
+
+    // Alias für volle Rückwärtskompatibilität
+    const scanSkylineRelief = autoScanRelief;
 
     // Zeichnet das Bild und die gut sichtbare, dicke rote Horizontlinie auf den Vorschau-Canvas
     function drawReliefOverlay(canvas, img, width, height, curveY) {
@@ -916,7 +931,7 @@
 
                 // Relief / Skyline scannen
                 if (uploadStatusBadge) uploadStatusBadge.innerText = 'Scanne Relief-Linie...';
-                const curveY = scanSkylineRelief(offCtx, targetW, targetH);
+                const curveY = autoScanRelief(offCtx, targetW, targetH);
 
                 // Relief-State aktualisieren
                 currentPanoramaCurveY = curveY;
@@ -1027,7 +1042,7 @@
         const offCtx = offscreenCanvas.getContext('2d');
         offCtx.drawImage(adminLoadedImage, 0, 0, targetW, targetH);
 
-        const curveY = scanSkylineRelief(offCtx, targetW, targetH);
+        const curveY = autoScanRelief(offCtx, targetW, targetH);
         currentPanoramaCurveY = curveY;
         currentPanoramaWidth = targetW;
         currentPanoramaHeight = targetH;
