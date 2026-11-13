@@ -331,6 +331,16 @@ function processPanoramaData(data) {
         return;
     }
 
+    // Numerisch sortieren nach Panorama-ID für konsistente Reihenfolge
+    data.sort((a, b) => {
+        const numA = parseInt(a.id, 10);
+        const numB = parseInt(b.id, 10);
+        if (!isNaN(numA) && !isNaN(numB)) {
+            return numA - numB;
+        }
+        return String(a.id).localeCompare(String(b.id));
+    });
+
     window.panoramenDaten = data.map(p => {
         let pano = { ...p };
         // Feld-Aliase synchronisieren für lückenlose UI- und Audio-Kompatibilität
@@ -347,6 +357,30 @@ function processPanoramaData(data) {
         }
         return pano;
     });
+
+    // Cache-Synchronisierung: Veraltete gecachte Relief-Daten invalidieren bzw. aktualisieren
+    if (window.panoDataCache) {
+        window.panoramenDaten.forEach(pano => {
+            if (!pano.id) return;
+            const raw = pano.array_url || pano.arrayUrl;
+            if (typeof raw === 'object' && raw !== null) {
+                window.panoDataCache[pano.id] = raw;
+            } else if (typeof raw === 'string') {
+                const trimmed = raw.trim();
+                if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+                    try {
+                        window.panoDataCache[pano.id] = JSON.parse(trimmed);
+                    } catch(e) {
+                        delete window.panoDataCache[pano.id];
+                    }
+                } else {
+                    delete window.panoDataCache[pano.id];
+                }
+            } else {
+                delete window.panoDataCache[pano.id];
+            }
+        });
+    }
 
     if(window.markerClusterGroup) window.markerClusterGroup.clearLayers();
 
@@ -748,6 +782,10 @@ window.initAppRealtime = function() {
                 { event: '*', schema: 'public', table: 'panoramas' },
                 payload => {
                     console.log('[App Realtime] Panorama-Event:', payload.eventType);
+                    if (window.panoDataCache) {
+                        if (payload.new && payload.new.id) delete window.panoDataCache[payload.new.id];
+                        if (payload.old && payload.old.id) delete window.panoDataCache[payload.old.id];
+                    }
                     if (debouncePanoramasTimer) clearTimeout(debouncePanoramasTimer);
                     debouncePanoramasTimer = setTimeout(() => {
                         if (typeof window.loadPanoramas === 'function') {
