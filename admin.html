@@ -319,12 +319,16 @@
                             <div id="scan-feedback-info" class="text-[11px] font-mono text-neutral-400 truncate flex-1"></div>
                         </div>
 
-                        <!-- Canvas Preview -->
+                        <!-- Canvas Preview with Interactive Correction -->
                         <div id="scan-canvas-wrapper" class="hidden relative rounded-lg border border-neutral-800 overflow-hidden bg-neutral-950">
-                            <canvas id="admin-scan-canvas" class="w-full max-h-60 object-contain block"></canvas>
-                            <div class="absolute bottom-2 right-2 bg-neutral-950/80 backdrop-blur-xs border border-neutral-800 text-[10px] font-mono px-2 py-0.5 rounded text-neutral-400">
-                                <span class="inline-block w-2 h-2 rounded-full bg-[#FF6600] mr-1"></span>Gescannte Horizont-Linie
+                            <div class="px-3 py-1.5 bg-neutral-900/90 border-b border-neutral-800 flex items-center justify-between text-[11px] text-neutral-300">
+                                <span class="flex items-center gap-1.5">
+                                    <span class="inline-block w-2.5 h-2.5 rounded-full bg-[#FF0033] shadow-sm"></span>
+                                    <span><strong>Interaktive Korrektur:</strong> Ziehe mit der Maus oder Touch über das Bild, um ungenaue Stellen der roten Linie direkt zu überschreiben.</span>
+                                </span>
+                                <span class="text-[10px] font-mono text-neutral-400 bg-neutral-950 px-1.5 py-0.5 rounded border border-neutral-800">Maus / Touch Drag</span>
                             </div>
+                            <canvas id="admin-scan-canvas" class="w-full max-h-72 object-contain block cursor-crosshair select-none touch-none"></canvas>
                         </div>
                     </div>
                 </div>

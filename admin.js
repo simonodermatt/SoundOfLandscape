@@ -64,11 +64,16 @@
     let realtimeChannel = null;
     let realtimeDebounceTimer = null;
 
-    // Panorama Builder State (Leaflet Map & Horizon Scanner)
+    // Panorama Builder State (Leaflet Map, Horizon Scanner & Interaktives Zeichnen)
     let adminLeafletMap = null;
     let adminMapMarker = null;
     let adminLoadedImage = null;
     let isProcessingImage = false;
+    let currentPanoramaCurveY = null; // Aktuell bearbeitetes Relief-Array im State [y0, y1, ...]
+    let currentPanoramaWidth = 0;
+    let currentPanoramaHeight = 0;
+    let isDrawingRelief = false;
+    let lastDrawCoord = null;
 
     // DOM-Elemente
     const viewLoading = document.getElementById('view-loading');
@@ -631,6 +636,11 @@
             adminMapMarker = null;
         }
         adminLoadedImage = null;
+        currentPanoramaCurveY = null;
+        currentPanoramaWidth = 0;
+        currentPanoramaHeight = 0;
+        isDrawingRelief = false;
+        lastDrawCoord = null;
         isProcessingImage = false;
         if (inputPanoramaFile) inputPanoramaFile.value = '';
         if (uploadStatusBadge) uploadStatusBadge.classList.add('hidden');
@@ -717,11 +727,13 @@
         return smoothedCurveY;
     }
 
-    // Zeichnet das Bild und die neon-orange Horizontlinie auf den Vorschau-Canvas
+    // Zeichnet das Bild und die gut sichtbare, dicke rote Horizontlinie auf den Vorschau-Canvas
     function drawReliefOverlay(canvas, img, width, height, curveY) {
         if (!canvas) return;
-        canvas.width = width;
-        canvas.height = height;
+        if (canvas.width !== width || canvas.height !== height) {
+            canvas.width = width;
+            canvas.height = height;
+        }
         const ctx = canvas.getContext('2d');
 
         // Basis-Bild zeichnen
@@ -738,21 +750,110 @@
         ctx.lineTo(width, height);
         ctx.lineTo(0, height);
         ctx.closePath();
-        ctx.fillStyle = 'rgba(255, 102, 0, 0.16)';
+        ctx.fillStyle = 'rgba(255, 0, 51, 0.12)';
         ctx.fill();
 
-        // Leuchtende neon-orange Konturlinie
+        // Leuchtende, dicke rote Horizontlinie (Interaktiv korrigierbar)
         ctx.beginPath();
         ctx.moveTo(0, curveY[0]);
         for (let x = 1; x < width; x++) {
             ctx.lineTo(x, curveY[x]);
         }
-        ctx.strokeStyle = '#FF6600';
-        ctx.lineWidth = 3;
-        ctx.shadowColor = '#FF6600';
-        ctx.shadowBlur = 8;
+        ctx.strokeStyle = '#FF0033'; // Signalrot für beste Sichtbarkeit
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.shadowColor = 'rgba(255, 0, 51, 0.6)';
+        ctx.shadowBlur = 6;
         ctx.stroke();
         ctx.shadowBlur = 0;
+    }
+
+    // Ermittelt die Pixel-Koordinaten auf dem Canvas aus Mouse-/Touch-Events
+    function getCanvasCoords(e, canvas) {
+        if (!canvas) return null;
+        const rect = canvas.getBoundingClientRect();
+        if (!rect.width || !rect.height) return null;
+
+        let clientX, clientY;
+        if (e.touches && e.touches.length > 0) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else if (e.changedTouches && e.changedTouches.length > 0) {
+            clientX = e.changedTouches[0].clientX;
+            clientY = e.changedTouches[0].clientY;
+        } else {
+            clientX = e.clientX;
+            clientY = e.clientY;
+        }
+
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+
+        const rawX = (clientX - rect.left) * scaleX;
+        const rawY = (clientY - rect.top) * scaleY;
+
+        const x = Math.max(0, Math.min(canvas.width - 1, Math.round(rawX)));
+        const y = Math.max(0, Math.min(canvas.height - 1, Math.round(rawY)));
+
+        return { x, y };
+    }
+
+    // Interaktives Zeichnen: Start bei MouseDown oder TouchStart
+    function handleReliefDrawStart(e) {
+        if (!adminLoadedImage || !currentPanoramaCurveY || !adminScanCanvas) return;
+        if (e.type === 'touchstart' && e.cancelable) {
+            e.preventDefault();
+        }
+        isDrawingRelief = true;
+        const pt = getCanvasCoords(e, adminScanCanvas);
+        if (!pt) return;
+
+        lastDrawCoord = pt;
+        currentPanoramaCurveY[pt.x] = pt.y;
+
+        drawReliefOverlay(adminScanCanvas, adminLoadedImage, currentPanoramaWidth, currentPanoramaHeight, currentPanoramaCurveY);
+    }
+
+    // Interaktives Zeichnen: Maus-/Touchbewegung überschreibt Horizontpunkte in Echtzeit mit linearer Interpolation
+    function handleReliefDrawMove(e) {
+        if (!isDrawingRelief || !adminLoadedImage || !currentPanoramaCurveY || !adminScanCanvas) return;
+        if (e.cancelable) e.preventDefault();
+
+        const pt = getCanvasCoords(e, adminScanCanvas);
+        if (!pt) return;
+
+        if (lastDrawCoord) {
+            const x1 = lastDrawCoord.x;
+            const y1 = lastDrawCoord.y;
+            const x2 = pt.x;
+            const y2 = pt.y;
+
+            const minX = Math.min(x1, x2);
+            const maxX = Math.max(x1, x2);
+
+            for (let x = minX; x <= maxX; x++) {
+                let interpY = y2;
+                if (x2 !== x1) {
+                    const t = (x - x1) / (x2 - x1);
+                    interpY = Math.round(y1 + t * (y2 - y1));
+                }
+                currentPanoramaCurveY[x] = Math.max(0, Math.min(currentPanoramaHeight - 1, interpY));
+            }
+        } else {
+            currentPanoramaCurveY[pt.x] = pt.y;
+        }
+
+        lastDrawCoord = pt;
+        drawReliefOverlay(adminScanCanvas, adminLoadedImage, currentPanoramaWidth, currentPanoramaHeight, currentPanoramaCurveY);
+    }
+
+    // Interaktives Zeichnen beenden
+    function handleReliefDrawEnd() {
+        if (isDrawingRelief) {
+            isDrawingRelief = false;
+            lastDrawCoord = null;
+        }
     }
 
     // Verarbeitet Bildauswahl: Resizing, Skyline-Scan und Supabase Storage Upload
@@ -817,24 +918,24 @@
                 if (uploadStatusBadge) uploadStatusBadge.innerText = 'Scanne Relief-Linie...';
                 const curveY = scanSkylineRelief(offCtx, targetW, targetH);
 
-                // Vorschau auf dem UI-Canvas zeichnen
+                // Relief-State aktualisieren
+                currentPanoramaCurveY = curveY;
+                currentPanoramaWidth = targetW;
+                currentPanoramaHeight = targetH;
+
+                // Vorschau auf dem UI-Canvas zeichnen mit dicker roter Linie
                 if (scanCanvasWrapper) scanCanvasWrapper.classList.remove('hidden');
-                drawReliefOverlay(adminScanCanvas, img, targetW, targetH, curveY);
+                drawReliefOverlay(adminScanCanvas, img, targetW, targetH, currentPanoramaCurveY);
                 if (btnRescanRelief) btnRescanRelief.classList.remove('hidden');
 
-                // Daten als JSON-String im Feld 'array_url' speichern
-                const reliefPayload = {
-                    bild_breite: targetW,
-                    bild_hoehe: targetH,
-                    kurve_y: curveY
-                };
+                // Hinweistext im Formularfeld (JSON.stringify erfolgt erst beim Speichern)
                 const arrayUrlInput = formEditRecord.querySelector('textarea[name="array_url"], input[name="array_url"]');
                 if (arrayUrlInput) {
-                    arrayUrlInput.value = JSON.stringify(reliefPayload);
+                    arrayUrlInput.value = `[Relief im State aktiv: ${curveY.length} Datenpunkte. Wird beim Speichern automatisch als JSON gespeichert.]`;
                 }
 
                 if (scanFeedbackInfo) {
-                    scanFeedbackInfo.innerText = `${targetW}×${targetH}px | ${curveY.length} Datenpunkte generiert`;
+                    scanFeedbackInfo.innerText = `${targetW}×${targetH}px | ${curveY.length} Punkte (Zeichne mit Maus/Touch für Korrekturen)`;
                 }
 
                 // Sauberes verkleinertes Bild in Supabase Storage Bucket 'panorama-images' hochladen
@@ -927,41 +1028,52 @@
         offCtx.drawImage(adminLoadedImage, 0, 0, targetW, targetH);
 
         const curveY = scanSkylineRelief(offCtx, targetW, targetH);
-        drawReliefOverlay(adminScanCanvas, adminLoadedImage, targetW, targetH, curveY);
+        currentPanoramaCurveY = curveY;
+        currentPanoramaWidth = targetW;
+        currentPanoramaHeight = targetH;
 
-        const reliefPayload = {
-            bild_breite: targetW,
-            bild_hoehe: targetH,
-            kurve_y: curveY
-        };
+        drawReliefOverlay(adminScanCanvas, adminLoadedImage, targetW, targetH, currentPanoramaCurveY);
+
         const arrayUrlInput = formEditRecord.querySelector('textarea[name="array_url"], input[name="array_url"]');
         if (arrayUrlInput) {
-            arrayUrlInput.value = JSON.stringify(reliefPayload);
+            arrayUrlInput.value = `[Relief neu berechnet: ${curveY.length} Datenpunkte. Wird beim Speichern automatisch als JSON gespeichert.]`;
         }
 
-        showToast('Horizont-Relief neu berechnet!');
+        if (scanFeedbackInfo) {
+            scanFeedbackInfo.innerText = `${targetW}×${targetH}px | ${curveY.length} Datenpunkte neu berechnet`;
+        }
+
+        showToast('Horizont neu berechnet! Zeichne im Canvas für manuelle Korrekturen.');
         checkPanoramaFormReadiness();
     }
 
-    // Lädt ein bestehendes Panoramabild in den Canvas zur visuellen Kontrolle
+    // Lädt ein bestehendes Panoramabild in den Canvas zur visuellen Kontrolle und Bearbeitung
     function loadExistingPanoramaPreview(imageUrl, arrayUrl) {
         if (!imageUrl) return;
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => {
             adminLoadedImage = img;
-            let curveY = null;
+            currentPanoramaWidth = img.naturalWidth || img.width;
+            currentPanoramaHeight = img.naturalHeight || img.height;
+            currentPanoramaCurveY = null;
+
             if (arrayUrl) {
                 try {
                     const parsed = (typeof arrayUrl === 'string') ? JSON.parse(arrayUrl) : arrayUrl;
                     if (parsed && Array.isArray(parsed.kurve_y)) {
-                        curveY = parsed.kurve_y;
+                        currentPanoramaCurveY = [...parsed.kurve_y];
+                        if (parsed.bild_breite) currentPanoramaWidth = parsed.bild_breite;
+                        if (parsed.bild_hoehe) currentPanoramaHeight = parsed.bild_hoehe;
                     }
                 } catch(e) {}
             }
             if (scanCanvasWrapper) scanCanvasWrapper.classList.remove('hidden');
             if (btnRescanRelief) btnRescanRelief.classList.remove('hidden');
-            drawReliefOverlay(adminScanCanvas, img, img.naturalWidth, img.naturalHeight, curveY);
+            drawReliefOverlay(adminScanCanvas, img, currentPanoramaWidth, currentPanoramaHeight, currentPanoramaCurveY);
+            if (scanFeedbackInfo) {
+                scanFeedbackInfo.innerText = `${currentPanoramaWidth}×${currentPanoramaHeight}px | Bereit für interaktive Korrekturen`;
+            }
         };
         img.onerror = () => {
             console.warn("Konnte bestehendes Bild nicht im Canvas laden:", imageUrl);
@@ -969,7 +1081,7 @@
         img.src = imageUrl;
     }
 
-    // Prüft, ob das Panorama-Formular speicherbereit ist (Validierung von image_url & array_url)
+    // Prüft, ob das Panorama-Formular speicherbereit ist
     function checkPanoramaFormReadiness() {
         if (currentTable !== 'panoramas') {
             btnSaveModal.disabled = false;
@@ -985,13 +1097,13 @@
             return true;
         }
 
-        // Im Neuanlage-Modus: Bild-URL und Horizont-Array müssen vorhanden sein
+        // Im Neuanlage-Modus: Bild-URL muss vorhanden sein und Relief-Array im State (oder im Feld)
         const imgInput = formEditRecord.querySelector('[name="image_url"]');
-        const arrInput = formEditRecord.querySelector('[name="array_url"]');
         const imgVal = (imgInput ? imgInput.value : '').trim();
-        const arrVal = (arrInput ? arrInput.value : '').trim();
+        const hasRelief = (currentPanoramaCurveY && currentPanoramaCurveY.length > 0) ||
+                          Boolean((formEditRecord.querySelector('[name="array_url"]')?.value || '').trim());
 
-        if (isProcessingImage || !imgVal || !arrVal) {
+        if (isProcessingImage || !imgVal || !hasRelief) {
             btnSaveModal.disabled = true;
             btnSaveModal.classList.add('opacity-50', 'cursor-not-allowed');
             btnSaveModal.title = isProcessingImage 
@@ -1147,23 +1259,6 @@
     async function handleFormSubmit(e) {
         e.preventDefault();
 
-        // Zusätzliche Validierung für Panoramen beim Neuanlegen
-        if (currentTable === 'panoramas' && modalMode === 'create') {
-            const imgInput = formEditRecord.querySelector('[name="image_url"]');
-            const arrInput = formEditRecord.querySelector('[name="array_url"]');
-            const imgVal = (imgInput ? imgInput.value : '').trim();
-            const arrVal = (arrInput ? arrInput.value : '').trim();
-
-            if (!imgVal || !arrVal) {
-                showToast('Bitte lade zuerst ein Bild hoch und scanne das Horizont-Relief.', 'error');
-                checkPanoramaFormReadiness();
-                return;
-            }
-        }
-
-        btnSaveModal.disabled = true;
-        btnSaveModal.innerText = 'Speichere...';
-
         const cfg = TABLE_CONFIG[currentTable];
         const pk = cfg.pk;
         const formData = new FormData(formEditRecord);
@@ -1197,6 +1292,37 @@
                 payload[col] = null;
             }
         });
+
+        // 4. Anforderung: JSON.stringify() für 'array_url' erfolgt erst jetzt beim finalen Speichern aus dem State-Array!
+        if (currentTable === 'panoramas' && currentPanoramaCurveY && currentPanoramaCurveY.length > 0) {
+            const reliefPayload = {
+                bild_breite: currentPanoramaWidth || (adminScanCanvas ? adminScanCanvas.width : 2500),
+                bild_hoehe: currentPanoramaHeight || (adminScanCanvas ? adminScanCanvas.height : 400),
+                kurve_y: currentPanoramaCurveY
+            };
+            const jsonStr = JSON.stringify(reliefPayload);
+            payload['array_url'] = jsonStr;
+            const arrayUrlInput = formEditRecord.querySelector('textarea[name="array_url"], input[name="array_url"]');
+            if (arrayUrlInput) {
+                arrayUrlInput.value = jsonStr;
+            }
+        }
+
+        // Zusätzliche Validierung für Panoramen beim Neuanlegen
+        if (currentTable === 'panoramas' && modalMode === 'create') {
+            const imgInput = formEditRecord.querySelector('[name="image_url"]');
+            const imgVal = (imgInput ? imgInput.value : '').trim();
+            const hasArray = Boolean(payload['array_url'] || (formEditRecord.querySelector('[name="array_url"]')?.value || '').trim());
+
+            if (!imgVal || !hasArray) {
+                showToast('Bitte lade zuerst ein Bild hoch und scanne das Horizont-Relief.', 'error');
+                checkPanoramaFormReadiness();
+                return;
+            }
+        }
+
+        btnSaveModal.disabled = true;
+        btnSaveModal.innerText = 'Speichere...';
 
         try {
             if (modalMode === 'create') {
@@ -1352,6 +1478,22 @@
         if (btnRescanRelief) {
             btnRescanRelief.addEventListener('click', handleRescanRelief);
         }
+
+        // Canvas Interaktive Korrektur (Mouse & Touch Listener)
+        if (adminScanCanvas) {
+            // Maus-Events
+            adminScanCanvas.addEventListener('mousedown', handleReliefDrawStart);
+            adminScanCanvas.addEventListener('mousemove', handleReliefDrawMove);
+            adminScanCanvas.addEventListener('mouseup', handleReliefDrawEnd);
+            adminScanCanvas.addEventListener('mouseleave', handleReliefDrawEnd);
+
+            // Touch-Events für mobile Geräte / Touchscreens
+            adminScanCanvas.addEventListener('touchstart', handleReliefDrawStart, { passive: false });
+            adminScanCanvas.addEventListener('touchmove', handleReliefDrawMove, { passive: false });
+            adminScanCanvas.addEventListener('touchend', handleReliefDrawEnd);
+            adminScanCanvas.addEventListener('touchcancel', handleReliefDrawEnd);
+        }
+        window.addEventListener('mouseup', handleReliefDrawEnd);
 
         // Aktionen in der Tabelle (Delegation für Edit / Delete)
         dynamicTableBody.addEventListener('click', (e) => {
