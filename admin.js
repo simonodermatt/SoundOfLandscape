@@ -650,79 +650,79 @@
         if (mapCoordsDisplay) mapCoordsDisplay.innerText = 'Keine Koordinate gewählt';
     }
 
-    // Robuster Sky-Reference Relief- & Horizont-Scanner (autoScanRelief)
-    // 1. Iteriert über jede Spalte X
-    // 2. Ermittelt GANZ OBEN (Y = 0) die Referenzfarbe des Himmels für diese Spalte (skyR, skyG, skyB)
-    // 3. Iteriert nach unten (Y++)
-    // 4. Berechnet absolute Farb-Distanz: colorDiff = |r - skyR| + |g - skyG| + |b - skyB|
-    // 5. Berechnet lokalen Helligkeitsabfall zum Pixel 3 Schritte weiter oben (harter Kontrast wie Bäume/Felsen)
-    // 6. BEDINGUNG: Sobald colorDiff > 50 (Blau zu Weiß/Grau/Schnee) ODER lokaler Kontrast > 30 -> Horizont gefunden & break;
-    // 7. ANTI-SPIKE-LOGIK: Falls keine Kante gefunden (Y = height), setze Y auf den Wert von X-1 (bzw. height/2 bei X=0)
-    // 8. Glättungsfunktion: Moving Average über ca. 7 Pixel (Radius 3), damit die gezogene Linie geschmeidig wird
+    // Lokale Kantenerkennung mit Sonnen- & Wolken-Filter (autoScanRelief)
+    // 1. Iteriert über jede Spalte X (von oben nach unten, startet bei Y=0)
+    // 2. Holt Pixel_A (bei Y) und Pixel_B (bei Y + 10)
+    // 3. Berechnet die Helligkeit (Luminanz) beider Pixel
+    // 4. SONNEN- & WOLKEN-FILTER: Wenn BEIDE Pixel sehr hell sind (> 200), überspringe (continue)
+    // 5. KANTEN-TRIGGER: Absoluter Unterschied (Delta) von Helligkeit (> 30) oder RGB (> 45)
+    // 6. Horizont gefunden: Y im State-Array speichern und Schleife mit break; abbrechen
+    // 7. ANTI-SPIKE: Wenn unten ohne Treffer angekommen -> Y von Spalte X-1 übernehmen (bzw. height/2 bei X=0)
+    // 8. Glättung per Moving Average über 7 Pixel (Radius 3)
     function autoScanRelief(ctx, width, height) {
         const imgData = ctx.getImageData(0, 0, width, height);
         const data = imgData.data;
 
+        const step = 10;
+        const LUMA_BRIGHT_THRESHOLD = 200;
+        const DELTA_LUMA_THRESHOLD = 30;
+        const DELTA_RGB_THRESHOLD = 45;
+
         const rawCurveY = new Array(width);
 
-        // 1. Iteriere über jede Spalte X
+        // 1. Iteriere über jede Spalte X (von oben nach unten, starte bei Y=0)
         for (let x = 0; x < width; x++) {
-            // 2. Ermittle GANZ OBEN die Referenzfarbe des Himmels für diese Spalte
-            // Mittelwert der obersten bis zu 3 Zeilen, um Sensor-Rauschen abzufangen
-            const sampleRows = Math.min(3, height);
-            let skyR = 0, skyG = 0, skyB = 0;
-            for (let sy = 0; sy < sampleRows; sy++) {
-                const sIdx = (sy * width + x) * 4;
-                skyR += data[sIdx];
-                skyG += data[sIdx + 1];
-                skyB += data[sIdx + 2];
-            }
-            skyR = skyR / sampleRows;
-            skyG = skyG / sampleRows;
-            skyB = skyB / sampleRows;
-
             let foundY = null;
 
-            // 3. Iteriere nach unten (Y++)
-            const startY = Math.min(sampleRows, height - 1);
-            for (let y = startY; y < height; y++) {
-                const idx = (y * width + x) * 4;
-                const r = data[idx];
-                const g = data[idx + 1];
-                const b = data[idx + 2];
+            for (let y = 0; y < height - step; y++) {
+                // 2. Hole Pixeldaten für Pixel_A (bei Y) und Pixel_B (bei Y + 10)
+                const idxA = (y * width + x) * 4;
+                const rA = data[idxA];
+                const gA = data[idxA + 1];
+                const bA = data[idxA + 2];
 
-                // 4. Berechne für den aktuellen Pixel die absolute Farb-Distanz zum Himmel
-                const colorDiff = Math.abs(r - skyR) + Math.abs(g - skyG) + Math.abs(b - skyB);
+                const idxB = ((y + step) * width + x) * 4;
+                const rB = data[idxB];
+                const gB = data[idxB + 1];
+                const bB = data[idxB + 2];
 
-                // 5. Berechne zusätzlich den lokalen Helligkeitsabfall zum Pixel 3 Schritte weiter oben
-                let localContrast = 0;
-                if (y >= 3) {
-                    const idxPrev = ((y - 3) * width + x) * 4;
-                    const lumaPrev = 0.299 * data[idxPrev] + 0.587 * data[idxPrev + 1] + 0.114 * data[idxPrev + 2];
-                    const lumaCurr = 0.299 * r + 0.587 * g + 0.114 * b;
-                    localContrast = Math.abs(lumaPrev - lumaCurr);
+                // 3. Berechne die Helligkeit (Luminanz) für beide Pixel
+                const lumaA = 0.299 * rA + 0.587 * gA + 0.114 * bA;
+                const lumaB = 0.299 * rB + 0.587 * gB + 0.114 * bB;
+
+                // 4. SONNEN- & WOLKEN-FILTER (WICHTIG):
+                // Wenn BEIDE Pixel sehr hell sind (z.B. Helligkeit > 200 oder alle RGB-Werte hoch),
+                // überspringe diesen Y-Schritt einfach (continue).
+                // Das verhindert, dass die Sonne oder helle Wolken als Horizont erkannt werden.
+                const isBrightSunOrCloud = (lumaA > LUMA_BRIGHT_THRESHOLD && lumaB > LUMA_BRIGHT_THRESHOLD) ||
+                                           (rA > 210 && gA > 210 && bA > 210 && rB > 210 && gB > 210 && bB > 210);
+                if (isBrightSunOrCloud) {
+                    continue;
                 }
 
-                // 6. BEDINGUNG: Sobald colorDiff > 50 (Farbwechsel von Blau zu Weiß/Grau) ODER lokaler Kontrast > 30
-                if (colorDiff > 50 || localContrast > 30) {
-                    // Horizont gefunden! Y in State-Array pushen und break; (Schleife für diese Spalte sofort beenden)
+                // 5. KANTEN-TRIGGER:
+                // Berechne den absoluten Unterschied (Delta) der RGB-Werte oder Helligkeit zwischen Y und Y+10
+                const deltaLuma = Math.abs(lumaA - lumaB);
+                const deltaRGB = Math.abs(rA - rB) + Math.abs(gA - gB) + Math.abs(bA - bB);
+
+                // 6. Sobald das Delta einen Schwellenwert übersteigt UND der Sonnen-Filter nicht blockiert hat:
+                if (deltaLuma > DELTA_LUMA_THRESHOLD || deltaRGB > DELTA_RGB_THRESHOLD) {
                     foundY = y;
-                    break;
+                    break; // Echter Horizont gefunden! Y in State-Array speichern und break;
                 }
             }
 
-            // 7. ANTI-SPIKE-LOGIK (Extrem wichtig!):
-            // Wenn die Schleife unten (Y = height) ankommt, OHNE dass die Bedingung erfüllt wurde
-            // (z. B. weil die Sonne alles überstrahlt), setze Y NICHT auf 0!
-            // Setze Y stattdessen auf den Wert der vorherigen X-Spalte (X - 1).
-            // Falls X = 0, nimm height / 2. Das verhindert Nadelspitzen nach ganz oben.
+            // 7. ANTI-SPIKE-LOGIK:
+            // Wenn die Schleife unten ankommt und nichts gefunden hat (z. B. weil die Sonne alles überstrahlt),
+            // übernehme den Y-Wert der vorherigen Spalte (X - 1), setze ihn NICHT auf 0.
+            // Falls X = 0, nimm height / 2.
             if (foundY === null) {
                 foundY = (x > 0) ? rawCurveY[x - 1] : Math.floor(height / 2);
             }
             rawCurveY[x] = foundY;
         }
 
-        // 8. Glättungsfunktion: Moving Average über ca. 7 Pixel (Radius 3)
+        // 8. Glättungsfunktion (Moving Average über ca. 7 Pixel: Radius 3)
         const smoothedCurveY = new Array(width);
         const windowRadius = 3; // 7 Werte: [x-3, x-2, x-1, x, x+1, x+2, x+3]
         for (let x = 0; x < width; x++) {
