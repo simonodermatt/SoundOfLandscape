@@ -650,14 +650,14 @@
         if (mapCoordsDisplay) mapCoordsDisplay.innerText = 'Keine Koordinate gewählt';
     }
 
-    // Lokale Kantenerkennung mit Sonnen- & Wolken-Filter (autoScanRelief)
-    // 1. Iteriert über jede Spalte X (von oben nach unten, startet bei Y=0)
+    // Lokale Kantenerkennung mit Sonnen- & Wolken-Filter und Kontinuitäts-Prüfung (autoScanRelief)
+    // 1. Speichert lastY der vorherigen Spalte
     // 2. Holt Pixel_A (bei Y) und Pixel_B (bei Y + 10)
-    // 3. Berechnet die Helligkeit (Luminanz) beider Pixel
+    // 3. Berechnet Luminanz beider Pixel
     // 4. SONNEN- & WOLKEN-FILTER: Wenn BEIDE Pixel sehr hell sind (> 200), überspringe (continue)
-    // 5. KANTEN-TRIGGER: Absoluter Unterschied (Delta) von Helligkeit (> 30) oder RGB (> 45)
-    // 6. Horizont gefunden: Y im State-Array speichern und Schleife mit break; abbrechen
-    // 7. ANTI-SPIKE: Wenn unten ohne Treffer angekommen -> Y von Spalte X-1 übernehmen (bzw. height/2 bei X=0)
+    // 5. KANTEN-TRIGGER: Delta Helligkeit (> 30) oder RGB (> 45)
+    // 6. KONTINUITÄTS-PRÜFUNG: Bei Sprung > 40px zum Nachbarn lastY -> Kante ignorieren und Y-Schleife nach unten fortsetzen!
+    // 7. NOTFALL-FALLBACK: Wenn unten ohne Treffer -> exakt lastY übernehmen (kein 0-Spike)
     // 8. Glättung per Moving Average über 7 Pixel (Radius 3)
     function autoScanRelief(ctx, width, height) {
         const imgData = ctx.getImageData(0, 0, width, height);
@@ -667,8 +667,11 @@
         const LUMA_BRIGHT_THRESHOLD = 200;
         const DELTA_LUMA_THRESHOLD = 30;
         const DELTA_RGB_THRESHOLD = 45;
+        const MAX_JUMP = 40; // Maximaler vertikaler Sprung zum Nachbarn (Kontinuitätsprüfung)
+        const INIT_COLS = 15; // Initiale Spalten zum Finden der ersten Baseline
 
         const rawCurveY = new Array(width);
+        let lastY = null; // 1. Behalte den finalen Y-Wert der vorherigen Spalte im Speicher
 
         // 1. Iteriere über jede Spalte X (von oben nach unten, starte bei Y=0)
         for (let x = 0; x < width; x++) {
@@ -707,19 +710,32 @@
 
                 // 6. Sobald das Delta einen Schwellenwert übersteigt UND der Sonnen-Filter nicht blockiert hat:
                 if (deltaLuma > DELTA_LUMA_THRESHOLD || deltaRGB > DELTA_RGB_THRESHOLD) {
+                    // KONTINUITÄTS-PRÜFUNG & SPIKE-FILTER:
+                    // Wenn eine Kante bei y gefunden wird, prüfe den vertikalen Abstand zum Nachbarn: Math.abs(y - lastY).
+                    // Wenn der Sprung unrealistisch groß ist (> 40px) und wir nicht in den ersten Spalten sind:
+                    // Fehler (Sonnen-Halo, Rauschen oder Äste ganz oben) -> Ignoriere diese Kante und setze Y-Schleife nach unten fort!
+                    if (lastY !== null && x > INIT_COLS) {
+                        const jump = Math.abs(y - lastY);
+                        if (jump > MAX_JUMP) {
+                            continue; // 4. Kante ignorieren und Y-Schleife weiter nach unten fortsetzen
+                        }
+                    }
+
                     foundY = y;
-                    break; // Echter Horizont gefunden! Y in State-Array speichern und break;
+                    break; // Echter Horizont gefunden! Y in State-Array speichern und Y-Schleife sofort beenden
                 }
             }
 
-            // 7. ANTI-SPIKE-LOGIK:
-            // Wenn die Schleife unten ankommt und nichts gefunden hat (z. B. weil die Sonne alles überstrahlt),
-            // übernehme den Y-Wert der vorherigen Spalte (X - 1), setze ihn NICHT auf 0.
-            // Falls X = 0, nimm height / 2.
+            // 7. NOTFALL-FALLBACK / ANTI-SPIKE:
+            // Wenn die Schleife unten ankommt und wegen des Spike-Filters oder Überstrahlung keine
+            // gültige Kante gefunden hat, setze den Wert für diese Spalte exakt auf lastY (flache Interpolation),
+            // anstatt auf 0 zu springen. Falls X = 0, nimm height / 2.
             if (foundY === null) {
-                foundY = (x > 0) ? rawCurveY[x - 1] : Math.floor(height / 2);
+                foundY = (lastY !== null) ? lastY : Math.floor(height / 2);
             }
+
             rawCurveY[x] = foundY;
+            lastY = foundY; // 1. Speichere finalen Y-Wert für Kontinuitätsprüfung der nächsten Spalte
         }
 
         // 8. Glättungsfunktion (Moving Average über ca. 7 Pixel: Radius 3)
