@@ -130,6 +130,29 @@
     const btnUndoRelief = document.getElementById('btn-undo-relief');
     const btnResetRelief = document.getElementById('btn-reset-relief');
 
+    // Jodel Synthesizer DOM
+    const yodelSoundcheckSection = document.getElementById('yodel-soundcheck-section');
+    const btnYodelPlay = document.getElementById('btn-yodel-play');
+    const yodelPlayIcon = document.getElementById('yodel-play-icon');
+    const yodelPlayText = document.getElementById('yodel-play-text');
+    const yodelStatusBadge = document.getElementById('yodel-status-badge');
+    const yodelPresetName = document.getElementById('yodel-preset-name');
+    const yodelPlaybackBar = document.getElementById('yodel-playback-bar');
+    const yodelVoiceRegister = document.getElementById('yodel-voice-register');
+    const yodelFrequencyDisplay = document.getElementById('yodel-frequency-display');
+    const yodelMidiDisplay = document.getElementById('yodel-midi-display');
+    const yodelStepProgress = document.getElementById('yodel-step-progress');
+    const yodelConfigEditor = document.getElementById('yodel-config-editor');
+    const yodelPresetIdBadge = document.getElementById('yodel-preset-id-badge');
+    const yodelSaveStatus = document.getElementById('yodel-save-status');
+    const btnSaveYodelConfig = document.getElementById('btn-save-yodel-config');
+    const btnResetYodelEditor = document.getElementById('btn-reset-yodel-editor');
+
+    // Jodel State
+    let activeYodelPreset = null;
+    let activeYodelConfig = null;
+    let isYodelPlaying = false;
+
     const modalDeleteConfirm = document.getElementById('modal-delete-confirm');
     const deleteRecordPreview = document.getElementById('delete-record-preview');
     const btnCancelDelete = document.getElementById('btn-cancel-delete');
@@ -656,6 +679,10 @@
     // Bereinigt die Leaflet-Karte und Bildressourcen beim Schließen des Modals
     function cleanupAdminMap() {
         currentPreviewRequestId++; // Laufende asynchrone Bild-/Array-Loads für vorherige Modals entwerten
+        if (isYodelPlaying) {
+            if (window.YodelEngine) window.YodelEngine.stop();
+            setYodelPlayingState(false);
+        }
         if (adminLeafletMap) {
             try { adminLeafletMap.remove(); } catch(e) {}
             adminLeafletMap = null;
@@ -750,7 +777,8 @@
     const scanSkylineRelief = autoScanRelief;
 
     // Zeichnet das Bild und die gut sichtbare, dicke rote Horizontlinie auf den Vorschau-Canvas
-    function drawReliefOverlay(canvas, img, width, height, curveY) {
+    // Optional: playheadX für synchrone Jodel-Playhead-Animation (ohne das Relief-Array zu verändern)
+    function drawReliefOverlay(canvas, img, width, height, curveY, playheadX = null) {
         if (!canvas) return;
         if (canvas.width !== width || canvas.height !== height) {
             canvas.width = width;
@@ -792,6 +820,35 @@
         ctx.stroke();
         ctx.shadowColor = 'transparent';
         ctx.shadowBlur = 0;
+
+        // Vertikale Playhead-Linie & Leucht-Beacon zeichnen falls aktiv
+        if (typeof playheadX === 'number' && !isNaN(playheadX)) {
+            const px = Math.max(0, Math.min(width - 1, playheadX));
+            ctx.beginPath();
+            ctx.moveTo(px, 0);
+            ctx.lineTo(px, height);
+            ctx.strokeStyle = '#38bdf8'; // Leuchtendes Cyan/Hellblau für den Playhead
+            ctx.lineWidth = Math.max(2, Math.round(width / 750));
+            ctx.shadowColor = 'rgba(56, 189, 248, 0.85)';
+            ctx.shadowBlur = 8;
+            ctx.stroke();
+
+            // Schnittpunkt-Marker auf der Relief-Linie
+            const curveIndex = Math.min(Math.max(0, Math.round(px / stepX)), curveY.length - 1);
+            const py = curveY[curveIndex];
+            if (py !== undefined) {
+                ctx.beginPath();
+                ctx.arc(px, py, Math.max(4, Math.round(width / 400)), 0, Math.PI * 2);
+                ctx.fillStyle = '#38bdf8';
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+        }
     }
 
     // Ermittelt die Pixel-Koordinaten auf dem Canvas aus Mouse-/Touch-Events (mit Letterbox-Kompensation)
@@ -857,6 +914,10 @@
     // Interaktives Zeichnen: Start bei MouseDown oder TouchStart
     function handleReliefDrawStart(e) {
         if (!adminLoadedImage || !currentPanoramaCurveY || !adminScanCanvas) return;
+        if (isYodelPlaying) {
+            if (window.YodelEngine) window.YodelEngine.stop();
+            setYodelPlayingState(false);
+        }
         if (e.type === 'touchstart' && e.cancelable) {
             e.preventDefault();
         }
@@ -1173,6 +1234,222 @@
         img.src = imageUrl;
     }
 
+    // ==============================================================
+    // JODEL-SYNTHESIZER (DATENBANKGESTEUERT)
+    // ==============================================================
+
+    async function loadYodelPreset() {
+        try {
+            const { data, error } = await supabase
+                .from('presets')
+                .select('*')
+                .eq('is_yodel', true)
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+            if (error) throw error;
+
+            if (data && data.length > 0) {
+                activeYodelPreset = data[0];
+                activeYodelConfig = activeYodelPreset.yodel_config;
+                populateYodelEditorUI();
+            } else {
+                if (yodelPresetName) yodelPresetName.innerText = "Kein Yodel-Preset in DB gefunden";
+            }
+        } catch (err) {
+            console.error("Fehler beim Laden des Yodel-Presets aus Supabase:", err);
+        }
+    }
+
+    function populateYodelEditorUI() {
+        if (!activeYodelPreset || !activeYodelConfig) return;
+        if (yodelPresetName) {
+            yodelPresetName.innerText = `DB: ${activeYodelPreset.preset_name || 'Alpine Jodel Master'}`;
+        }
+        if (yodelPresetIdBadge) {
+            const shortId = activeYodelPreset.id ? activeYodelPreset.id.substring(0, 8) + '...' : '';
+            yodelPresetIdBadge.innerText = `Preset-ID: ${shortId}`;
+        }
+        if (yodelConfigEditor) {
+            yodelConfigEditor.value = JSON.stringify(activeYodelConfig, null, 2);
+        }
+        if (yodelSaveStatus) {
+            yodelSaveStatus.innerText = '';
+        }
+    }
+
+    async function saveYodelConfigToDB() {
+        if (!activeYodelPreset || !yodelConfigEditor) return;
+
+        let parsedConfig;
+        try {
+            parsedConfig = JSON.parse(yodelConfigEditor.value);
+            if (!parsedConfig || typeof parsedConfig !== 'object') {
+                throw new Error("Muss ein gültiges JSON-Objekt sein.");
+            }
+            if (window.YodelEngine && typeof window.YodelEngine.validateConfig === 'function') {
+                window.YodelEngine.validateConfig(parsedConfig);
+            }
+        } catch (err) {
+            showToast(`Ungültiges JSON / Parameter: ${err.message}`, 'error');
+            if (yodelSaveStatus) {
+                yodelSaveStatus.innerText = `✕ Fehler: ${err.message}`;
+                yodelSaveStatus.className = 'text-[11px] font-mono text-red-400';
+            }
+            return;
+        }
+
+        if (btnSaveYodelConfig) {
+            btnSaveYodelConfig.disabled = true;
+            btnSaveYodelConfig.classList.add('opacity-50');
+        }
+        if (yodelSaveStatus) {
+            yodelSaveStatus.innerText = 'Speichere in Supabase...';
+            yodelSaveStatus.className = 'text-[11px] font-mono text-neutral-400';
+        }
+
+        try {
+            const { error } = await supabase
+                .from('presets')
+                .update({ yodel_config: parsedConfig })
+                .eq('id', activeYodelPreset.id);
+
+            if (error) throw error;
+
+            activeYodelConfig = parsedConfig;
+            activeYodelPreset.yodel_config = parsedConfig;
+
+            showToast('Jodel-Parameter erfolgreich in Supabase gespeichert!');
+            if (yodelSaveStatus) {
+                yodelSaveStatus.innerText = '✓ In Datenbank gespeichert!';
+                yodelSaveStatus.className = 'text-[11px] font-mono text-emerald-400';
+                setTimeout(() => { if (yodelSaveStatus) yodelSaveStatus.innerText = ''; }, 3000);
+            }
+        } catch (err) {
+            console.error("Fehler beim Speichern der Jodel-Config:", err);
+            showToast(`Speicherfehler: ${err.message}`, 'error');
+            if (yodelSaveStatus) {
+                yodelSaveStatus.innerText = `✕ ${err.message}`;
+                yodelSaveStatus.className = 'text-[11px] font-mono text-red-400';
+            }
+        } finally {
+            if (btnSaveYodelConfig) {
+                btnSaveYodelConfig.disabled = false;
+                btnSaveYodelConfig.classList.remove('opacity-50');
+            }
+        }
+    }
+
+    function setYodelPlayingState(playing) {
+        isYodelPlaying = playing;
+        if (playing) {
+            if (btnYodelPlay) {
+                btnYodelPlay.className = 'inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-500 text-white transition-colors shadow-sm active:scale-[0.98] cursor-pointer';
+            }
+            if (yodelPlayIcon) yodelPlayIcon.innerText = '⏹';
+            if (yodelPlayText) yodelPlayText.innerText = 'Stop';
+            if (yodelPlaybackBar) yodelPlaybackBar.classList.remove('hidden');
+            if (yodelStatusBadge) {
+                yodelStatusBadge.classList.remove('hidden');
+                yodelStatusBadge.className = 'text-[11px] font-mono px-2 py-0.5 rounded border bg-blue-950 text-blue-300 border-blue-800 animate-pulse';
+                yodelStatusBadge.innerText = '♫ Spielt Jodel...';
+            }
+        } else {
+            if (btnYodelPlay) {
+                btnYodelPlay.className = 'inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors shadow-sm active:scale-[0.98] cursor-pointer';
+            }
+            if (yodelPlayIcon) yodelPlayIcon.innerText = '▶';
+            if (yodelPlayText) yodelPlayText.innerText = 'Relief als Jodel abspielen';
+            if (yodelPlaybackBar) yodelPlaybackBar.classList.add('hidden');
+            if (yodelStatusBadge) {
+                yodelStatusBadge.classList.add('hidden');
+                yodelStatusBadge.innerText = 'Bereit';
+            }
+            if (adminScanCanvas && adminLoadedImage && currentPanoramaCurveY) {
+                drawReliefOverlay(adminScanCanvas, adminLoadedImage, currentPanoramaWidth, currentPanoramaHeight, currentPanoramaCurveY, null);
+            }
+        }
+    }
+
+    function handleYodelPlayStep(stepInfo) {
+        if (!stepInfo) {
+            setYodelPlayingState(false);
+            return;
+        }
+
+        const playheadX = (typeof stepInfo.originalIndex === 'number')
+            ? stepInfo.originalIndex
+            : Math.round(stepInfo.progress * (currentPanoramaWidth - 1));
+
+        if (adminScanCanvas && adminLoadedImage && currentPanoramaCurveY) {
+            drawReliefOverlay(adminScanCanvas, adminLoadedImage, currentPanoramaWidth, currentPanoramaHeight, currentPanoramaCurveY, playheadX);
+        }
+
+        if (yodelVoiceRegister) {
+            if (stepInfo.register === 'falsetto') {
+                yodelVoiceRegister.innerText = 'Falsett (Jodel-Sprung)';
+                yodelVoiceRegister.className = 'px-1.5 py-0.5 rounded text-[10px] bg-amber-950 text-amber-300 border border-amber-700 font-bold';
+            } else {
+                yodelVoiceRegister.innerText = 'Bruststimme';
+                yodelVoiceRegister.className = 'px-1.5 py-0.5 rounded text-[10px] bg-blue-950 text-blue-300 border border-blue-800/60 font-semibold';
+            }
+        }
+
+        if (yodelFrequencyDisplay) {
+            yodelFrequencyDisplay.innerText = `${stepInfo.frequencyHz} Hz`;
+        }
+        if (yodelMidiDisplay) {
+            yodelMidiDisplay.innerText = `MIDI ${stepInfo.midiNote}`;
+        }
+        if (yodelStepProgress) {
+            yodelStepProgress.innerText = `Schritt ${stepInfo.stepIndex + 1} / ${stepInfo.totalSteps}`;
+        }
+    }
+
+    async function handleToggleYodelPlayback() {
+        if (isYodelPlaying) {
+            if (window.YodelEngine) window.YodelEngine.stop();
+            setYodelPlayingState(false);
+            return;
+        }
+
+        if (!currentPanoramaCurveY || currentPanoramaCurveY.length === 0) {
+            showToast('Keine Reliefdaten vorhanden. Bitte lade/scanne zuerst ein Bild.', 'warning');
+            return;
+        }
+
+        let configToUse = activeYodelConfig;
+        if (yodelConfigEditor && yodelConfigEditor.value.trim()) {
+            try {
+                const editorVal = JSON.parse(yodelConfigEditor.value);
+                if (editorVal && typeof editorVal === 'object') {
+                    configToUse = editorVal;
+                }
+            } catch (e) {
+                console.warn("Konnte Textarea-JSON nicht parsen, nutze aktive Config:", e);
+            }
+        }
+
+        if (!configToUse) {
+            showToast('Keine Jodel-Steuerparameter geladen. Bitte prüfe die Supabase Verbindung.', 'error');
+            return;
+        }
+
+        if (!window.YodelEngine) {
+            showToast('YodelEngine ist nicht geladen.', 'error');
+            return;
+        }
+
+        try {
+            setYodelPlayingState(true);
+            await window.YodelEngine.play(currentPanoramaCurveY, configToUse, handleYodelPlayStep);
+        } catch (err) {
+            console.error("YodelEngine Fehler:", err);
+            showToast(`Fehler bei Jodel-Wiedergabe: ${err.message}`, 'error');
+            setYodelPlayingState(false);
+        }
+    }
+
     // Standardwerte für neue Panoramen
     const PANORAMA_FIELD_DEFAULTS = {
         peaks: 4,
@@ -1274,6 +1551,7 @@
         if (currentTable === 'panoramas') {
             if (sectionPanoramaBuilder) sectionPanoramaBuilder.classList.remove('hidden');
             initAdminMap(record ? record.lat : null, record ? record.lng : null);
+            loadYodelPreset();
 
             const existingImg = record ? (record.image_url || record.imageUrl || record.bildUrl) : null;
             const existingArray = record ? (record.array_url || record.arrayUrl) : null;
@@ -1771,6 +2049,20 @@
                     drawReliefOverlay(adminScanCanvas, adminLoadedImage, currentPanoramaWidth, currentPanoramaHeight, currentPanoramaCurveY);
                     showToast('Horizont auf Ausgangszustand zurückgesetzt.');
                 }
+            });
+        }
+
+        // Jodel-Soundcheck Event Listener
+        if (btnYodelPlay) {
+            btnYodelPlay.addEventListener('click', handleToggleYodelPlayback);
+        }
+        if (btnSaveYodelConfig) {
+            btnSaveYodelConfig.addEventListener('click', saveYodelConfigToDB);
+        }
+        if (btnResetYodelEditor) {
+            btnResetYodelEditor.addEventListener('click', () => {
+                populateYodelEditorUI();
+                showToast('Parameter-Editor zurückgesetzt.');
             });
         }
 
