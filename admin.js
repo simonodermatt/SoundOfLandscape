@@ -75,6 +75,9 @@
     let isDrawingRelief = false;
     let lastDrawCoord = null;
     let currentPreviewRequestId = 0; // Verhindert Race Conditions beim asynchronen Laden von Vorschauen
+    let reliefBrushRadius = 25; // Standard Pinselgröße in Pixeln (10, 25, 50)
+    let reliefHistory = []; // Undo-Historie für Pinselkorrekturen
+    let originalPanoramaCurveY = null; // Ursprünglicher Scan-Zustand zum Zurücksetzen
 
     // DOM-Elemente
     const viewLoading = document.getElementById('view-loading');
@@ -124,6 +127,8 @@
     const scanFeedbackInfo = document.getElementById('scan-feedback-info');
     const scanCanvasWrapper = document.getElementById('scan-canvas-wrapper');
     const adminScanCanvas = document.getElementById('admin-scan-canvas');
+    const btnUndoRelief = document.getElementById('btn-undo-relief');
+    const btnResetRelief = document.getElementById('btn-reset-relief');
 
     const modalDeleteConfirm = document.getElementById('modal-delete-confirm');
     const deleteRecordPreview = document.getElementById('delete-record-preview');
@@ -663,6 +668,9 @@
         isDrawingRelief = false;
         lastDrawCoord = null;
         isProcessingImage = false;
+        reliefHistory = [];
+        originalPanoramaCurveY = null;
+        if (btnUndoRelief) btnUndoRelief.disabled = true;
         if (inputPanoramaFile) inputPanoramaFile.value = '';
         if (uploadStatusBadge) uploadStatusBadge.classList.add('hidden');
         if (scanCanvasWrapper) scanCanvasWrapper.classList.add('hidden');
@@ -783,7 +791,7 @@
         ctx.shadowBlur = 0;
     }
 
-    // Ermittelt die Pixel-Koordinaten auf dem Canvas aus Mouse-/Touch-Events
+    // Ermittelt die Pixel-Koordinaten auf dem Canvas aus Mouse-/Touch-Events (mit Letterbox-Kompensation)
     function getCanvasCoords(e, canvas) {
         if (!canvas) return null;
         const rect = canvas.getBoundingClientRect();
@@ -801,16 +809,46 @@
             clientY = e.clientY;
         }
 
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
+        // Exakte Skalierung unter Berücksichtigung von Seitenverhältnis und Letterboxing
+        const bitmapRatio = canvas.width / canvas.height;
+        const elementRatio = rect.width / rect.height;
 
-        const rawX = (clientX - rect.left) * scaleX;
-        const rawY = (clientY - rect.top) * scaleY;
+        let renderedWidth = rect.width;
+        let renderedHeight = rect.height;
+        let offsetX = 0;
+        let offsetY = 0;
 
-        const x = Math.max(0, Math.min(canvas.width - 1, Math.round(rawX)));
-        const y = Math.max(0, Math.min(canvas.height - 1, Math.round(rawY)));
+        if (elementRatio > bitmapRatio) {
+            renderedWidth = rect.height * bitmapRatio;
+            offsetX = (rect.width - renderedWidth) / 2;
+        } else {
+            renderedHeight = rect.width / bitmapRatio;
+            offsetY = (rect.height - renderedHeight) / 2;
+        }
+
+        const relativeX = clientX - rect.left - offsetX;
+        const relativeY = clientY - rect.top - offsetY;
+
+        const scaleX = canvas.width / renderedWidth;
+        const scaleY = canvas.height / renderedHeight;
+
+        const x = Math.max(0, Math.min(canvas.width - 1, Math.round(relativeX * scaleX)));
+        const y = Math.max(0, Math.min(canvas.height - 1, Math.round(relativeY * scaleY)));
 
         return { x, y };
+    }
+
+    // Wendet den Pinsel mit eingestelltem Radius auf das Relief-Array an
+    function applyReliefBrush(centerX, centerY) {
+        if (!currentPanoramaCurveY || !currentPanoramaWidth) return;
+        const radius = reliefBrushRadius || 25;
+        const minX = Math.max(0, centerX - radius);
+        const maxX = Math.min(currentPanoramaWidth - 1, centerX + radius);
+        const clampedY = Math.max(0, Math.min(currentPanoramaHeight - 1, centerY));
+
+        for (let x = minX; x <= maxX; x++) {
+            currentPanoramaCurveY[x] = clampedY;
+        }
     }
 
     // Interaktives Zeichnen: Start bei MouseDown oder TouchStart
@@ -823,13 +861,18 @@
         const pt = getCanvasCoords(e, adminScanCanvas);
         if (!pt) return;
 
+        // Undo-Schritt sichern
+        reliefHistory.push([...currentPanoramaCurveY]);
+        if (reliefHistory.length > 25) reliefHistory.shift();
+        if (btnUndoRelief) btnUndoRelief.disabled = false;
+
         lastDrawCoord = pt;
-        currentPanoramaCurveY[pt.x] = pt.y;
+        applyReliefBrush(pt.x, pt.y);
 
         drawReliefOverlay(adminScanCanvas, adminLoadedImage, currentPanoramaWidth, currentPanoramaHeight, currentPanoramaCurveY);
     }
 
-    // Interaktives Zeichnen: Maus-/Touchbewegung überschreibt Horizontpunkte in Echtzeit mit linearer Interpolation
+    // Interaktives Zeichnen: Maus-/Touchbewegung überschreibt Horizontpunkte in Echtzeit mit Pinselradius und linearer Interpolation
     function handleReliefDrawMove(e) {
         if (!isDrawingRelief || !adminLoadedImage || !currentPanoramaCurveY || !adminScanCanvas) return;
         if (e.cancelable) e.preventDefault();
@@ -852,10 +895,10 @@
                     const t = (x - x1) / (x2 - x1);
                     interpY = Math.round(y1 + t * (y2 - y1));
                 }
-                currentPanoramaCurveY[x] = Math.max(0, Math.min(currentPanoramaHeight - 1, interpY));
+                applyReliefBrush(x, interpY);
             }
         } else {
-            currentPanoramaCurveY[pt.x] = pt.y;
+            applyReliefBrush(pt.x, pt.y);
         }
 
         lastDrawCoord = pt;
@@ -934,6 +977,9 @@
 
                 // Relief-State aktualisieren
                 currentPanoramaCurveY = curveY;
+                originalPanoramaCurveY = [...curveY];
+                reliefHistory = [];
+                if (btnUndoRelief) btnUndoRelief.disabled = true;
                 currentPanoramaWidth = targetW;
                 currentPanoramaHeight = targetH;
 
@@ -1043,6 +1089,9 @@
 
         const curveY = autoScanRelief(offCtx, targetW, targetH);
         currentPanoramaCurveY = curveY;
+        originalPanoramaCurveY = [...curveY];
+        reliefHistory = [];
+        if (btnUndoRelief) btnUndoRelief.disabled = true;
         currentPanoramaWidth = targetW;
         currentPanoramaHeight = targetH;
 
@@ -1094,6 +1143,9 @@
 
                     if (requestId === currentPreviewRequestId && parsed && Array.isArray(parsed.kurve_y)) {
                         currentPanoramaCurveY = [...parsed.kurve_y];
+                        originalPanoramaCurveY = [...currentPanoramaCurveY];
+                        reliefHistory = [];
+                        if (btnUndoRelief) btnUndoRelief.disabled = true;
                         if (parsed.bild_breite) currentPanoramaWidth = parsed.bild_breite;
                         if (parsed.bild_hoehe) currentPanoramaHeight = parsed.bild_hoehe;
                     }
@@ -1677,6 +1729,44 @@
             adminScanCanvas.addEventListener('touchcancel', handleReliefDrawEnd);
         }
         window.addEventListener('mouseup', handleReliefDrawEnd);
+
+        // Pinsel-Größen Umschaltung
+        document.querySelectorAll('.btn-brush-size').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const size = parseInt(btn.getAttribute('data-brush-size'), 10) || 25;
+                reliefBrushRadius = size;
+                document.querySelectorAll('.btn-brush-size').forEach(b => {
+                    b.className = 'btn-brush-size px-1.5 py-0.5 text-[10px] rounded hover:bg-neutral-800 text-neutral-300 transition-colors';
+                });
+                btn.className = 'btn-brush-size px-1.5 py-0.5 text-[10px] rounded bg-brand-orange text-neutral-950 font-bold transition-colors';
+                showToast(`Pinselgröße: ${size}px`);
+            });
+        });
+
+        // Pinselstrich rückgängig machen (Undo)
+        if (btnUndoRelief) {
+            btnUndoRelief.addEventListener('click', () => {
+                if (reliefHistory.length > 0 && adminLoadedImage && currentPanoramaCurveY) {
+                    currentPanoramaCurveY = reliefHistory.pop();
+                    drawReliefOverlay(adminScanCanvas, adminLoadedImage, currentPanoramaWidth, currentPanoramaHeight, currentPanoramaCurveY);
+                    btnUndoRelief.disabled = (reliefHistory.length === 0);
+                    showToast('Letzter Pinselstrich rückgängig gemacht.');
+                }
+            });
+        }
+
+        // Horizont auf automatischen Ursprungsscan zurücksetzen (Reset)
+        if (btnResetRelief) {
+            btnResetRelief.addEventListener('click', () => {
+                if (originalPanoramaCurveY && adminLoadedImage && currentPanoramaCurveY) {
+                    reliefHistory.push([...currentPanoramaCurveY]);
+                    if (btnUndoRelief) btnUndoRelief.disabled = false;
+                    currentPanoramaCurveY = [...originalPanoramaCurveY];
+                    drawReliefOverlay(adminScanCanvas, adminLoadedImage, currentPanoramaWidth, currentPanoramaHeight, currentPanoramaCurveY);
+                    showToast('Horizont auf Ausgangszustand zurückgesetzt.');
+                }
+            });
+        }
 
         // Aktionen in der Tabelle (Delegation für Edit / Delete anhand des Primary Keys data-pk)
         dynamicTableBody.addEventListener('click', (e) => {
