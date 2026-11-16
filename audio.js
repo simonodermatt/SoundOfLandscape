@@ -173,6 +173,10 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
 
     try {
         if (!window.panoDataCache[panoId]) {
+            if (!dateiPfad && window.panoramenDaten) {
+                const panoObj = window.panoramenDaten.find(p => String(p.id) === String(panoId));
+                if (panoObj) dateiPfad = panoObj.array_url || panoObj.arrayUrl;
+            }
             if (typeof dateiPfad === 'string' && (dateiPfad.trim().startsWith('{') || dateiPfad.trim().startsWith('['))) {
                 window.panoDataCache[panoId] = JSON.parse(dateiPfad);
             } else if (typeof dateiPfad === 'object' && dateiPfad !== null) {

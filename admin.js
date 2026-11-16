@@ -1272,14 +1272,17 @@
             if (sectionPanoramaBuilder) sectionPanoramaBuilder.classList.remove('hidden');
             initAdminMap(record ? record.lat : null, record ? record.lng : null);
 
-            if (record && record.image_url) {
+            const existingImg = record ? (record.image_url || record.imageUrl || record.bildUrl) : null;
+            const existingArray = record ? (record.array_url || record.arrayUrl) : null;
+
+            if (record && existingImg) {
                 if (uploadStatusBadge) {
                     uploadStatusBadge.classList.remove('hidden');
                     uploadStatusBadge.className = 'text-[11px] font-mono px-2 py-0.5 rounded border bg-neutral-800 text-neutral-300 border-neutral-700';
                     uploadStatusBadge.innerText = 'Bestehendes Bild verknüpft';
                 }
-                if (scanFeedbackInfo) scanFeedbackInfo.innerText = record.image_url;
-                loadExistingPanoramaPreview(record.image_url, record.array_url);
+                if (scanFeedbackInfo) scanFeedbackInfo.innerText = existingImg;
+                loadExistingPanoramaPreview(existingImg, existingArray);
             } else {
                 if (uploadStatusBadge) uploadStatusBadge.classList.add('hidden');
                 if (scanCanvasWrapper) scanCanvasWrapper.classList.add('hidden');
