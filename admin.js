@@ -761,13 +761,15 @@
         // Basis-Bild zeichnen
         ctx.drawImage(img, 0, 0, width, height);
 
-        if (!curveY || curveY.length !== width) return;
+        if (!curveY || curveY.length === 0) return;
+
+        const stepX = (curveY.length === width) ? 1 : (width / (curveY.length - 1 || 1));
 
         // Halbtransparenter Schatten unterhalb der Silhouette
         ctx.beginPath();
         ctx.moveTo(0, curveY[0]);
-        for (let x = 1; x < width; x++) {
-            ctx.lineTo(x, curveY[x]);
+        for (let x = 1; x < curveY.length; x++) {
+            ctx.lineTo(x * stepX, curveY[x]);
         }
         ctx.lineTo(width, height);
         ctx.lineTo(0, height);
@@ -778,16 +780,17 @@
         // Leuchtende, dicke rote Horizontlinie (Interaktiv korrigierbar)
         ctx.beginPath();
         ctx.moveTo(0, curveY[0]);
-        for (let x = 1; x < width; x++) {
-            ctx.lineTo(x, curveY[x]);
+        for (let x = 1; x < curveY.length; x++) {
+            ctx.lineTo(x * stepX, curveY[x]);
         }
         ctx.strokeStyle = '#FF0033'; // Signalrot für beste Sichtbarkeit
-        ctx.lineWidth = 4;
+        ctx.lineWidth = Math.max(3, Math.round(width / 600));
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.shadowColor = 'rgba(255, 0, 51, 0.6)';
         ctx.shadowBlur = 6;
         ctx.stroke();
+        ctx.shadowColor = 'transparent';
         ctx.shadowBlur = 0;
     }
 
