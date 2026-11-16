@@ -761,13 +761,15 @@
         // Basis-Bild zeichnen
         ctx.drawImage(img, 0, 0, width, height);
 
-        if (!curveY || curveY.length !== width) return;
+        if (!curveY || curveY.length === 0) return;
+
+        const stepX = (curveY.length === width) ? 1 : (width / (curveY.length - 1 || 1));
 
         // Halbtransparenter Schatten unterhalb der Silhouette
         ctx.beginPath();
         ctx.moveTo(0, curveY[0]);
-        for (let x = 1; x < width; x++) {
-            ctx.lineTo(x, curveY[x]);
+        for (let x = 1; x < curveY.length; x++) {
+            ctx.lineTo(x * stepX, curveY[x]);
         }
         ctx.lineTo(width, height);
         ctx.lineTo(0, height);
@@ -778,16 +780,17 @@
         // Leuchtende, dicke rote Horizontlinie (Interaktiv korrigierbar)
         ctx.beginPath();
         ctx.moveTo(0, curveY[0]);
-        for (let x = 1; x < width; x++) {
-            ctx.lineTo(x, curveY[x]);
+        for (let x = 1; x < curveY.length; x++) {
+            ctx.lineTo(x * stepX, curveY[x]);
         }
         ctx.strokeStyle = '#FF0033'; // Signalrot für beste Sichtbarkeit
-        ctx.lineWidth = 4;
+        ctx.lineWidth = Math.max(3, Math.round(width / 600));
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.shadowColor = 'rgba(255, 0, 51, 0.6)';
         ctx.shadowBlur = 6;
         ctx.stroke();
+        ctx.shadowColor = 'transparent';
         ctx.shadowBlur = 0;
     }
 
@@ -1272,14 +1275,17 @@
             if (sectionPanoramaBuilder) sectionPanoramaBuilder.classList.remove('hidden');
             initAdminMap(record ? record.lat : null, record ? record.lng : null);
 
-            if (record && record.image_url) {
+            const existingImg = record ? (record.image_url || record.imageUrl || record.bildUrl) : null;
+            const existingArray = record ? (record.array_url || record.arrayUrl) : null;
+
+            if (record && existingImg) {
                 if (uploadStatusBadge) {
                     uploadStatusBadge.classList.remove('hidden');
                     uploadStatusBadge.className = 'text-[11px] font-mono px-2 py-0.5 rounded border bg-neutral-800 text-neutral-300 border-neutral-700';
                     uploadStatusBadge.innerText = 'Bestehendes Bild verknüpft';
                 }
-                if (scanFeedbackInfo) scanFeedbackInfo.innerText = record.image_url;
-                loadExistingPanoramaPreview(record.image_url, record.array_url);
+                if (scanFeedbackInfo) scanFeedbackInfo.innerText = existingImg;
+                loadExistingPanoramaPreview(existingImg, existingArray);
             } else {
                 if (uploadStatusBadge) uploadStatusBadge.classList.add('hidden');
                 if (scanCanvasWrapper) scanCanvasWrapper.classList.add('hidden');
