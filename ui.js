@@ -269,21 +269,36 @@ window.openMapOverlay = function(panoId, url) {
                     const tiefeTaeler = window.findePunkte(daten.kurve_y, s.valleys, s.spacing, s.sensibilitaet, 'tal');
 
                     const ctx = clonedCanvas.getContext('2d');
-                    clonedCanvas.width = daten.bild_breite;
-                    clonedCanvas.height = daten.bild_hoehe;
+                    clonedCanvas.width = daten.bild_breite || 2500;
+                    clonedCanvas.height = daten.bild_hoehe || 1200;
                     ctx.clearRect(0, 0, clonedCanvas.width, clonedCanvas.height);
-                    ctx.lineWidth = Math.max(4, Math.round(daten.bild_breite / 600));
+                    ctx.lineWidth = Math.max(4, Math.round(clonedCanvas.width / 600));
 
                     const isRaster = cloned.classList.contains('raster-mode');
 
-                    if (isRaster && daten.kurve_y && daten.kurve_y.length > 0) {
+                    if (daten.kurve_y && daten.kurve_y.length > 0) {
+                        const stepX = (daten.kurve_y.length === clonedCanvas.width) ? 1 : (clonedCanvas.width / (daten.kurve_y.length - 1 || 1));
                         ctx.beginPath();
                         ctx.moveTo(0, daten.kurve_y[0]);
-                        for(let i=1; i<daten.kurve_y.length; i++) {
-                            ctx.lineTo(i, daten.kurve_y[i]);
+                        for(let i = 1; i < daten.kurve_y.length; i++) {
+                            ctx.lineTo(i * stepX, daten.kurve_y[i]);
                         }
-                        ctx.strokeStyle = '#1a1a1a';
+                        if (isRaster) {
+                            ctx.strokeStyle = '#1a1a1a';
+                            ctx.lineWidth = Math.max(3, Math.round(clonedCanvas.width / 600));
+                            ctx.shadowColor = 'transparent';
+                            ctx.shadowBlur = 0;
+                        } else {
+                            ctx.strokeStyle = '#FF0033'; // Signalrote Horizontlinie
+                            ctx.lineWidth = Math.max(3, Math.round(clonedCanvas.width / 600));
+                            ctx.lineCap = 'round';
+                            ctx.lineJoin = 'round';
+                            ctx.shadowColor = 'rgba(255, 0, 51, 0.6)';
+                            ctx.shadowBlur = 6;
+                        }
                         ctx.stroke();
+                        ctx.shadowColor = 'transparent';
+                        ctx.shadowBlur = 0;
                     }
 
                     ctx.strokeStyle = 'rgba(255, 215, 0, 0.9)';
@@ -431,23 +446,42 @@ window.drawLines = function(panoId) {
     const canvas = document.getElementById(`canvas_${panoId}`);
     if (canvas) {
         const ctx = canvas.getContext('2d');
+        const imgEl = document.getElementById(`popup-img-${panoId}`);
+        const naturalW = imgEl ? (imgEl.naturalWidth || imgEl.width) : 0;
+        const naturalH = imgEl ? (imgEl.naturalHeight || imgEl.height) : 0;
         // Exakte Original-Dimensionen des Bildes für das Canvas setzen
-        canvas.width = daten.bild_breite; 
-        canvas.height = daten.bild_hoehe;
+        canvas.width = daten.bild_breite || naturalW || 2500; 
+        canvas.height = daten.bild_hoehe || naturalH || 1200;
         ctx.clearRect(0, 0, canvas.width, canvas.height); 
-        ctx.lineWidth = Math.max(4, Math.round(daten.bild_breite / 600)); // Dynamische Linienstärke
+        ctx.lineWidth = Math.max(4, Math.round(canvas.width / 600)); // Dynamische Linienstärke
         
         const container = document.getElementById(`bild-container-${panoId}`);
         const isRaster = container && container.classList.contains('raster-mode');
 
-        if (isRaster && daten.kurve_y && daten.kurve_y.length > 0) {
+        // 1. Rote Horizontlinie (Relief-Kurve) zeichnen
+        if (daten.kurve_y && daten.kurve_y.length > 0) {
+            const stepX = (daten.kurve_y.length === canvas.width) ? 1 : (canvas.width / (daten.kurve_y.length - 1 || 1));
             ctx.beginPath();
             ctx.moveTo(0, daten.kurve_y[0]);
-            for(let i=1; i<daten.kurve_y.length; i++) {
-                ctx.lineTo(i, daten.kurve_y[i]);
+            for(let i = 1; i < daten.kurve_y.length; i++) {
+                ctx.lineTo(i * stepX, daten.kurve_y[i]);
             }
-            ctx.strokeStyle = '#1a1a1a';
+            if (isRaster) {
+                ctx.strokeStyle = '#1a1a1a';
+                ctx.lineWidth = Math.max(3, Math.round(canvas.width / 600));
+                ctx.shadowColor = 'transparent';
+                ctx.shadowBlur = 0;
+            } else {
+                ctx.strokeStyle = '#FF0033'; // Signalrote Horizontlinie wie im Admin-Scanner
+                ctx.lineWidth = Math.max(3, Math.round(canvas.width / 600));
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.shadowColor = 'rgba(255, 0, 51, 0.6)';
+                ctx.shadowBlur = 6;
+            }
             ctx.stroke();
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
         }
 
         ctx.strokeStyle = 'rgba(255, 215, 0, 0.9)';
@@ -578,7 +612,12 @@ window.openPanoModal = async function(pano) {
             } catch(e) { console.error(e); }
         }
         window.drawLines(pano.id);
-        window.loadPresets(pano.id); 
+        window.loadPresets(pano.id);
+
+        const popupImg = document.getElementById(`popup-img-${pano.id}`);
+        if (popupImg && !popupImg.complete) {
+            popupImg.onload = () => window.drawLines(pano.id);
+        } 
     }, 50);
 };
 
