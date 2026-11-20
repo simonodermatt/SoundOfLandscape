@@ -153,6 +153,18 @@
     let activeYodelConfig = null;
     let isYodelPlaying = false;
 
+    // Panorama Synth-Vorschau DOM & State (Classic vs. Warm Paper Test)
+    const btnSynthPreviewPlay = document.getElementById('btn-synth-preview-play');
+    const synthPreviewPlayIcon = document.getElementById('synth-preview-play-icon');
+    const synthPreviewPlayText = document.getElementById('synth-preview-play-text');
+    const synthPreviewStatus = document.getElementById('synth-preview-status');
+    const btnEngineClassic = document.getElementById('btn-engine-classic');
+    const btnEngineWarmPaper = document.getElementById('btn-engine-warm-paper');
+
+    let selectedSynthEngine = 'classic'; // 'classic' | 'warm_paper'
+    let isSynthPreviewPlaying = false;
+    let classicPreviewEndTimer = null;
+
     const modalDeleteConfirm = document.getElementById('modal-delete-confirm');
     const deleteRecordPreview = document.getElementById('delete-record-preview');
     const btnCancelDelete = document.getElementById('btn-cancel-delete');
@@ -683,6 +695,9 @@
             if (window.YodelEngine) window.YodelEngine.stop();
             setYodelPlayingState(false);
         }
+        if (isSynthPreviewPlaying) {
+            stopSynthPreviewAudio();
+        }
         if (adminLeafletMap) {
             try { adminLeafletMap.remove(); } catch(e) {}
             adminLeafletMap = null;
@@ -917,6 +932,9 @@
         if (isYodelPlaying) {
             if (window.YodelEngine) window.YodelEngine.stop();
             setYodelPlayingState(false);
+        }
+        if (isSynthPreviewPlaying) {
+            stopSynthPreviewAudio();
         }
         if (e.type === 'touchstart' && e.cancelable) {
             e.preventDefault();
@@ -1413,6 +1431,10 @@
             return;
         }
 
+        if (isSynthPreviewPlaying) {
+            stopSynthPreviewAudio();
+        }
+
         if (!currentPanoramaCurveY || currentPanoramaCurveY.length === 0) {
             showToast('Keine Reliefdaten vorhanden. Bitte lade/scanne zuerst ein Bild.', 'warning');
             return;
@@ -1447,6 +1469,203 @@
             console.error("YodelEngine Fehler:", err);
             showToast(`Fehler bei Jodel-Wiedergabe: ${err.message}`, 'error');
             setYodelPlayingState(false);
+        }
+    }
+
+    // ==============================================================
+    // PANORAMA SYNTH-VORSCHAU (CLASSIC VS. WARM PAPER TESTMODUS)
+    // ==============================================================
+
+    function getCurrentFormSynthSettings() {
+        const readField = (name, fallbackVal, parser = (v) => v) => {
+            const el = formEditRecord ? formEditRecord.querySelector(`[name="${name}"]`) : null;
+            const raw = el ? el.value : (editingRecord ? editingRecord[name] : '');
+            if (raw === '' || raw === null || raw === undefined) {
+                return fallbackVal;
+            }
+            const parsed = parser(raw);
+            return (typeof parsed === 'number' && isNaN(parsed)) ? fallbackVal : parsed;
+        };
+
+        const readNullableFloat = (name) => {
+            const el = formEditRecord ? formEditRecord.querySelector(`[name="${name}"]`) : null;
+            const raw = el ? el.value : (editingRecord ? editingRecord[name] : '');
+            if (raw === '' || raw === null || raw === undefined) return null;
+            const num = parseFloat(raw);
+            return isNaN(num) ? null : num;
+        };
+
+        return {
+            peaks: readField('peaks', PANORAMA_FIELD_DEFAULTS.peaks, v => parseInt(v, 10)),
+            valleys: readField('valleys', PANORAMA_FIELD_DEFAULTS.valleys, v => parseInt(v, 10)),
+            spacing: readField('spacing', PANORAMA_FIELD_DEFAULTS.spacing, v => parseInt(v, 10)),
+            sensibilitaet: readField('sensibility', PANORAMA_FIELD_DEFAULTS.sensibility, v => parseInt(v, 10)),
+            mode: readField('mode', PANORAMA_FIELD_DEFAULTS.mode, v => String(v).trim().toLowerCase()),
+            scale: readField('scale', PANORAMA_FIELD_DEFAULTS.scale, v => String(v).trim().toLowerCase()),
+            oktaven: readField('octaves', PANORAMA_FIELD_DEFAULTS.octaves, v => parseInt(v, 10)),
+            range: readField('range', PANORAMA_FIELD_DEFAULTS.range, v => parseInt(v, 10)),
+            wave: readField('wave', PANORAMA_FIELD_DEFAULTS.wave, v => String(v).trim().toLowerCase()),
+            volume: readField('volume', PANORAMA_FIELD_DEFAULTS.volume, v => parseFloat(v)),
+            duration: readField('duration', PANORAMA_FIELD_DEFAULTS.duration, v => parseFloat(v)),
+            attack: readNullableFloat('attack'),
+            release: readNullableFloat('release'),
+            echo: readField('echo', PANORAMA_FIELD_DEFAULTS.echo, v => parseFloat(v))
+        };
+    }
+
+    function setSelectedSynthEngine(engine) {
+        selectedSynthEngine = (engine === 'warm_paper') ? 'warm_paper' : 'classic';
+
+        if (btnEngineClassic && btnEngineWarmPaper) {
+            if (selectedSynthEngine === 'classic') {
+                btnEngineClassic.className = 'px-2.5 py-1 bg-white text-black font-bold transition-colors cursor-pointer';
+                btnEngineWarmPaper.className = 'px-2.5 py-1 bg-black text-neutral-400 hover:text-white border-l border-neutral-600 transition-colors cursor-pointer';
+            } else {
+                btnEngineClassic.className = 'px-2.5 py-1 bg-black text-neutral-400 hover:text-white transition-colors cursor-pointer';
+                btnEngineWarmPaper.className = 'px-2.5 py-1 bg-white text-black font-bold border-l border-neutral-600 transition-colors cursor-pointer';
+            }
+        }
+
+        if (isSynthPreviewPlaying) {
+            stopSynthPreviewAudio();
+        }
+    }
+
+    function setSynthPreviewPlayingState(playing) {
+        isSynthPreviewPlaying = playing;
+        if (playing) {
+            if (btnSynthPreviewPlay) {
+                btnSynthPreviewPlay.className = 'inline-flex items-center gap-2 px-3 py-1.5 text-xs font-mono font-semibold bg-neutral-900 text-white border border-white hover:bg-neutral-800 transition-colors cursor-pointer active:scale-[0.98]';
+            }
+            if (synthPreviewPlayIcon) synthPreviewPlayIcon.innerText = '⏹';
+            if (synthPreviewPlayText) synthPreviewPlayText.innerText = 'Stop';
+            if (synthPreviewStatus) {
+                synthPreviewStatus.classList.remove('hidden');
+                synthPreviewStatus.innerText = (selectedSynthEngine === 'warm_paper')
+                    ? 'WARM PAPER [TEST]'
+                    : 'CLASSIC';
+            }
+        } else {
+            if (btnSynthPreviewPlay) {
+                btnSynthPreviewPlay.className = 'inline-flex items-center gap-2 px-3 py-1.5 text-xs font-mono font-semibold bg-white text-black border border-white hover:bg-neutral-200 transition-colors cursor-pointer active:scale-[0.98]';
+            }
+            if (synthPreviewPlayIcon) synthPreviewPlayIcon.innerText = '▶';
+            if (synthPreviewPlayText) synthPreviewPlayText.innerText = 'Synth-Vorschau';
+            if (synthPreviewStatus) {
+                synthPreviewStatus.classList.add('hidden');
+                synthPreviewStatus.innerText = 'Bereit';
+            }
+            if (adminScanCanvas && adminLoadedImage && currentPanoramaCurveY) {
+                drawReliefOverlay(adminScanCanvas, adminLoadedImage, currentPanoramaWidth, currentPanoramaHeight, currentPanoramaCurveY, null);
+            }
+        }
+    }
+
+    function stopSynthPreviewAudio() {
+        if (classicPreviewEndTimer) {
+            clearTimeout(classicPreviewEndTimer);
+            classicPreviewEndTimer = null;
+        }
+        if (window.WarmSynthEngine) {
+            window.WarmSynthEngine.stop();
+        }
+        if (typeof window.stopAllAudio === 'function') {
+            window.stopAllAudio();
+        }
+        setSynthPreviewPlayingState(false);
+    }
+
+    async function handleToggleSynthPreview() {
+        if (isSynthPreviewPlaying) {
+            stopSynthPreviewAudio();
+            return;
+        }
+
+        if (isYodelPlaying) {
+            if (window.YodelEngine) window.YodelEngine.stop();
+            setYodelPlayingState(false);
+        }
+
+        if (!currentPanoramaCurveY || currentPanoramaCurveY.length === 0) {
+            showToast('Keine Reliefdaten vorhanden. Bitte lade/scanne zuerst ein Bild.', 'warning');
+            return;
+        }
+
+        const daten = {
+            bild_breite: currentPanoramaWidth || currentPanoramaCurveY.length,
+            bild_hoehe: currentPanoramaHeight || 1200,
+            kurve_y: currentPanoramaCurveY
+        };
+        const settings = getCurrentFormSynthSettings();
+
+        if (selectedSynthEngine === 'warm_paper') {
+            if (!window.WarmSynthEngine) {
+                showToast('WarmSynthEngine ist nicht geladen.', 'error');
+                return;
+            }
+            try {
+                setSynthPreviewPlayingState(true);
+                const result = await window.WarmSynthEngine.play(daten, settings, {
+                    onStep: (info) => {
+                        if (!isSynthPreviewPlaying) return;
+                        if (synthPreviewStatus) {
+                            synthPreviewStatus.innerText = `WARM PAPER | ${info.frequencyHz} Hz (${info.stepIndex + 1}/${info.totalSteps})`;
+                        }
+                        if (adminScanCanvas && adminLoadedImage && currentPanoramaCurveY && info.punkt) {
+                            drawReliefOverlay(adminScanCanvas, adminLoadedImage, currentPanoramaWidth, currentPanoramaHeight, currentPanoramaCurveY, info.punkt.x);
+                        }
+                    },
+                    onComplete: (playedCount) => {
+                        setSynthPreviewPlayingState(false);
+                        if (playedCount === 0) {
+                            showToast('Mit diesen Einstellungen wurden keine Gipfel/Täler gefunden.', 'warning');
+                        }
+                    }
+                });
+                if (!result || result.playedCount === 0) {
+                    setSynthPreviewPlayingState(false);
+                }
+            } catch (err) {
+                console.error("WarmSynthEngine Fehler:", err);
+                showToast(`Warm Paper Synth Fehler: ${err.message}`, 'error');
+                setSynthPreviewPlayingState(false);
+            }
+        } else {
+            // Classic Engine (verwendet unverändert audio.js)
+            if (typeof window.playMultiPanorama !== 'function') {
+                showToast('Classic Audio-Engine (audio.js) ist nicht geladen.', 'error');
+                return;
+            }
+            try {
+                window.panoDataCache = window.panoDataCache || {};
+                window.activeSynth = window.activeSynth || {};
+                const previewId = '__admin_preview__';
+                const classicAttack = (settings.attack !== null) ? settings.attack : PANORAMA_FIELD_DEFAULTS.attack;
+                const classicRelease = (settings.release !== null) ? settings.release : PANORAMA_FIELD_DEFAULTS.release;
+
+                window.panoDataCache[previewId] = daten;
+                window.activeSynth[previewId] = {
+                    ...settings,
+                    attack: classicAttack,
+                    release: classicRelease
+                };
+
+                setSynthPreviewPlayingState(true);
+                await window.playMultiPanorama(previewId, null, false);
+
+                const totalClassicMs = Math.max(
+                    800,
+                    ((settings.mode === 'chord' ? 0 : settings.duration) + classicAttack + settings.duration + classicRelease + 0.4) * 1000
+                );
+                classicPreviewEndTimer = setTimeout(() => {
+                    classicPreviewEndTimer = null;
+                    setSynthPreviewPlayingState(false);
+                }, totalClassicMs);
+            } catch (err) {
+                console.error("Classic Synth Fehler:", err);
+                showToast(`Classic Audio-Fehler: ${err.message}`, 'error');
+                setSynthPreviewPlayingState(false);
+            }
         }
     }
 
@@ -2064,6 +2283,17 @@
                 populateYodelEditorUI();
                 showToast('Parameter-Editor zurückgesetzt.');
             });
+        }
+
+        // Panorama Synth-Vorschau & Engine-Toggle Event Listener
+        if (btnSynthPreviewPlay) {
+            btnSynthPreviewPlay.addEventListener('click', handleToggleSynthPreview);
+        }
+        if (btnEngineClassic) {
+            btnEngineClassic.addEventListener('click', () => setSelectedSynthEngine('classic'));
+        }
+        if (btnEngineWarmPaper) {
+            btnEngineWarmPaper.addEventListener('click', () => setSelectedSynthEngine('warm_paper'));
         }
 
         // Aktionen in der Tabelle (Delegation für Edit / Delete anhand des Primary Keys data-pk)
