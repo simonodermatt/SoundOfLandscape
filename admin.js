@@ -695,8 +695,14 @@
             if (window.YodelEngine) window.YodelEngine.stop();
             setYodelPlayingState(false);
         }
+        if (window.ChimeraJodelSandbox) {
+            window.ChimeraJodelSandbox.stop();
+        }
         if (isSynthPreviewPlaying) {
             stopSynthPreviewAudio();
+        }
+        if (window.ChimeraJodelSandbox) {
+            window.ChimeraJodelSandbox.stop();
         }
         if (adminLeafletMap) {
             try { adminLeafletMap.remove(); } catch(e) {}
@@ -933,8 +939,14 @@
             if (window.YodelEngine) window.YodelEngine.stop();
             setYodelPlayingState(false);
         }
+        if (window.ChimeraJodelSandbox) {
+            window.ChimeraJodelSandbox.stop();
+        }
         if (isSynthPreviewPlaying) {
             stopSynthPreviewAudio();
+        }
+        if (window.ChimeraJodelSandbox) {
+            window.ChimeraJodelSandbox.stop();
         }
         if (e.type === 'touchstart' && e.cancelable) {
             e.preventDefault();
@@ -1434,6 +1446,9 @@
         if (isSynthPreviewPlaying) {
             stopSynthPreviewAudio();
         }
+        if (window.ChimeraJodelSandbox) {
+            window.ChimeraJodelSandbox.stop();
+        }
 
         if (!currentPanoramaCurveY || currentPanoramaCurveY.length === 0) {
             showToast('Keine Reliefdaten vorhanden. Bitte lade/scanne zuerst ein Bild.', 'warning');
@@ -1529,6 +1544,9 @@
         if (isSynthPreviewPlaying) {
             stopSynthPreviewAudio();
         }
+        if (window.ChimeraJodelSandbox) {
+            window.ChimeraJodelSandbox.stop();
+        }
     }
 
     function setSynthPreviewPlayingState(playing) {
@@ -1584,6 +1602,9 @@
         if (isYodelPlaying) {
             if (window.YodelEngine) window.YodelEngine.stop();
             setYodelPlayingState(false);
+        }
+        if (window.ChimeraJodelSandbox) {
+            window.ChimeraJodelSandbox.stop();
         }
 
         if (!currentPanoramaCurveY || currentPanoramaCurveY.length === 0) {
@@ -2294,6 +2315,41 @@
         }
         if (btnEngineWarmPaper) {
             btnEngineWarmPaper.addEventListener('click', () => setSelectedSynthEngine('warm_paper'));
+        }
+
+        // Entkoppelte Chimera Jodel Sandbox mounten
+        if (window.ChimeraJodelSandbox) {
+            window.ChimeraJodelSandbox.mount('chimera-jodel-sandbox-root', {
+                getSkylineContext: () => ({
+                    daten: (currentPanoramaCurveY && currentPanoramaCurveY.length > 0)
+                        ? {
+                            bild_breite: currentPanoramaWidth || currentPanoramaCurveY.length,
+                            bild_hoehe: currentPanoramaHeight || 1200,
+                            kurve_y: currentPanoramaCurveY
+                        }
+                        : null,
+                    synthSettings: getCurrentFormSynthSettings()
+                }),
+                onPlayhead: (playheadX) => {
+                    if (adminScanCanvas && adminLoadedImage && currentPanoramaCurveY) {
+                        drawReliefOverlay(adminScanCanvas, adminLoadedImage, currentPanoramaWidth, currentPanoramaHeight, currentPanoramaCurveY, playheadX);
+                    }
+                },
+                onClearPlayhead: () => {
+                    if (adminScanCanvas && adminLoadedImage && currentPanoramaCurveY) {
+                        drawReliefOverlay(adminScanCanvas, adminLoadedImage, currentPanoramaWidth, currentPanoramaHeight, currentPanoramaCurveY, null);
+                    }
+                },
+                stopOtherEngines: () => {
+                    if (isYodelPlaying) {
+                        if (window.YodelEngine) window.YodelEngine.stop();
+                        setYodelPlayingState(false);
+                    }
+                    if (isSynthPreviewPlaying) {
+                        stopSynthPreviewAudio();
+                    }
+                }
+            });
         }
 
         // Aktionen in der Tabelle (Delegation für Edit / Delete anhand des Primary Keys data-pk)
