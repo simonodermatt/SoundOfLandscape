@@ -356,6 +356,93 @@
                                 <canvas id="admin-scan-canvas" class="max-w-full max-h-72 w-auto h-auto mx-auto block cursor-crosshair select-none touch-none shadow-sm"></canvas>
                             </div>
                         </div>
+
+                        <!-- Panorama Synth-Vorschau (Minimalistischer 1-Bit / S/W Engine-Testmodus) -->
+                        <div id="synth-preview-section" class="mt-3 p-3 rounded border border-neutral-800 bg-black flex flex-wrap items-center justify-between gap-3">
+                            <div class="flex items-center gap-2.5">
+                                <button type="button" id="btn-synth-preview-play" class="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-mono font-semibold bg-white text-black border border-white hover:bg-neutral-200 transition-colors cursor-pointer active:scale-[0.98]">
+                                    <span id="synth-preview-play-icon">▶</span>
+                                    <span id="synth-preview-play-text">Synth-Vorschau</span>
+                                </button>
+                                <span id="synth-preview-status" class="hidden text-[11px] font-mono text-neutral-300 px-2 py-0.5 border border-neutral-700 bg-neutral-950">
+                                    Bereit
+                                </span>
+                            </div>
+
+                            <div class="flex items-center gap-2 font-mono text-[11px]">
+                                <span class="text-neutral-500 uppercase tracking-wider text-[10px]">Engine:</span>
+                                <div class="inline-flex border border-neutral-600 bg-black select-none" role="group" aria-label="Synth Engine Toggle">
+                                    <button type="button" id="btn-engine-classic" data-engine="classic" class="px-2.5 py-1 bg-white text-black font-bold transition-colors cursor-pointer">
+                                        Classic
+                                    </button>
+                                    <button type="button" id="btn-engine-warm-paper" data-engine="warm_paper" class="px-2.5 py-1 bg-black text-neutral-400 hover:text-white border-l border-neutral-600 transition-colors cursor-pointer">
+                                        Warm Paper [Test]
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Isolierte Chimera Vocal Synth Sandbox (WASM + AudioWorklet) -->
+                        <div id="chimera-jodel-sandbox-root"></div>
+
+                        <!-- Jodel-Soundcheck Panel (DB-gesteuert) -->
+                        <div id="yodel-soundcheck-section" class="mt-3 p-3.5 rounded-lg border border-neutral-800 bg-neutral-900/80 shadow-inner">
+                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                <div class="flex items-center gap-2.5">
+                                    <button type="button" id="btn-yodel-play" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors shadow-sm active:scale-[0.98] cursor-pointer">
+                                        <span id="yodel-play-icon">▶</span>
+                                        <span id="yodel-play-text">Relief als Jodel abspielen</span>
+                                    </button>
+                                    <span id="yodel-status-badge" class="hidden text-[11px] font-mono px-2 py-0.5 rounded border bg-neutral-950 text-neutral-300 border-neutral-800">
+                                        Bereit
+                                    </span>
+                                </div>
+
+                                <div class="flex items-center gap-2 text-[11px] font-mono text-neutral-400">
+                                    <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                                    <span id="yodel-preset-name">DB-Preset: Alpine Jodel Master</span>
+                                </div>
+                            </div>
+
+                            <!-- Live Feedback Bar during Playback -->
+                            <div id="yodel-playback-bar" class="hidden mt-2.5 pt-2 border-t border-neutral-800/80 flex flex-wrap items-center justify-between text-[11px] font-mono text-neutral-300">
+                                <div class="flex items-center gap-3">
+                                    <span id="yodel-voice-register" class="px-1.5 py-0.5 rounded text-[10px] bg-blue-950 text-blue-300 border border-blue-800/60 font-semibold">Bruststimme</span>
+                                    <span id="yodel-frequency-display" class="text-neutral-400">440.0 Hz</span>
+                                    <span id="yodel-midi-display" class="text-neutral-500">MIDI 69</span>
+                                </div>
+                                <div id="yodel-step-progress" class="text-neutral-400">Schritt 0 / 0</div>
+                            </div>
+
+                            <!-- Aufklappbares Steuerparameter-Panel -->
+                            <details class="mt-3 bg-neutral-950/70 border border-neutral-800 rounded-lg p-2.5 text-xs group" id="yodel-params-details">
+                                <summary class="cursor-pointer font-mono font-medium text-neutral-300 flex items-center justify-between select-none hover:text-brand-orange transition-colors">
+                                    <span class="flex items-center gap-1.5">
+                                        <svg class="w-3.5 h-3.5 text-neutral-400 group-open:rotate-90 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                                        <span>Steuerparameter (Supabase JSON)</span>
+                                    </span>
+                                    <span id="yodel-preset-id-badge" class="text-[10px] text-neutral-500 font-mono">presets (is_yodel=true)</span>
+                                </summary>
+                                <div class="mt-2.5 space-y-2">
+                                    <p class="text-[11px] text-neutral-400 leading-normal">
+                                        Diese Parameter steuern die Formantfilter (F1-F3, Güte Q), Glides, Kehlkopf-Sprungschwellen, Atemluft und Vibrato direkt aus der Datenbank.
+                                    </p>
+                                    <textarea id="yodel-config-editor" rows="12" class="w-full font-mono text-[11px] bg-neutral-900 text-neutral-200 border border-neutral-800 rounded-lg p-2.5 focus:outline-none focus:border-brand-orange leading-relaxed" spellcheck="false" placeholder="Lade yodel_config aus Supabase..."></textarea>
+                                    <div class="flex items-center justify-between gap-2 pt-1">
+                                        <span id="yodel-save-status" class="text-[11px] font-mono text-neutral-400"></span>
+                                        <div class="flex items-center gap-2">
+                                            <button type="button" id="btn-reset-yodel-editor" class="px-2.5 py-1.5 rounded-lg text-xs font-mono text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors border border-neutral-800">
+                                                Verwerfen
+                                            </button>
+                                            <button type="button" id="btn-save-yodel-config" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-neutral-800 hover:bg-neutral-700 text-brand-orange border border-neutral-700 transition-colors cursor-pointer">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+                                                <span>Parameter in DB speichern</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
                     </div>
                 </div>
 
@@ -402,6 +489,15 @@
         </div>
     </div>
 
+    <!-- Classic Synth Engine (unverändert, nur für Admin A/B-Vorschau) -->
+    <script src="audio.js"></script>
+    <!-- Experimental Warm Paper Synth Engine -->
+    <script src="warmSynthEngine.js"></script>
+    <!-- Yodel Synthesizer Engine -->
+    <script src="yodel-engine.js"></script>
+    <!-- Experimental Chimera Jodel Sandbox (WASM + AudioWorklet) -->
+    <script src="experimental/chimera-jodel/chimera-jodel-bridge.js"></script>
+    <script src="experimental/chimera-jodel/chimera-jodel-sandbox.js"></script>
     <!-- Admin JavaScript Logic -->
     <script src="admin.js"></script>
 </body>

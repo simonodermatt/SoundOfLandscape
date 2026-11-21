@@ -130,6 +130,41 @@
     const btnUndoRelief = document.getElementById('btn-undo-relief');
     const btnResetRelief = document.getElementById('btn-reset-relief');
 
+    // Jodel Synthesizer DOM
+    const yodelSoundcheckSection = document.getElementById('yodel-soundcheck-section');
+    const btnYodelPlay = document.getElementById('btn-yodel-play');
+    const yodelPlayIcon = document.getElementById('yodel-play-icon');
+    const yodelPlayText = document.getElementById('yodel-play-text');
+    const yodelStatusBadge = document.getElementById('yodel-status-badge');
+    const yodelPresetName = document.getElementById('yodel-preset-name');
+    const yodelPlaybackBar = document.getElementById('yodel-playback-bar');
+    const yodelVoiceRegister = document.getElementById('yodel-voice-register');
+    const yodelFrequencyDisplay = document.getElementById('yodel-frequency-display');
+    const yodelMidiDisplay = document.getElementById('yodel-midi-display');
+    const yodelStepProgress = document.getElementById('yodel-step-progress');
+    const yodelConfigEditor = document.getElementById('yodel-config-editor');
+    const yodelPresetIdBadge = document.getElementById('yodel-preset-id-badge');
+    const yodelSaveStatus = document.getElementById('yodel-save-status');
+    const btnSaveYodelConfig = document.getElementById('btn-save-yodel-config');
+    const btnResetYodelEditor = document.getElementById('btn-reset-yodel-editor');
+
+    // Jodel State
+    let activeYodelPreset = null;
+    let activeYodelConfig = null;
+    let isYodelPlaying = false;
+
+    // Panorama Synth-Vorschau DOM & State (Classic vs. Warm Paper Test)
+    const btnSynthPreviewPlay = document.getElementById('btn-synth-preview-play');
+    const synthPreviewPlayIcon = document.getElementById('synth-preview-play-icon');
+    const synthPreviewPlayText = document.getElementById('synth-preview-play-text');
+    const synthPreviewStatus = document.getElementById('synth-preview-status');
+    const btnEngineClassic = document.getElementById('btn-engine-classic');
+    const btnEngineWarmPaper = document.getElementById('btn-engine-warm-paper');
+
+    let selectedSynthEngine = 'classic'; // 'classic' | 'warm_paper'
+    let isSynthPreviewPlaying = false;
+    let classicPreviewEndTimer = null;
+
     const modalDeleteConfirm = document.getElementById('modal-delete-confirm');
     const deleteRecordPreview = document.getElementById('delete-record-preview');
     const btnCancelDelete = document.getElementById('btn-cancel-delete');
@@ -656,6 +691,19 @@
     // Bereinigt die Leaflet-Karte und Bildressourcen beim Schließen des Modals
     function cleanupAdminMap() {
         currentPreviewRequestId++; // Laufende asynchrone Bild-/Array-Loads für vorherige Modals entwerten
+        if (isYodelPlaying) {
+            if (window.YodelEngine) window.YodelEngine.stop();
+            setYodelPlayingState(false);
+        }
+        if (window.ChimeraJodelSandbox) {
+            window.ChimeraJodelSandbox.stop();
+        }
+        if (isSynthPreviewPlaying) {
+            stopSynthPreviewAudio();
+        }
+        if (window.ChimeraJodelSandbox) {
+            window.ChimeraJodelSandbox.stop();
+        }
         if (adminLeafletMap) {
             try { adminLeafletMap.remove(); } catch(e) {}
             adminLeafletMap = null;
@@ -750,7 +798,8 @@
     const scanSkylineRelief = autoScanRelief;
 
     // Zeichnet das Bild und die gut sichtbare, dicke rote Horizontlinie auf den Vorschau-Canvas
-    function drawReliefOverlay(canvas, img, width, height, curveY) {
+    // Optional: playheadX für synchrone Jodel-Playhead-Animation (ohne das Relief-Array zu verändern)
+    function drawReliefOverlay(canvas, img, width, height, curveY, playheadX = null) {
         if (!canvas) return;
         if (canvas.width !== width || canvas.height !== height) {
             canvas.width = width;
@@ -792,6 +841,35 @@
         ctx.stroke();
         ctx.shadowColor = 'transparent';
         ctx.shadowBlur = 0;
+
+        // Vertikale Playhead-Linie & Leucht-Beacon zeichnen falls aktiv
+        if (typeof playheadX === 'number' && !isNaN(playheadX)) {
+            const px = Math.max(0, Math.min(width - 1, playheadX));
+            ctx.beginPath();
+            ctx.moveTo(px, 0);
+            ctx.lineTo(px, height);
+            ctx.strokeStyle = '#38bdf8'; // Leuchtendes Cyan/Hellblau für den Playhead
+            ctx.lineWidth = Math.max(2, Math.round(width / 750));
+            ctx.shadowColor = 'rgba(56, 189, 248, 0.85)';
+            ctx.shadowBlur = 8;
+            ctx.stroke();
+
+            // Schnittpunkt-Marker auf der Relief-Linie
+            const curveIndex = Math.min(Math.max(0, Math.round(px / stepX)), curveY.length - 1);
+            const py = curveY[curveIndex];
+            if (py !== undefined) {
+                ctx.beginPath();
+                ctx.arc(px, py, Math.max(4, Math.round(width / 400)), 0, Math.PI * 2);
+                ctx.fillStyle = '#38bdf8';
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+        }
     }
 
     // Ermittelt die Pixel-Koordinaten auf dem Canvas aus Mouse-/Touch-Events (mit Letterbox-Kompensation)
@@ -857,6 +935,19 @@
     // Interaktives Zeichnen: Start bei MouseDown oder TouchStart
     function handleReliefDrawStart(e) {
         if (!adminLoadedImage || !currentPanoramaCurveY || !adminScanCanvas) return;
+        if (isYodelPlaying) {
+            if (window.YodelEngine) window.YodelEngine.stop();
+            setYodelPlayingState(false);
+        }
+        if (window.ChimeraJodelSandbox) {
+            window.ChimeraJodelSandbox.stop();
+        }
+        if (isSynthPreviewPlaying) {
+            stopSynthPreviewAudio();
+        }
+        if (window.ChimeraJodelSandbox) {
+            window.ChimeraJodelSandbox.stop();
+        }
         if (e.type === 'touchstart' && e.cancelable) {
             e.preventDefault();
         }
@@ -1173,6 +1264,432 @@
         img.src = imageUrl;
     }
 
+    // ==============================================================
+    // JODEL-SYNTHESIZER (DATENBANKGESTEUERT)
+    // ==============================================================
+
+    async function loadYodelPreset() {
+        try {
+            const { data, error } = await supabase
+                .from('presets')
+                .select('*')
+                .eq('is_yodel', true)
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+            if (error) throw error;
+
+            if (data && data.length > 0) {
+                activeYodelPreset = data[0];
+                activeYodelConfig = activeYodelPreset.yodel_config;
+                populateYodelEditorUI();
+            } else {
+                if (yodelPresetName) yodelPresetName.innerText = "Kein Yodel-Preset in DB gefunden";
+            }
+        } catch (err) {
+            console.error("Fehler beim Laden des Yodel-Presets aus Supabase:", err);
+        }
+    }
+
+    function populateYodelEditorUI() {
+        if (!activeYodelPreset || !activeYodelConfig) return;
+        if (yodelPresetName) {
+            yodelPresetName.innerText = `DB: ${activeYodelPreset.preset_name || 'Alpine Jodel Master'}`;
+        }
+        if (yodelPresetIdBadge) {
+            const shortId = activeYodelPreset.id ? activeYodelPreset.id.substring(0, 8) + '...' : '';
+            yodelPresetIdBadge.innerText = `Preset-ID: ${shortId}`;
+        }
+        if (yodelConfigEditor) {
+            yodelConfigEditor.value = JSON.stringify(activeYodelConfig, null, 2);
+        }
+        if (yodelSaveStatus) {
+            yodelSaveStatus.innerText = '';
+        }
+    }
+
+    async function saveYodelConfigToDB() {
+        if (!activeYodelPreset || !yodelConfigEditor) return;
+
+        let parsedConfig;
+        try {
+            parsedConfig = JSON.parse(yodelConfigEditor.value);
+            if (!parsedConfig || typeof parsedConfig !== 'object') {
+                throw new Error("Muss ein gültiges JSON-Objekt sein.");
+            }
+            if (window.YodelEngine && typeof window.YodelEngine.validateConfig === 'function') {
+                window.YodelEngine.validateConfig(parsedConfig);
+            }
+        } catch (err) {
+            showToast(`Ungültiges JSON / Parameter: ${err.message}`, 'error');
+            if (yodelSaveStatus) {
+                yodelSaveStatus.innerText = `✕ Fehler: ${err.message}`;
+                yodelSaveStatus.className = 'text-[11px] font-mono text-red-400';
+            }
+            return;
+        }
+
+        if (btnSaveYodelConfig) {
+            btnSaveYodelConfig.disabled = true;
+            btnSaveYodelConfig.classList.add('opacity-50');
+        }
+        if (yodelSaveStatus) {
+            yodelSaveStatus.innerText = 'Speichere in Supabase...';
+            yodelSaveStatus.className = 'text-[11px] font-mono text-neutral-400';
+        }
+
+        try {
+            const { error } = await supabase
+                .from('presets')
+                .update({ yodel_config: parsedConfig })
+                .eq('id', activeYodelPreset.id);
+
+            if (error) throw error;
+
+            activeYodelConfig = parsedConfig;
+            activeYodelPreset.yodel_config = parsedConfig;
+
+            showToast('Jodel-Parameter erfolgreich in Supabase gespeichert!');
+            if (yodelSaveStatus) {
+                yodelSaveStatus.innerText = '✓ In Datenbank gespeichert!';
+                yodelSaveStatus.className = 'text-[11px] font-mono text-emerald-400';
+                setTimeout(() => { if (yodelSaveStatus) yodelSaveStatus.innerText = ''; }, 3000);
+            }
+        } catch (err) {
+            console.error("Fehler beim Speichern der Jodel-Config:", err);
+            showToast(`Speicherfehler: ${err.message}`, 'error');
+            if (yodelSaveStatus) {
+                yodelSaveStatus.innerText = `✕ ${err.message}`;
+                yodelSaveStatus.className = 'text-[11px] font-mono text-red-400';
+            }
+        } finally {
+            if (btnSaveYodelConfig) {
+                btnSaveYodelConfig.disabled = false;
+                btnSaveYodelConfig.classList.remove('opacity-50');
+            }
+        }
+    }
+
+    function setYodelPlayingState(playing) {
+        isYodelPlaying = playing;
+        if (playing) {
+            if (btnYodelPlay) {
+                btnYodelPlay.className = 'inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-500 text-white transition-colors shadow-sm active:scale-[0.98] cursor-pointer';
+            }
+            if (yodelPlayIcon) yodelPlayIcon.innerText = '⏹';
+            if (yodelPlayText) yodelPlayText.innerText = 'Stop';
+            if (yodelPlaybackBar) yodelPlaybackBar.classList.remove('hidden');
+            if (yodelStatusBadge) {
+                yodelStatusBadge.classList.remove('hidden');
+                yodelStatusBadge.className = 'text-[11px] font-mono px-2 py-0.5 rounded border bg-blue-950 text-blue-300 border-blue-800 animate-pulse';
+                yodelStatusBadge.innerText = '♫ Spielt Jodel...';
+            }
+        } else {
+            if (btnYodelPlay) {
+                btnYodelPlay.className = 'inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors shadow-sm active:scale-[0.98] cursor-pointer';
+            }
+            if (yodelPlayIcon) yodelPlayIcon.innerText = '▶';
+            if (yodelPlayText) yodelPlayText.innerText = 'Relief als Jodel abspielen';
+            if (yodelPlaybackBar) yodelPlaybackBar.classList.add('hidden');
+            if (yodelStatusBadge) {
+                yodelStatusBadge.classList.add('hidden');
+                yodelStatusBadge.innerText = 'Bereit';
+            }
+            if (adminScanCanvas && adminLoadedImage && currentPanoramaCurveY) {
+                drawReliefOverlay(adminScanCanvas, adminLoadedImage, currentPanoramaWidth, currentPanoramaHeight, currentPanoramaCurveY, null);
+            }
+        }
+    }
+
+    function handleYodelPlayStep(stepInfo) {
+        if (!stepInfo) {
+            setYodelPlayingState(false);
+            return;
+        }
+
+        const playheadX = (typeof stepInfo.originalIndex === 'number')
+            ? stepInfo.originalIndex
+            : Math.round(stepInfo.progress * (currentPanoramaWidth - 1));
+
+        if (adminScanCanvas && adminLoadedImage && currentPanoramaCurveY) {
+            drawReliefOverlay(adminScanCanvas, adminLoadedImage, currentPanoramaWidth, currentPanoramaHeight, currentPanoramaCurveY, playheadX);
+        }
+
+        if (yodelVoiceRegister) {
+            if (stepInfo.register === 'falsetto') {
+                yodelVoiceRegister.innerText = 'Falsett (Jodel-Sprung)';
+                yodelVoiceRegister.className = 'px-1.5 py-0.5 rounded text-[10px] bg-amber-950 text-amber-300 border border-amber-700 font-bold';
+            } else {
+                yodelVoiceRegister.innerText = 'Bruststimme';
+                yodelVoiceRegister.className = 'px-1.5 py-0.5 rounded text-[10px] bg-blue-950 text-blue-300 border border-blue-800/60 font-semibold';
+            }
+        }
+
+        if (yodelFrequencyDisplay) {
+            yodelFrequencyDisplay.innerText = `${stepInfo.frequencyHz} Hz`;
+        }
+        if (yodelMidiDisplay) {
+            yodelMidiDisplay.innerText = `MIDI ${stepInfo.midiNote}`;
+        }
+        if (yodelStepProgress) {
+            yodelStepProgress.innerText = `Schritt ${stepInfo.stepIndex + 1} / ${stepInfo.totalSteps}`;
+        }
+    }
+
+    async function handleToggleYodelPlayback() {
+        if (isYodelPlaying) {
+            if (window.YodelEngine) window.YodelEngine.stop();
+            setYodelPlayingState(false);
+            return;
+        }
+
+        if (isSynthPreviewPlaying) {
+            stopSynthPreviewAudio();
+        }
+        if (window.ChimeraJodelSandbox) {
+            window.ChimeraJodelSandbox.stop();
+        }
+
+        if (!currentPanoramaCurveY || currentPanoramaCurveY.length === 0) {
+            showToast('Keine Reliefdaten vorhanden. Bitte lade/scanne zuerst ein Bild.', 'warning');
+            return;
+        }
+
+        let configToUse = activeYodelConfig;
+        if (yodelConfigEditor && yodelConfigEditor.value.trim()) {
+            try {
+                const editorVal = JSON.parse(yodelConfigEditor.value);
+                if (editorVal && typeof editorVal === 'object') {
+                    configToUse = editorVal;
+                }
+            } catch (e) {
+                console.warn("Konnte Textarea-JSON nicht parsen, nutze aktive Config:", e);
+            }
+        }
+
+        if (!configToUse) {
+            showToast('Keine Jodel-Steuerparameter geladen. Bitte prüfe die Supabase Verbindung.', 'error');
+            return;
+        }
+
+        if (!window.YodelEngine) {
+            showToast('YodelEngine ist nicht geladen.', 'error');
+            return;
+        }
+
+        try {
+            setYodelPlayingState(true);
+            await window.YodelEngine.play(currentPanoramaCurveY, configToUse, handleYodelPlayStep);
+        } catch (err) {
+            console.error("YodelEngine Fehler:", err);
+            showToast(`Fehler bei Jodel-Wiedergabe: ${err.message}`, 'error');
+            setYodelPlayingState(false);
+        }
+    }
+
+    // ==============================================================
+    // PANORAMA SYNTH-VORSCHAU (CLASSIC VS. WARM PAPER TESTMODUS)
+    // ==============================================================
+
+    function getCurrentFormSynthSettings() {
+        const readField = (name, fallbackVal, parser = (v) => v) => {
+            const el = formEditRecord ? formEditRecord.querySelector(`[name="${name}"]`) : null;
+            const raw = el ? el.value : (editingRecord ? editingRecord[name] : '');
+            if (raw === '' || raw === null || raw === undefined) {
+                return fallbackVal;
+            }
+            const parsed = parser(raw);
+            return (typeof parsed === 'number' && isNaN(parsed)) ? fallbackVal : parsed;
+        };
+
+        const readNullableFloat = (name) => {
+            const el = formEditRecord ? formEditRecord.querySelector(`[name="${name}"]`) : null;
+            const raw = el ? el.value : (editingRecord ? editingRecord[name] : '');
+            if (raw === '' || raw === null || raw === undefined) return null;
+            const num = parseFloat(raw);
+            return isNaN(num) ? null : num;
+        };
+
+        return {
+            peaks: readField('peaks', PANORAMA_FIELD_DEFAULTS.peaks, v => parseInt(v, 10)),
+            valleys: readField('valleys', PANORAMA_FIELD_DEFAULTS.valleys, v => parseInt(v, 10)),
+            spacing: readField('spacing', PANORAMA_FIELD_DEFAULTS.spacing, v => parseInt(v, 10)),
+            sensibilitaet: readField('sensibility', PANORAMA_FIELD_DEFAULTS.sensibility, v => parseInt(v, 10)),
+            mode: readField('mode', PANORAMA_FIELD_DEFAULTS.mode, v => String(v).trim().toLowerCase()),
+            scale: readField('scale', PANORAMA_FIELD_DEFAULTS.scale, v => String(v).trim().toLowerCase()),
+            oktaven: readField('octaves', PANORAMA_FIELD_DEFAULTS.octaves, v => parseInt(v, 10)),
+            range: readField('range', PANORAMA_FIELD_DEFAULTS.range, v => parseInt(v, 10)),
+            wave: readField('wave', PANORAMA_FIELD_DEFAULTS.wave, v => String(v).trim().toLowerCase()),
+            volume: readField('volume', PANORAMA_FIELD_DEFAULTS.volume, v => parseFloat(v)),
+            duration: readField('duration', PANORAMA_FIELD_DEFAULTS.duration, v => parseFloat(v)),
+            attack: readNullableFloat('attack'),
+            release: readNullableFloat('release'),
+            echo: readField('echo', PANORAMA_FIELD_DEFAULTS.echo, v => parseFloat(v))
+        };
+    }
+
+    function setSelectedSynthEngine(engine) {
+        selectedSynthEngine = (engine === 'warm_paper') ? 'warm_paper' : 'classic';
+
+        if (btnEngineClassic && btnEngineWarmPaper) {
+            if (selectedSynthEngine === 'classic') {
+                btnEngineClassic.className = 'px-2.5 py-1 bg-white text-black font-bold transition-colors cursor-pointer';
+                btnEngineWarmPaper.className = 'px-2.5 py-1 bg-black text-neutral-400 hover:text-white border-l border-neutral-600 transition-colors cursor-pointer';
+            } else {
+                btnEngineClassic.className = 'px-2.5 py-1 bg-black text-neutral-400 hover:text-white transition-colors cursor-pointer';
+                btnEngineWarmPaper.className = 'px-2.5 py-1 bg-white text-black font-bold border-l border-neutral-600 transition-colors cursor-pointer';
+            }
+        }
+
+        if (isSynthPreviewPlaying) {
+            stopSynthPreviewAudio();
+        }
+        if (window.ChimeraJodelSandbox) {
+            window.ChimeraJodelSandbox.stop();
+        }
+    }
+
+    function setSynthPreviewPlayingState(playing) {
+        isSynthPreviewPlaying = playing;
+        if (playing) {
+            if (btnSynthPreviewPlay) {
+                btnSynthPreviewPlay.className = 'inline-flex items-center gap-2 px-3 py-1.5 text-xs font-mono font-semibold bg-neutral-900 text-white border border-white hover:bg-neutral-800 transition-colors cursor-pointer active:scale-[0.98]';
+            }
+            if (synthPreviewPlayIcon) synthPreviewPlayIcon.innerText = '⏹';
+            if (synthPreviewPlayText) synthPreviewPlayText.innerText = 'Stop';
+            if (synthPreviewStatus) {
+                synthPreviewStatus.classList.remove('hidden');
+                synthPreviewStatus.innerText = (selectedSynthEngine === 'warm_paper')
+                    ? 'WARM PAPER [TEST]'
+                    : 'CLASSIC';
+            }
+        } else {
+            if (btnSynthPreviewPlay) {
+                btnSynthPreviewPlay.className = 'inline-flex items-center gap-2 px-3 py-1.5 text-xs font-mono font-semibold bg-white text-black border border-white hover:bg-neutral-200 transition-colors cursor-pointer active:scale-[0.98]';
+            }
+            if (synthPreviewPlayIcon) synthPreviewPlayIcon.innerText = '▶';
+            if (synthPreviewPlayText) synthPreviewPlayText.innerText = 'Synth-Vorschau';
+            if (synthPreviewStatus) {
+                synthPreviewStatus.classList.add('hidden');
+                synthPreviewStatus.innerText = 'Bereit';
+            }
+            if (adminScanCanvas && adminLoadedImage && currentPanoramaCurveY) {
+                drawReliefOverlay(adminScanCanvas, adminLoadedImage, currentPanoramaWidth, currentPanoramaHeight, currentPanoramaCurveY, null);
+            }
+        }
+    }
+
+    function stopSynthPreviewAudio() {
+        if (classicPreviewEndTimer) {
+            clearTimeout(classicPreviewEndTimer);
+            classicPreviewEndTimer = null;
+        }
+        if (window.WarmSynthEngine) {
+            window.WarmSynthEngine.stop();
+        }
+        if (typeof window.stopAllAudio === 'function') {
+            window.stopAllAudio();
+        }
+        setSynthPreviewPlayingState(false);
+    }
+
+    async function handleToggleSynthPreview() {
+        if (isSynthPreviewPlaying) {
+            stopSynthPreviewAudio();
+            return;
+        }
+
+        if (isYodelPlaying) {
+            if (window.YodelEngine) window.YodelEngine.stop();
+            setYodelPlayingState(false);
+        }
+        if (window.ChimeraJodelSandbox) {
+            window.ChimeraJodelSandbox.stop();
+        }
+
+        if (!currentPanoramaCurveY || currentPanoramaCurveY.length === 0) {
+            showToast('Keine Reliefdaten vorhanden. Bitte lade/scanne zuerst ein Bild.', 'warning');
+            return;
+        }
+
+        const daten = {
+            bild_breite: currentPanoramaWidth || currentPanoramaCurveY.length,
+            bild_hoehe: currentPanoramaHeight || 1200,
+            kurve_y: currentPanoramaCurveY
+        };
+        const settings = getCurrentFormSynthSettings();
+
+        if (selectedSynthEngine === 'warm_paper') {
+            if (!window.WarmSynthEngine) {
+                showToast('WarmSynthEngine ist nicht geladen.', 'error');
+                return;
+            }
+            try {
+                setSynthPreviewPlayingState(true);
+                const result = await window.WarmSynthEngine.play(daten, settings, {
+                    onStep: (info) => {
+                        if (!isSynthPreviewPlaying) return;
+                        if (synthPreviewStatus) {
+                            synthPreviewStatus.innerText = `WARM PAPER | ${info.frequencyHz} Hz (${info.stepIndex + 1}/${info.totalSteps})`;
+                        }
+                        if (adminScanCanvas && adminLoadedImage && currentPanoramaCurveY && info.punkt) {
+                            drawReliefOverlay(adminScanCanvas, adminLoadedImage, currentPanoramaWidth, currentPanoramaHeight, currentPanoramaCurveY, info.punkt.x);
+                        }
+                    },
+                    onComplete: (playedCount) => {
+                        setSynthPreviewPlayingState(false);
+                        if (playedCount === 0) {
+                            showToast('Mit diesen Einstellungen wurden keine Gipfel/Täler gefunden.', 'warning');
+                        }
+                    }
+                });
+                if (!result || result.playedCount === 0) {
+                    setSynthPreviewPlayingState(false);
+                }
+            } catch (err) {
+                console.error("WarmSynthEngine Fehler:", err);
+                showToast(`Warm Paper Synth Fehler: ${err.message}`, 'error');
+                setSynthPreviewPlayingState(false);
+            }
+        } else {
+            // Classic Engine (verwendet unverändert audio.js)
+            if (typeof window.playMultiPanorama !== 'function') {
+                showToast('Classic Audio-Engine (audio.js) ist nicht geladen.', 'error');
+                return;
+            }
+            try {
+                window.panoDataCache = window.panoDataCache || {};
+                window.activeSynth = window.activeSynth || {};
+                const previewId = '__admin_preview__';
+                const classicAttack = (settings.attack !== null) ? settings.attack : PANORAMA_FIELD_DEFAULTS.attack;
+                const classicRelease = (settings.release !== null) ? settings.release : PANORAMA_FIELD_DEFAULTS.release;
+
+                window.panoDataCache[previewId] = daten;
+                window.activeSynth[previewId] = {
+                    ...settings,
+                    attack: classicAttack,
+                    release: classicRelease
+                };
+
+                setSynthPreviewPlayingState(true);
+                await window.playMultiPanorama(previewId, null, false);
+
+                const totalClassicMs = Math.max(
+                    800,
+                    ((settings.mode === 'chord' ? 0 : settings.duration) + classicAttack + settings.duration + classicRelease + 0.4) * 1000
+                );
+                classicPreviewEndTimer = setTimeout(() => {
+                    classicPreviewEndTimer = null;
+                    setSynthPreviewPlayingState(false);
+                }, totalClassicMs);
+            } catch (err) {
+                console.error("Classic Synth Fehler:", err);
+                showToast(`Classic Audio-Fehler: ${err.message}`, 'error');
+                setSynthPreviewPlayingState(false);
+            }
+        }
+    }
+
     // Standardwerte für neue Panoramen
     const PANORAMA_FIELD_DEFAULTS = {
         peaks: 4,
@@ -1274,6 +1791,7 @@
         if (currentTable === 'panoramas') {
             if (sectionPanoramaBuilder) sectionPanoramaBuilder.classList.remove('hidden');
             initAdminMap(record ? record.lat : null, record ? record.lng : null);
+            loadYodelPreset();
 
             const existingImg = record ? (record.image_url || record.imageUrl || record.bildUrl) : null;
             const existingArray = record ? (record.array_url || record.arrayUrl) : null;
@@ -1770,6 +2288,66 @@
                     currentPanoramaCurveY = [...originalPanoramaCurveY];
                     drawReliefOverlay(adminScanCanvas, adminLoadedImage, currentPanoramaWidth, currentPanoramaHeight, currentPanoramaCurveY);
                     showToast('Horizont auf Ausgangszustand zurückgesetzt.');
+                }
+            });
+        }
+
+        // Jodel-Soundcheck Event Listener
+        if (btnYodelPlay) {
+            btnYodelPlay.addEventListener('click', handleToggleYodelPlayback);
+        }
+        if (btnSaveYodelConfig) {
+            btnSaveYodelConfig.addEventListener('click', saveYodelConfigToDB);
+        }
+        if (btnResetYodelEditor) {
+            btnResetYodelEditor.addEventListener('click', () => {
+                populateYodelEditorUI();
+                showToast('Parameter-Editor zurückgesetzt.');
+            });
+        }
+
+        // Panorama Synth-Vorschau & Engine-Toggle Event Listener
+        if (btnSynthPreviewPlay) {
+            btnSynthPreviewPlay.addEventListener('click', handleToggleSynthPreview);
+        }
+        if (btnEngineClassic) {
+            btnEngineClassic.addEventListener('click', () => setSelectedSynthEngine('classic'));
+        }
+        if (btnEngineWarmPaper) {
+            btnEngineWarmPaper.addEventListener('click', () => setSelectedSynthEngine('warm_paper'));
+        }
+
+        // Entkoppelte Chimera Jodel Sandbox mounten
+        if (window.ChimeraJodelSandbox) {
+            window.ChimeraJodelSandbox.mount('chimera-jodel-sandbox-root', {
+                getSkylineContext: () => ({
+                    daten: (currentPanoramaCurveY && currentPanoramaCurveY.length > 0)
+                        ? {
+                            bild_breite: currentPanoramaWidth || currentPanoramaCurveY.length,
+                            bild_hoehe: currentPanoramaHeight || 1200,
+                            kurve_y: currentPanoramaCurveY
+                        }
+                        : null,
+                    synthSettings: getCurrentFormSynthSettings()
+                }),
+                onPlayhead: (playheadX) => {
+                    if (adminScanCanvas && adminLoadedImage && currentPanoramaCurveY) {
+                        drawReliefOverlay(adminScanCanvas, adminLoadedImage, currentPanoramaWidth, currentPanoramaHeight, currentPanoramaCurveY, playheadX);
+                    }
+                },
+                onClearPlayhead: () => {
+                    if (adminScanCanvas && adminLoadedImage && currentPanoramaCurveY) {
+                        drawReliefOverlay(adminScanCanvas, adminLoadedImage, currentPanoramaWidth, currentPanoramaHeight, currentPanoramaCurveY, null);
+                    }
+                },
+                stopOtherEngines: () => {
+                    if (isYodelPlaying) {
+                        if (window.YodelEngine) window.YodelEngine.stop();
+                        setYodelPlayingState(false);
+                    }
+                    if (isSynthPreviewPlaying) {
+                        stopSynthPreviewAudio();
+                    }
                 }
             });
         }
