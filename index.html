@@ -61,9 +61,9 @@
 </div>
 
 <div id="vinyl-menu" style="display: none;">
-    <div style="display: flex; gap: 10px; align-items: stretch; width: 100%;">
+    <div class="vinyl-top-row">
         <!-- Speed Fader -->
-        <div class="fader-box te-tooltip-container" id="vinyl-speed-box" style="height: auto; border: 1px solid #333; background: #e5e0d8; min-width: 40px;">
+        <div class="fader-box te-tooltip-container" id="vinyl-speed-box" style="border: 1px solid #333; background: #e5e0d8;">
             <div class="te-tooltip" id="tt_vinyl_speed"><span class="tt-label">Speed: </span><span id="tt_val_vinyl_speed">33</span><span class="tt-unit"> RPM</span></div>
             <div class="fader-icon-container" style="color: #1a1a1a;">◷</div>
             <div class="fader-container" id="vinyl-fader-container">
@@ -72,7 +72,7 @@
         </div>
 
         <!-- Mutation Fader -->
-        <div class="fader-box te-tooltip-container" id="vinyl-mutation-box" style="height: auto; border: 1px solid #333; background: #e5e0d8; min-width: 40px;">
+        <div class="fader-box te-tooltip-container" id="vinyl-mutation-box" style="border: 1px solid #333; background: #e5e0d8;">
             <div class="te-tooltip" id="tt_vinyl_mutation"><span class="tt-label" id="lbl_mutation">Mutation: </span><span id="tt_val_vinyl_mutation">1.0</span><span class="tt-unit"></span></div>
             <div class="fader-icon-container" style="color: #1a1a1a;">⚄</div>
             <div class="fader-container" id="mutation-fader-container">
@@ -80,59 +80,56 @@
             </div>
         </div>
 
-        <div id="vinyl-canvas-container" style="flex: 1; position: relative;">
+        <div id="vinyl-canvas-container">
             <canvas id="vinyl-canvas" width="200" height="200" style="position: absolute; top:0; left:0; width:100%; height:100%;"></canvas>
             <canvas id="vinyl-overlay-canvas" width="200" height="200" style="position: absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;"></canvas>
-            <canvas id="vinyl-anatomy-canvas" width="200" height="200" style="display:none; position: absolute; top:0; left:0; width:100%; height:100%; z-index:5; background:#09090b; border-radius:4px; pointer-events:none;"></canvas>
+            <canvas id="vinyl-anatomy-canvas" width="200" height="200" style="display:none; position: absolute; top:0; left:0; width:100%; height:100%; z-index:5; background:#09090b; border-radius:50%; pointer-events:none;"></canvas>
         </div>
-    </div>
 
-    <div style="display: flex; width: 100%; flex-direction: row; gap: 0; border: 1px solid #1a1a1a; margin-top: 5px;">
-        <select id="sel_vinyl_octaves" onchange="if(window.vinylAiSequence) { window.vinylAiSequence = null; let btn = document.getElementById('btn-ai-compose'); if(btn){ btn.style.background=''; btn.style.color=''; } }" style="flex: 1; border: none; border-right: 1px solid #333; background: #111; color: #00BFFF; padding: 4px; outline: none; cursor: pointer; text-transform: uppercase; font-size: 11px;">
-            <option value="1">1 Oktave</option>
-            <option value="2">2 Oktaven</option>
-            <option value="3">3 Oktaven</option>
-            <option value="4" selected>4 Oktaven</option>
-            <option value="5">5 Oktaven</option>
-            <option value="6">6 Oktaven</option>
-        </select>
-        <select id="sel_vinyl_scale" onchange="if(window.vinylAiSequence) { window.vinylAiSequence = null; let btn = document.getElementById('btn-ai-compose'); if(btn){ btn.style.background=''; btn.style.color=''; } }" style="flex: 1; border: none; border-right: 1px solid #333; background: #111; color: #00BFFF; padding: 4px; outline: none; cursor: pointer; text-transform: uppercase; font-size: 11px;">
-            <option value="major">Dur</option>
-            <option value="minor">Moll</option>
-            <option value="lydian">Lydisch</option>
-            <option value="dorian">Dorisch</option>
-            <option value="pentatonic" selected>Pentatonik</option>
-            <option value="hirajoshi">Hirajōshi</option>
-        </select>
-        <select id="sel_vinyl_wave" onchange="if(window.vinylAiSequence) { window.vinylAiSequence = null; let btn = document.getElementById('btn-ai-compose'); if(btn){ btn.style.background=''; btn.style.color=''; } }" style="flex: 1; border: none; background: #111; color: #00BFFF; padding: 4px; outline: none; cursor: pointer; text-transform: uppercase; font-size: 11px;">
-            <option value="sine">Sinus</option>
-            <option value="triangle">Dreieck</option>
-            <option value="sawtooth">Sägezahn</option>
-            <option value="square">Rechteck</option>
-            <option value="organ">Orgel</option>
-            <option value="darkpad">Dark Pad</option>
-            <option value="chime" selected>Glöckchen</option>
-            <option value="detuned_saw">Verstimmte Säge</option>
-            <option value="noise">Rauschen</option>
-            <option value="warm_paper">Warm Paper</option>
-        </select>
-    </div>
-
-    <div style="display: flex; width: 100%; gap: 8px; border: 1px solid #1a1a1a; margin-top: 5px; background: #111; padding: 4px 6px; box-sizing: border-box; align-items: center; font-size: 10px; color: #aaa; text-transform: uppercase;">
-        <label style="flex: 1; display: flex; flex-direction: column; gap: 2px;">
-            <span>Stimme (M↔F): <strong id="lbl_vinyl_voice_val" style="color:#00BFFF;">25%</strong></span>
-            <input type="range" id="range_vinyl_voice" min="0" max="1" step="0.05" value="0.25" style="width:100%; accent-color:#FF6600; cursor:pointer;" oninput="document.getElementById('lbl_vinyl_voice_val').innerText = Math.round(this.value*100)+'%'; if(window.ChimeraJodelBridge){ window.ChimeraJodelBridge.setVoiceCharacter(parseFloat(this.value)); }">
-        </label>
-        <label style="flex: 1; display: flex; flex-direction: column; gap: 2px;">
-            <span>Jodelsprung: <strong id="lbl_vinyl_jump_val" style="color:#00BFFF;">70%</strong></span>
-            <input type="range" id="range_vinyl_yodel_jump" min="0" max="1" step="0.05" value="0.70" style="width:100%; accent-color:#FF6600; cursor:pointer;" oninput="document.getElementById('lbl_vinyl_jump_val').innerText = Math.round(this.value*100)+'%'; if(window.vinylAiSequence) { window.vinylAiSequence = null; let btn = document.getElementById('btn-ai-compose'); if(btn){ btn.style.background=''; btn.style.color=''; } }">
-        </label>
+        <div class="vinyl-side-params">
+            <select id="sel_vinyl_octaves" onchange="if(window.vinylAiSequence) { window.vinylAiSequence = null; let btn = document.getElementById('btn-ai-compose'); if(btn){ btn.style.background=''; btn.style.color=''; } }" style="width:100%; border: 1px solid #333; background: #111; color: #00BFFF; padding: 4px; outline: none; cursor: pointer; text-transform: uppercase; font-size: 11px;">
+                <option value="1">1 Oktave</option>
+                <option value="2">2 Oktaven</option>
+                <option value="3">3 Oktaven</option>
+                <option value="4" selected>4 Oktaven</option>
+                <option value="5">5 Oktaven</option>
+                <option value="6">6 Oktaven</option>
+            </select>
+            <select id="sel_vinyl_scale" onchange="if(window.vinylAiSequence) { window.vinylAiSequence = null; let btn = document.getElementById('btn-ai-compose'); if(btn){ btn.style.background=''; btn.style.color=''; } }" style="width:100%; border: 1px solid #333; background: #111; color: #00BFFF; padding: 4px; outline: none; cursor: pointer; text-transform: uppercase; font-size: 11px;">
+                <option value="major">Dur</option>
+                <option value="minor">Moll</option>
+                <option value="lydian">Lydisch</option>
+                <option value="dorian">Dorisch</option>
+                <option value="pentatonic" selected>Pentatonik</option>
+                <option value="hirajoshi">Hirajōshi</option>
+            </select>
+            <select id="sel_vinyl_wave" onchange="if(window.vinylAiSequence) { window.vinylAiSequence = null; let btn = document.getElementById('btn-ai-compose'); if(btn){ btn.style.background=''; btn.style.color=''; } }" style="width:100%; border: 1px solid #333; background: #111; color: #00BFFF; padding: 4px; outline: none; cursor: pointer; text-transform: uppercase; font-size: 11px;">
+                <option value="sine">Sinus</option>
+                <option value="triangle">Dreieck</option>
+                <option value="sawtooth">Sägezahn</option>
+                <option value="square">Rechteck</option>
+                <option value="organ">Orgel</option>
+                <option value="darkpad">Dark Pad</option>
+                <option value="chime" selected>Glöckchen</option>
+                <option value="detuned_saw">Verstimmte Säge</option>
+                <option value="noise">Rauschen</option>
+                <option value="warm_paper">Warm Paper</option>
+            </select>
+            <label style="display:flex; flex-direction:column; gap:2px; background:#111; border:1px solid #333; padding:3px 5px; font-size:10px; color:#aaa; text-transform:uppercase;">
+                <span>Stimme (M↔F): <strong id="lbl_vinyl_voice_val" style="color:#00BFFF;">25%</strong></span>
+                <input type="range" id="range_vinyl_voice" min="0" max="1" step="0.05" value="0.25" style="width:100%; accent-color:#FF6600; cursor:pointer;" oninput="document.getElementById('lbl_vinyl_voice_val').innerText = Math.round(this.value*100)+'%'; if(window.ChimeraJodelBridge){ window.ChimeraJodelBridge.setVoiceCharacter(parseFloat(this.value)); }">
+            </label>
+            <label style="display:flex; flex-direction:column; gap:2px; background:#111; border:1px solid #333; padding:3px 5px; font-size:10px; color:#aaa; text-transform:uppercase;">
+                <span>Jodelsprung: <strong id="lbl_vinyl_jump_val" style="color:#00BFFF;">70%</strong></span>
+                <input type="range" id="range_vinyl_yodel_jump" min="0" max="1" step="0.05" value="0.70" style="width:100%; accent-color:#FF6600; cursor:pointer;" oninput="document.getElementById('lbl_vinyl_jump_val').innerText = Math.round(this.value*100)+'%'; if(window.vinylAiSequence) { window.vinylAiSequence = null; let btn = document.getElementById('btn-ai-compose'); if(btn){ btn.style.background=''; btn.style.color=''; } }">
+            </label>
+        </div>
     </div>
 
     <div id="vinyl-controls">
         <button class="icon-btn" id="btn-vinyl-generate" onclick="generateVinyl()" title="Vinyl aus allen Panoramen generieren">⚄</button>
-        <button class="icon-btn" id="btn-ai-compose" onclick="aiComposeVinyl()" title="Schritt 1: Jodel-Sequenz aus Vinyl berechnen" style="font-size: 10px; padding: 0 5px;">[ 1. JODEL GEN. ]</button>
-        <button class="icon-btn" id="btn-ai-play" onclick="playAiVinyl()" title="Schritt 2: Jodel-Stimme über volle Vinyl-Dauer abspielen" style="font-size: 10px; padding: 0 5px;">[ 2. JODEL PLAY ]</button>
+        <button class="icon-btn" id="btn-ai-compose" onclick="aiComposeVinyl()" title="Schritt 1: Jodel-Sequenz aus Vinyl berechnen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 19l6.5-11 4.5 6.5 3.5-4.5L22 19H2z"/><path d="M18 3v4M16 5h4"/></svg></button>
+        <button class="icon-btn" id="btn-ai-play" onclick="playAiVinyl()" title="Schritt 2: Jodel-Stimme über volle Vinyl-Dauer abspielen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9c1.5 0 2.5 3 4 3s2.5-6 4-6 2.5 9 4 9"/><polygon points="17 8 22 12 17 16 17 8" fill="currentColor"/></svg></button>
         <button class="icon-btn" id="btn-vinyl-play" onclick="playVinyl()" title="Regulären Vinyl-Synth abspielen">▶</button>
         <button class="icon-btn" id="btn-vinyl-load" onclick="loadVinyl()" title="Laden">⇪</button>
         <button class="icon-btn" id="btn-vinyl-save" onclick="saveVinyl()" title="Speichern">⚑</button>
@@ -185,18 +182,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <!-- Audio Engines & Chimera Vocal Synth + Anatomy -->
-<script src="warmSynthEngine.js?v=2"></script>
+<script src="warmSynthEngine.js?v=3"></script>
 <script src="experimental/chimera-jodel/dist/chimera-anatomy.js?v=2"></script>
-<script src="experimental/chimera-jodel/chimera-jodel-bridge.js?v=3"></script>
+<script src="experimental/chimera-jodel/chimera-jodel-bridge.js?v=4"></script>
 
 <!-- Logik v=3 -->
 <script src="config.js?v=7"></script>
 <script src="lang.js?v=11"></script>
-<script src="api.js?v=10"></script>
-<script src="audio.js?v=6"></script>
+<script src="api.js?v=11"></script>
+<script src="audio.js?v=7"></script>
 <script src="relief.js"></script>
 <script src="midi.js"></script>
-<script src="ui.js?v=15"></script>
+<script src="ui.js?v=16"></script>
 
 <!-- Admin Shortcut (Schloss unten rechts) -->
 <a href="admin.html" id="admin-lock-btn" title="Admin Dashboard" aria-label="Admin Dashboard">

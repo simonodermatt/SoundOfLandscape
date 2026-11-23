@@ -213,7 +213,7 @@ window.loadSelectedPreset = function(panoId) {
             if (loadedChimeraSeq) {
                 btnAi.style.background = "#FF6600";
                 btnAi.style.color = "#1a1a1a";
-                btnAi.innerHTML = "[ 1. JODEL GEN. ]";
+                if (window.JODEL_ICONS && window.JODEL_ICONS.gen) btnAi.innerHTML = window.JODEL_ICONS.gen;
             } else {
                 btnAi.style.background = "";
                 btnAi.style.color = "";
@@ -678,7 +678,7 @@ window.loadVinyl = function() {
                 if (loadedVinylAi) {
                     btnVinylAi.style.background = "#FF6600";
                     btnVinylAi.style.color = "#1a1a1a";
-                    btnVinylAi.innerHTML = "[ 1. JODEL GEN. ]";
+                    if (window.JODEL_ICONS && window.JODEL_ICONS.gen) btnVinylAi.innerHTML = window.JODEL_ICONS.gen;
                 } else {
                     btnVinylAi.style.background = "";
                     btnVinylAi.style.color = "";

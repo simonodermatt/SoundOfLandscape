@@ -780,6 +780,11 @@ window.stopAllAnatomyViews = function() {
     }
 };
 
+window.JODEL_ICONS = {
+    gen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 19l6.5-11 4.5 6.5 3.5-4.5L22 19H2z"/><path d="M18 3v4M16 5h4"/></svg>',
+    play: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9c1.5 0 2.5 3 4 3s2.5-6 4-6 2.5 9 4 9"/><polygon points="17 8 22 12 17 16 17 8" fill="currentColor"/></svg>'
+};
+
 window.getPopupHTML = function(pano) {
     const s = window.activeSynth && window.activeSynth[pano.id] ? window.activeSynth[pano.id] : { mode: 'chord', scale: 'lydian', waveform: 'sine' };
     const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
@@ -876,8 +881,8 @@ window.getPopupHTML = function(pano) {
             </div>
 
             <div class="action-btn-row">
-                <button class="icon-btn" id="btn-ai-compose-${pano.id}" onclick="window.aiComposePano('${pano.id}')" title="Schritt 1: Jodel-Stimme aus Kontur berechnen" style="font-size: 10px; padding: 0 5px;">[ 1. JODEL GEN. ]</button>
-                <button class="icon-btn" id="btn-ai-play-${pano.id}" onclick="window.playAiPanoAudio('${pano.id}')" title="Schritt 2: Jodel-Stimme abspielen" style="font-size: 10px; padding: 0 5px;">[ 2. JODEL PLAY ]</button>
+                <button class="icon-btn" id="btn-ai-compose-${pano.id}" onclick="window.aiComposePano('${pano.id}')" title="Schritt 1: Jodel-Stimme aus Kontur berechnen">${window.JODEL_ICONS.gen}</button>
+                <button class="icon-btn" id="btn-ai-play-${pano.id}" onclick="window.playAiPanoAudio('${pano.id}')" title="Schritt 2: Jodel-Stimme abspielen">${window.JODEL_ICONS.play}</button>
                 <button class="icon-btn" title="${t.hint_play_current || 'Play'}" onclick="window.playMultiPanorama('${pano.id}', null, false)">▶</button>
                 <button class="icon-btn" title="${t.hint_play_sel || 'Play Selection'}" onclick="window.playMultiPanorama('${pano.id}', null, true)">♫</button>
                 <button class="icon-btn" title="${t.hint_load_sel || 'Load Preset'}" onclick="window.loadSelectedPreset('${pano.id}')">⇪</button>
@@ -918,7 +923,7 @@ window.toggleVinylMode = function() {
 
         let uiMenu = document.getElementById('ui-menu');
         if (uiMenu) {
-            menu.style.width = uiMenu.offsetWidth + 'px';
+            menu.style.width = Math.min(window.innerWidth - 20, Math.max(440, uiMenu.offsetWidth)) + 'px';
         }
 
         // Setup ResizeObserver to adjust speed fader width to its container height
@@ -1057,7 +1062,7 @@ window.aiComposePano = async function(panoId) {
     let blinkState = false;
     let blinkInterval = setInterval(() => {
         blinkState = !blinkState;
-        btnAi.innerHTML = blinkState ? "[ * PROCESSING... ]" : "[ PROCESSING... ]";
+        btnAi.innerHTML = blinkState ? "⏳" : "•••";
         btnAi.style.background = blinkState ? "#FF6600" : "#1a1a1a";
         btnAi.style.color = blinkState ? "#1a1a1a" : "#FF6600";
     }, 300);
@@ -1082,7 +1087,7 @@ window.aiComposePano = async function(panoId) {
         // Success state
         btnAi.style.background = "#FF6600";
         btnAi.style.color = "#1a1a1a";
-        btnAi.innerHTML = "[ 1. JODEL GEN. ]";
+        btnAi.innerHTML = window.JODEL_ICONS.gen;
         btnAi.disabled = false;
     } catch (e) {
         console.error("Fehler bei Chimera AI Generierung:", e);
@@ -1124,7 +1129,7 @@ window.aiComposeVinyl = async function() {
     let blinkState = false;
     let blinkInterval = setInterval(() => {
         blinkState = !blinkState;
-        btnAi.innerHTML = blinkState ? "[ * PROCESSING... ]" : "[ PROCESSING... ]";
+        btnAi.innerHTML = blinkState ? "⏳" : "•••";
         btnAi.style.background = blinkState ? "#FF6600" : "#1a1a1a";
         btnAi.style.color = blinkState ? "#1a1a1a" : "#FF6600";
     }, 300);
@@ -1159,7 +1164,7 @@ window.aiComposeVinyl = async function() {
         if (window.vinylAiSequence) {
             btnAi.style.background = "#FF6600";
             btnAi.style.color = "#1a1a1a";
-            btnAi.innerHTML = "[ 1. JODEL GEN. ]";
+            btnAi.innerHTML = window.JODEL_ICONS.gen;
         } else {
             btnAi.innerHTML = originalText;
             btnAi.setAttribute('style', originalStyle);
@@ -1473,7 +1478,7 @@ window.playAiVinyl = async function() {
 
     if (!window.vinylAiSequence || window.vinylAiSequence.engine !== 'chimera') {
         window.vinylAiSequence = null;
-        alert(t.alert_gen_ai_seq_first || "Bitte klicke zuerst auf [ 1. JODEL GEN. ], um die Jodel-Sequenz für diese Vinyl-Platte zu berechnen!");
+        alert(t.alert_gen_ai_seq_first || "Bitte klicke zuerst auf das Berg-Symbol (Jodel generieren), um die Jodel-Sequenz für diese Vinyl-Platte zu berechnen!");
         return;
     }
 
@@ -1544,7 +1549,7 @@ window.playAiVinyl = async function() {
 
     window.startVinylDotAnimation();
     if (typeof window.startVinylAnatomyView === 'function') {
-        await window.startVinylAnatomyView();
+        void window.startVinylAnatomyView();
     }
 
     try {
