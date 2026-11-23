@@ -34,6 +34,7 @@
     const enc = new TextEncoder();
     const dec = new TextDecoder();
 
+    let wasmBytesCache = null;
     let wasmModule = null;
     let mainExports = null;
     let initWasmPromise = null;
@@ -49,12 +50,14 @@
     let slowLoad = 0;
     let rebuilding = false;
 
-    let currentVoiceMorph = 0.2; // 0 = männlich (tief), 1 = weiblich (hell)
+    let currentVoiceMorph = 0.25; // 0 = männlich (tief), 1 = weiblich (hell)
     let isPlayingState = false;
     let speakIdCounter = 0;
     let activeUiTimers = [];
     let telemetryListeners = new Set();
     let lastTelemetry = null;
+    let lastRawTelemetry = null;
+    let currentSyllableLabel = '';
 
     /**
      * Prüft, ob AudioWorklet im aktuellen Browser-Kontext verfügbar ist.
@@ -91,6 +94,7 @@
                 throw new Error("Chimera WASM darf keine externen Imports verlangen.");
             }
             const inst = await WebAssembly.instantiate(mod, {});
+            wasmBytesCache = bytes;
             wasmModule = mod;
             mainExports = inst.exports;
         })();
@@ -202,6 +206,7 @@
     }
 
     function handleWorkletTelemetry(msg) {
+        lastRawTelemetry = msg;
         const now = performance.now();
         const dt = Math.min(0.1, (now - loadAtMs) / 1000);
         loadAtMs = now;
@@ -288,6 +293,7 @@
     function stop() {
         clearUiTimers();
         isPlayingState = false;
+        currentSyllableLabel = '';
         if (workletNode) {
             try {
                 workletNode.port.postMessage({ type: 'stopSpeech' });
@@ -438,6 +444,7 @@
             const stepDelayMs = tAcc * 1000;
             const timer = setTimeout(() => {
                 if (!isPlayingState) return;
+                currentSyllableLabel = step.label || step.syl.text;
                 if (typeof callbacks.onStep === 'function') {
                     callbacks.onStep({
                         stepIndex: idx,
@@ -455,6 +462,7 @@
         const totalMs = (plan.end + 0.25) * 1000;
         const endTimer = setTimeout(() => {
             isPlayingState = false;
+            currentSyllableLabel = '';
             clearUiTimers();
             if (typeof callbacks.onComplete === 'function') {
                 callbacks.onComplete();
@@ -686,6 +694,7 @@
         sequence.forEach((step, idx) => {
             const timer = setTimeout(() => {
                 if (!isPlayingState) return;
+                currentSyllableLabel = `/${step.vowel}/ ${step.isFalsetto ? 'FALSETT' : 'BRUST'}`;
                 if (typeof callbacks.onStep === 'function') {
                     callbacks.onStep({
                         stepIndex: idx,
@@ -706,6 +715,7 @@
         const totalMs = (plan.end + 0.25) * 1000;
         const endTimer = setTimeout(() => {
             isPlayingState = false;
+            currentSyllableLabel = '';
             clearUiTimers();
             if (typeof callbacks.onComplete === 'function') {
                 callbacks.onComplete(sequence.length);
@@ -714,6 +724,197 @@
         activeUiTimers.push(endTimer);
 
         return { sequence, plan, durationSec: plan.end };
+    }
+
+    /**
+     * Einheitlicher Kontur-Adapter für:
+     * 1. Detailmaske ({ bild_breite, kurve_y: number[] })
+     * 2. Relief-Modus ({ is_relief: true, kurve_y_array: [{ y, rawY }] | JSON })
+     * 3. Vinyl-Super-Array (number[] über alle Panoramen)
+     */
+    function normalizeContour(source) {
+        if (!source) {
+            throw new Error("Keine Konturdaten zum Normalisieren übergeben.");
+        }
+
+        // Fall A: Direktes Zahlen-Array (z.B. window.vinylArray)
+        if (Array.isArray(source)) {
+            if (source.length === 0) {
+                throw new Error("Das übergebene Kontur-Array ist leer.");
+            }
+            // Sehr lange Vinyl-Arrays für musikalische Phrasierung sinnvoll komprimieren (~600-1000 Punkte)
+            const maxLen = 900;
+            let kurve;
+            if (source.length > maxLen) {
+                kurve = new Array(maxLen);
+                for (let i = 0; i < maxLen; i++) {
+                    const idx = Math.round(i * (source.length - 1) / (maxLen - 1));
+                    kurve[i] = Number(source[idx]) || 0;
+                }
+            } else {
+                kurve = source.map(v => Number(v) || 0);
+            }
+            return {
+                bild_breite: kurve.length,
+                bild_hoehe: 400,
+                kurve_y: kurve
+            };
+        }
+
+        // Fall B: Relief-Scan Objekt (is_relief: true mit kurve_y_array)
+        if (source.is_relief && source.kurve_y_array) {
+            const rawList = (typeof source.kurve_y_array === 'string')
+                ? JSON.parse(source.kurve_y_array)
+                : source.kurve_y_array;
+            const kurve = Array.isArray(rawList)
+                ? rawList.map(pt => (typeof pt === 'object' && pt !== null) ? Number(pt.y) : Number(pt))
+                : [];
+            if (kurve.length === 0) {
+                throw new Error("Relief-Profil enthält keine gültigen Höhendaten.");
+            }
+            return {
+                bild_breite: kurve.length,
+                bild_hoehe: 400,
+                kurve_y: kurve
+            };
+        }
+
+        // Fall C: Standard Panorama-Objekt ({ bild_breite, bild_hoehe, kurve_y })
+        if (Array.isArray(source.kurve_y) && source.kurve_y.length > 0) {
+            return {
+                bild_breite: source.bild_breite || source.kurve_y.length,
+                bild_hoehe: source.bild_hoehe || 1200,
+                kurve_y: source.kurve_y
+            };
+        }
+
+        throw new Error("Unbekanntes Konturdaten-Format.");
+    }
+
+    /**
+     * Erzeugt einen speicherbaren Chimera-AI-Plan (Detailmaske, Relief oder Vinyl)
+     * ohne bereits Audio abzuspielen. Lädt chimera.wasm bei Bedarf nach.
+     */
+    async function planFromContour(source, synthSettings = {}, options = {}) {
+        await ensureWasmCompiled();
+        const daten = normalizeContour(source);
+
+        // Falls Mutation (0.5..1.5) aus dem UI kommt, auf Jodel-Sprung-Intensität (0.25..0.95) mappen
+        let jumpInt = options.jumpIntensity;
+        if (jumpInt === undefined && synthSettings.mutation !== undefined) {
+            const m = Math.max(0.5, Math.min(1.5, Number(synthSettings.mutation) || 1.0));
+            jumpInt = Math.max(0.25, Math.min(0.95, (m - 0.5) * 0.7 + 0.25));
+        }
+        const voiceChar = options.voiceCharacter !== undefined ? options.voiceCharacter : currentVoiceMorph;
+
+        const { sequence, bpm, body } = buildSequenceFromSkyline(daten, synthSettings, {
+            voiceCharacter: voiceChar,
+            jumpIntensity: jumpInt !== undefined ? jumpInt : 0.7
+        });
+
+        const plan = callWasm('planSong', {
+            notes: sequence.map(s => ({ midi: s.midi, beats: s.beats, syl: s.syl })),
+            options: {
+                body,
+                bpm,
+                t0: 0,
+                vibrato: 36
+            }
+        });
+
+        return {
+            engine: 'chimera',
+            version: 2,
+            bpm,
+            body,
+            totalTime: plan.end,
+            notes: sequence.map(s => ({
+                midi: s.midi,
+                beats: s.beats,
+                syl: s.syl,
+                rampIn: s.rampIn,
+                point: s.point,
+                vowel: s.vowel,
+                isFalsetto: s.isFalsetto
+            }))
+        };
+    }
+
+    /**
+     * Spielt ein erzeugtes oder aus Supabase geladenes Chimera-AI-Preset ab.
+     * Unterstützt dynamisches Tempo-Scaling (z.B. für Vinyl RPM).
+     */
+    async function playPlan(chimeraSeq, options = {}, callbacks = {}) {
+        if (!chimeraSeq || chimeraSeq.engine !== 'chimera' || !Array.isArray(chimeraSeq.notes) || chimeraSeq.notes.length === 0) {
+            throw new Error("Ungültige oder veraltete AI-Sequenz (kein Chimera-Format).");
+        }
+
+        await init();
+        stop();
+
+        const speedMultiplier = Math.max(0.25, Math.min(3.0, Number(options.speedMultiplier) || 1.0));
+        const effectiveBpm = (chimeraSeq.bpm || 120) * speedMultiplier;
+        const body = options.body || chimeraSeq.body || { female: currentVoiceMorph, child: 0 };
+
+        setVoiceCharacter(body.female);
+
+        const plan = callWasm('planSong', {
+            notes: chimeraSeq.notes.map(n => ({ midi: n.midi, beats: n.beats, syl: n.syl })),
+            options: {
+                body,
+                bpm: effectiveBpm,
+                t0: 0,
+                vibrato: 36
+            }
+        });
+
+        applyPortamentoAndYodelDynamics(plan, chimeraSeq.notes.map(n => n.rampIn ?? 0.04));
+
+        isPlayingState = true;
+        const id = ++speakIdCounter;
+        workletNode.port.postMessage({
+            type: 'schedule',
+            gestures: plan.gestures,
+            segments: plan.segments,
+            end: plan.end,
+            id,
+            replace: true,
+            lead: 0.03
+        });
+
+        const beatSec = 60 / effectiveBpm;
+        let tAcc = 0.03;
+        chimeraSeq.notes.forEach((step, idx) => {
+            const timer = setTimeout(() => {
+                if (!isPlayingState) return;
+                currentSyllableLabel = `/${step.vowel || step.syl?.nucleus?.ipa || 'o'}/ ${step.isFalsetto ? 'FALSETT' : 'BRUST'}`;
+                if (typeof callbacks.onStep === 'function') {
+                    callbacks.onStep({
+                        stepIndex: idx,
+                        totalSteps: chimeraSeq.notes.length,
+                        point: step.point,
+                        midi: step.midi,
+                        vowel: step.vowel,
+                        isFalsetto: step.isFalsetto
+                    });
+                }
+            }, tAcc * 1000);
+            activeUiTimers.push(timer);
+            tAcc += step.beats * beatSec;
+        });
+
+        const totalMs = (plan.end + 0.25) * 1000;
+        const endTimer = setTimeout(() => {
+            isPlayingState = false;
+            currentSyllableLabel = '';
+            clearUiTimers();
+            if (typeof callbacks.onComplete === 'function') {
+                callbacks.onComplete(chimeraSeq.notes.length);
+            }
+        }, totalMs);
+        activeUiTimers.push(endTimer);
+
+        return { plan, durationSec: plan.end };
     }
 
     function onTelemetry(listener) {
@@ -739,8 +940,16 @@
         playTestJodel,
         playSkylineJodel,
         buildSequenceFromSkyline,
+        normalizeContour,
+        planFromContour,
+        playPlan,
         onTelemetry,
         getStatus,
+        getRawTelemetry: () => lastRawTelemetry,
+        getCurrentBody: () => ({ female: currentVoiceMorph, child: 0 }),
+        getCurrentSyllableLabel: () => currentSyllableLabel,
+        getWasmBuffer: () => wasmBytesCache,
+        getWasmUrl: () => WASM_URL,
         checkEnvironment
     };
 

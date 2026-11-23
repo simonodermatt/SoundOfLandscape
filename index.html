@@ -83,6 +83,7 @@
         <div id="vinyl-canvas-container" style="flex: 1; position: relative;">
             <canvas id="vinyl-canvas" width="200" height="200" style="position: absolute; top:0; left:0; width:100%; height:100%;"></canvas>
             <canvas id="vinyl-overlay-canvas" width="200" height="200" style="position: absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;"></canvas>
+            <canvas id="vinyl-anatomy-canvas" width="200" height="200" style="display:none; position: absolute; top:0; left:0; width:100%; height:100%; z-index:5; background:#09090b; border-radius:4px; pointer-events:none;"></canvas>
         </div>
     </div>
 
@@ -113,6 +114,7 @@
             <option value="chime" selected>Glöckchen</option>
             <option value="detuned_saw">Verstimmte Säge</option>
             <option value="noise">Rauschen</option>
+            <option value="warm_paper">Warm Paper</option>
         </select>
     </div>
 
@@ -168,17 +170,19 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
-<!-- Magenta Music für KI-Melodie-Generierung -->
-<script src="https://cdn.jsdelivr.net/npm/@magenta/music@1.23.1/dist/magentamusic.min.js"></script>
-
 <!-- Supabase JS Client v2 CDN für Realtime -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<!-- Audio Engines & Chimera Vocal Synth + Anatomy -->
+<script src="warmSynthEngine.js"></script>
+<script src="experimental/chimera-jodel/dist/chimera-anatomy.js"></script>
+<script src="experimental/chimera-jodel/chimera-jodel-bridge.js"></script>
 
 <!-- Logik v=3 -->
 <script src="config.js?v=7"></script>
 <script src="lang.js?v=11"></script>
 <script src="api.js?v=8"></script>
-<script src="audio.js?v=3"></script>
+<script src="audio.js?v=4"></script>
 <script src="relief.js"></script>
 <script src="midi.js"></script>
 <script src="ui.js?v=13"></script>

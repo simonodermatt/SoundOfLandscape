@@ -26,5 +26,8 @@ bun build "$UPSTREAM_DIR/src/worklet/processor.ts" \
     --target browser \
     --format esm
 
+echo "Bundling React-free Anatomy Renderer..."
+bun run "$SCRIPT_DIR/build-anatomy.ts"
+
 echo "Done:"
-ls -lh "$DIST_DIR/chimera.wasm" "$DIST_DIR/chimera-worklet.js"
+ls -lh "$DIST_DIR/chimera.wasm" "$DIST_DIR/chimera-worklet.js" "$DIST_DIR/chimera-anatomy.js"
