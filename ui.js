@@ -622,33 +622,186 @@ window.openPanoModal = async function(pano) {
 };
 
 window.closePanoModal = function() {
+    if (typeof window.stopAllAudio === 'function') {
+        window.stopAllAudio();
+    }
     window.currentOpenPano = null;
     let existing = document.getElementById('active-pano-modal');
     if (existing) existing.remove();
 };
 
+window.panoAnatomyControllers = window.panoAnatomyControllers || {};
+window.vinylAnatomyController = window.vinylAnatomyController || null;
+
+window._getChimeraAnatomyState = function() {
+    if (!window.ChimeraJodelBridge) return null;
+    return {
+        telemetry: window.ChimeraJodelBridge.getRawTelemetry(),
+        body: window.ChimeraJodelBridge.getCurrentBody(),
+        sampleRate: window.ChimeraJodelBridge.getSampleRate(),
+        syllableLabel: window.ChimeraJodelBridge.getCurrentSyllableLabel()
+    };
+};
+
+window._getChimeraWasmSource = async function() {
+    if (!window.ChimeraJodelBridge) return null;
+    if (typeof window.ChimeraJodelBridge.getWasmBuffer === 'function') {
+        const buf = window.ChimeraJodelBridge.getWasmBuffer();
+        if (buf) return buf;
+    }
+    const url = typeof window.ChimeraJodelBridge.getWasmUrl === 'function'
+        ? window.ChimeraJodelBridge.getWasmUrl()
+        : 'experimental/chimera-jodel/dist/chimera.wasm';
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Failed to load chimera.wasm (' + res.status + ')');
+    return await res.arrayBuffer();
+};
+
+window.startPanoAnatomyView = async function(panoId) {
+    const canvas = document.getElementById(`anatomy-canvas-${panoId}`);
+    const btn = document.getElementById(`btn-vox-toggle-${panoId}`);
+    if (!canvas) return null;
+
+    canvas.style.display = 'block';
+    if (btn) {
+        btn.style.background = '#FF6600';
+        btn.style.color = '#1a1a1a';
+    }
+
+    if (window.panoAnatomyControllers[panoId]) {
+        window.panoAnatomyControllers[panoId].resize();
+        return window.panoAnatomyControllers[panoId];
+    }
+
+    if (!window.ChimeraAnatomy || typeof window.ChimeraAnatomy.mountAnatomyCanvas !== 'function') {
+        return null;
+    }
+
+    try {
+        const wasmSource = await window._getChimeraWasmSource();
+        if (!wasmSource) return null;
+        const ctrl = await window.ChimeraAnatomy.mountAnatomyCanvas(
+            canvas,
+            wasmSource,
+            window._getChimeraAnatomyState
+        );
+        window.panoAnatomyControllers[panoId] = ctrl;
+        return ctrl;
+    } catch (e) {
+        console.warn('Chimera anatomy mount failed:', e);
+        return null;
+    }
+};
+
+window.togglePanoAnatomyView = async function(panoId, forceShow) {
+    const canvas = document.getElementById(`anatomy-canvas-${panoId}`);
+    const btn = document.getElementById(`btn-vox-toggle-${panoId}`);
+    if (!canvas) return;
+
+    const currentlyVisible = canvas.style.display === 'block';
+    const shouldShow = (typeof forceShow === 'boolean') ? forceShow : !currentlyVisible;
+
+    if (shouldShow) {
+        await window.startPanoAnatomyView(panoId);
+    } else {
+        canvas.style.display = 'none';
+        if (btn) {
+            btn.style.background = '';
+            btn.style.color = '';
+        }
+        if (window.panoAnatomyControllers[panoId]) {
+            try { window.panoAnatomyControllers[panoId].destroy(); } catch (e) {}
+            delete window.panoAnatomyControllers[panoId];
+        }
+    }
+};
+
+window.startVinylAnatomyView = async function() {
+    const canvas = document.getElementById('vinyl-anatomy-canvas');
+    if (!canvas) return null;
+    canvas.style.display = 'block';
+
+    if (window.vinylAnatomyController) {
+        window.vinylAnatomyController.resize();
+        return window.vinylAnatomyController;
+    }
+
+    if (!window.ChimeraAnatomy || typeof window.ChimeraAnatomy.mountAnatomyCanvas !== 'function') {
+        return null;
+    }
+
+    try {
+        const wasmSource = await window._getChimeraWasmSource();
+        if (!wasmSource) return null;
+        const ctrl = await window.ChimeraAnatomy.mountAnatomyCanvas(
+            canvas,
+            wasmSource,
+            window._getChimeraAnatomyState
+        );
+        window.vinylAnatomyController = ctrl;
+        return ctrl;
+    } catch (e) {
+        console.warn('Vinyl Chimera anatomy mount failed:', e);
+        return null;
+    }
+};
+
+window.stopAllAnatomyViews = function() {
+    Object.keys(window.panoAnatomyControllers || {}).forEach(id => {
+        try { window.panoAnatomyControllers[id].destroy(); } catch (e) {}
+    });
+    window.panoAnatomyControllers = {};
+    document.querySelectorAll('[id^="anatomy-canvas-"]').forEach(c => {
+        c.style.display = 'none';
+    });
+    document.querySelectorAll('[id^="btn-vox-toggle-"]').forEach(btn => {
+        btn.style.background = '';
+        btn.style.color = '';
+    });
+
+    if (window.vinylAnatomyController) {
+        try { window.vinylAnatomyController.destroy(); } catch (e) {}
+        window.vinylAnatomyController = null;
+    }
+    const vinylAnatomy = document.getElementById('vinyl-anatomy-canvas');
+    if (vinylAnatomy) {
+        vinylAnatomy.style.display = 'none';
+    }
+};
+
 window.getPopupHTML = function(pano) {
     const s = window.activeSynth && window.activeSynth[pano.id] ? window.activeSynth[pano.id] : { mode: 'chord', scale: 'lydian', waveform: 'sine' };
     const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
-    
+    const isRelief = !!pano.is_relief;
+    const containerMediaHTML = (!isRelief && pano.bildUrl)
+        ? `<img id="popup-img-${pano.id}" src="${pano.bildUrl}" class="popup-img" />`
+        : `<div id="relief-display" style="width:100%; height:220px; background:#09090b;"></div>`;
+    const containerOnClick = (!isRelief && pano.bildUrl)
+        ? `onclick="window.openMapOverlay('${pano.id}', '${pano.bildUrl}')" title="${t.vergroessern || 'Vergrößern (Vollbild)'}"`
+        : '';
+
     return `
         <div class="popup-content">
             <div class="popup-header">
                 <h3 style="margin: 0 0 5px 0; font-size: 18px;">${pano.titel}</h3>
             </div>
-            <div style="font-size: 13px; color: #aaa; margin-bottom: 10px;">📅 ${pano.datum} | 📷 ${pano.kamera || 'Unbekannt'}</div>
+            <div style="font-size: 13px; color: #aaa; margin-bottom: 10px;">📅 ${pano.datum} | 📷 ${pano.kamera || (isRelief ? 'Relief' : 'Unbekannt')}</div>
             
-            <div id="bild-container-${pano.id}" class="bild-container" onclick="window.openMapOverlay('${pano.id}', '${pano.bildUrl}')" title="${t.vergroessern || 'Vergrößern (Vollbild)'}">
-                <img id="popup-img-${pano.id}" src="${pano.bildUrl}" class="popup-img" />
+            <div id="bild-container-${pano.id}" class="bild-container" ${containerOnClick}>
+                ${containerMediaHTML}
                 <canvas id="canvas_${pano.id}" class="punktOverlay"></canvas>
+                <canvas id="anatomy-canvas-${pano.id}" class="anatomyOverlay" style="display:none; position:absolute; inset:0; width:100%; height:100%; z-index:4; background:#09090b; pointer-events:none;"></canvas>
             </div>
 
-            <div class="view-toggle-container">
-                <label class="te-switch">
-                    <input type="checkbox" id="view-toggle-${pano.id}" onchange="window.toggleViewMode('${pano.id}', this.checked)">
-                    <span class="te-slider"></span>
-                </label>
-                <span class="te-switch-label" id="lbl-view-toggle-${pano.id}">${t.raster_view || 'Raster'}</span>
+            <div class="view-toggle-container" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <label class="te-switch">
+                        <input type="checkbox" id="view-toggle-${pano.id}" onchange="window.toggleViewMode('${pano.id}', this.checked)">
+                        <span class="te-slider"></span>
+                    </label>
+                    <span class="te-switch-label" id="lbl-view-toggle-${pano.id}">${t.raster_view || 'Raster'}</span>
+                </div>
+                <button type="button" class="icon-btn" id="btn-vox-toggle-${pano.id}" onclick="event.stopPropagation(); window.togglePanoAnatomyView('${pano.id}')" title="Chimera Vocal Tract" style="font-size:10px; padding:2px 6px; height:auto;">[ VOX ]</button>
             </div>
 
 
@@ -705,6 +858,7 @@ window.getPopupHTML = function(pano) {
                             <option value="chime" ${s.wave === 'chime' ? 'selected' : ''}>${t.wave_chime || "Glöckchen"}</option>
                             <option value="detuned_saw" ${s.wave === 'detuned_saw' ? 'selected' : ''}>${t.wave_detuned_saw || "Verstimmte Säge"}</option>
                             <option value="noise" ${s.wave === 'noise' ? 'selected' : ''}>${t.wave_noise || "Rauschen"}</option>
+                            <option value="warm_paper" ${s.wave === 'warm_paper' ? 'selected' : ''}>${t.wave_warm_paper || "Warm Paper"}</option>
                         </select>
                     </div>
                 </div>
@@ -854,6 +1008,7 @@ window.generateVinyl = async function() {
 window.panoAiSequences = {};
 
 window.aiComposePano = async function(panoId) {
+    const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
     let btnAi = document.getElementById(`btn-ai-compose-${panoId}`);
     if (!btnAi || window.isAiComposing) return;
 
@@ -864,19 +1019,12 @@ window.aiComposePano = async function(panoId) {
         return;
     }
 
-    const topGipfel = window.findePunkte(daten.kurve_y, s.peaks, s.spacing, s.sensibilitaet, 'gipfel');
-    const tiefeTaeler = window.findePunkte(daten.kurve_y, s.valleys, s.spacing, s.sensibilitaet, 'tal');
-    let allePunkte = topGipfel.concat(tiefeTaeler);
-
-    if (allePunkte.length === 0) {
-        alert(t.alert_no_points_adj || "Keine Punkte gefunden. Bitte Einstellungen anpassen.");
+    if (!window.ChimeraJodelBridge || typeof window.ChimeraJodelBridge.planFromContour !== 'function') {
+        alert("Chimera Vocal-Engine ist nicht geladen.");
         return;
     }
 
-    if (s.mode === 'lr') allePunkte.sort((a, b) => a.x - b.x);
-    else if (s.mode === 'rl') allePunkte.sort((a, b) => b.x - a.x);
-    else allePunkte.sort((a, b) => a.x - b.x); // Default sort by x
-
+    window.panoAiSequences = window.panoAiSequences || {};
     window.panoAiSequences[panoId] = null;
 
     window.isAiComposing = true;
@@ -890,143 +1038,23 @@ window.aiComposePano = async function(panoId) {
         btnAi.innerHTML = blinkState ? "[ * PROCESSING... ]" : "[ PROCESSING... ]";
         btnAi.style.background = blinkState ? "#FF6600" : "#1a1a1a";
         btnAi.style.color = blinkState ? "#1a1a1a" : "#FF6600";
-    }, 500);
+    }, 300);
 
     try {
-        if (!window.music_rnn) {
-            window.music_rnn = new mm.MusicRNN('https://storage.googleapis.com/magentadata/js/checkpoints/music_rnn/basic_rnn');
-            await window.music_rnn.initialize();
-        }
-
-        // Limit to 16 points for seed
-        let seedPoints = allePunkte.slice(0, 16);
-
-        // Find min/max height for mapping
-        let minVal = Math.min(...seedPoints.map(p => p.hoehe));
-        let maxVal = Math.max(...seedPoints.map(p => p.hoehe));
-        let range = maxVal - minVal;
-        if (range === 0) range = 1;
-
-        // Magenta strictly requires notes between 48 and 83. We generate safely in this range.
-        const SAFE_MIN = 48;
-        const SAFE_MAX = 83;
-
-        let seedSequence = {
-            notes: [],
-            totalTime: 0,
-            quantizationInfo: { stepsPerQuarter: 4 } // 1 step = 1/16th note
-        };
-
-        const stepDuration = 0.25;
-
-        // Create seed within SAFE range
-        for (let i = 0; i < seedPoints.length; i++) {
-            let normalized = (seedPoints[i].hoehe - minVal) / range;
-            let rawMidi = SAFE_MIN + (normalized * (SAFE_MAX - SAFE_MIN));
-            seedSequence.notes.push({
-                pitch: Math.round(rawMidi), // Unquantized for Magenta, but in safe range
-                quantizedStartStep: i,
-                quantizedEndStep: i + 1,
-                startTime: i * stepDuration,
-                endTime: (i + 1) * stepDuration,
-                velocity: 80
-            });
-        }
-        seedSequence.totalQuantizedSteps = seedPoints.length;
-
-        // Generate melody (64 steps) via Magenta
-        let mutationPano = s.mutation !== undefined ? s.mutation : 1.0;
-        let generatedSequence = await window.music_rnn.continueSequence(seedSequence, 64, mutationPano);
-
-        // Now map the final combined sequence back to the user's requested scale/octaves
-        let scaleName = s.scale || 'lydian';
-        let octaves = s.oktaven || 3;
-        let intervals = window.scales && window.scales[scaleName] ? window.scales[scaleName] : [2, 2, 1, 2, 2, 2, 1];
-
-        let allowedNotes = [];
-        let baseNote = 48;
-        let currentNote = baseNote;
-        allowedNotes.push(currentNote);
-        for (let o = 0; o < octaves; o++) {
-            for (let i = 0; i < intervals.length; i++) {
-                currentNote += intervals[i];
-                allowedNotes.push(currentNote);
-            }
-        }
-
-        function snapToScale(midiNote) {
-            if (allowedNotes.length === 0) return midiNote;
-            return allowedNotes.reduce((prev, curr) =>
-                Math.abs(curr - midiNote) < Math.abs(prev - midiNote) ? curr : prev
-            );
-        }
-
-        let mergedNotes = [];
-        let allRawNotes = seedSequence.notes.concat(generatedSequence.notes);
-
-        for (let i = 0; i < allRawNotes.length; i++) {
-            let note = allRawNotes[i];
-            let normalized = (note.pitch - SAFE_MIN) / (SAFE_MAX - SAFE_MIN);
-            normalized = Math.max(0, Math.min(1, normalized));
-            let targetRawMidi = allowedNotes[0] + (normalized * (allowedNotes[allowedNotes.length-1] - allowedNotes[0]));
-
-            let isGenerated = i >= seedSequence.notes.length;
-            let startStep = isGenerated ? seedSequence.totalQuantizedSteps + note.quantizedStartStep : note.quantizedStartStep;
-            let endStep = isGenerated ? seedSequence.totalQuantizedSteps + note.quantizedEndStep : note.quantizedEndStep;
-
-            let velocity = 80;
-            if (i > 0) {
-                let prevRawPoint = null;
-                let currRawPoint = null;
-
-                // If it's a seed point, we can compare original heights exactly.
-                if (!isGenerated) {
-                   prevRawPoint = seedPoints[i-1].hoehe;
-                   currRawPoint = seedPoints[i].hoehe;
-                } else {
-                   // If it's generated, we compare the generated pitches mapped back relative to the range.
-                   // A simple approximation is just using the pitch diff, which is what the reviewer suggests we do for all notes but we can be even more precise.
-                   // However, for generated notes, we don't have a "height", just a pitch. So we compare the pitches.
-                   let prevPitch = allRawNotes[i-1].pitch;
-                   let diff = Math.abs(note.pitch - prevPitch);
-                   let diffNorm = diff / (SAFE_MAX - SAFE_MIN);
-                   velocity = Math.min(127, Math.max(40, 40 + Math.round(diffNorm * 400)));
-                   if (diffNorm < 0.05) continue;
-                }
-
-                if (prevRawPoint !== null && currRawPoint !== null) {
-                    let diff = Math.abs(currRawPoint - prevRawPoint);
-                    let diffNorm = diff / (range || 1);
-                    velocity = Math.min(127, Math.max(40, 40 + Math.round(diffNorm * 400)));
-                    if (diffNorm < 0.05) continue;
-                }
-            }
-
-            mergedNotes.push({
-                pitch: snapToScale(Math.round(targetRawMidi)),
-                startTime: startStep * stepDuration,
-                endTime: endStep * stepDuration,
-                velocity: velocity
-            });
-        }
-
-        window.panoAiSequences[panoId] = {
-            notes: mergedNotes,
-            totalTime: (seedSequence.totalQuantizedSteps + 64) * stepDuration,
-            stepDuration: stepDuration
-        };
+        const plan = await window.ChimeraJodelBridge.planFromContour(daten, s, {
+            title: (window.currentOpenPano && window.currentOpenPano.titel) || `Panorama ${panoId}`
+        });
+        window.panoAiSequences[panoId] = plan;
 
         // Success state
         btnAi.style.background = "#FF6600";
         btnAi.style.color = "#1a1a1a";
         btnAi.innerHTML = "[ AI COMPOSE ]";
         btnAi.disabled = false;
-
     } catch (e) {
-        console.error("Fehler bei AI Generierung:", e);
-        alert(t.alert_ai_error || "Fehler bei der AI Generierung.");
+        console.error("Fehler bei Chimera AI Generierung:", e);
+        alert((t.alert_ai_error || "Fehler bei der AI Generierung: ") + e.message);
 
-        // Reset to original on error
         btnAi.innerHTML = originalText;
         btnAi.setAttribute('style', originalStyle);
         btnAi.disabled = false;
@@ -1050,143 +1078,38 @@ window.aiComposeVinyl = async function() {
         return;
     }
 
+    if (!window.ChimeraJodelBridge || typeof window.ChimeraJodelBridge.planFromContour !== 'function') {
+        alert("Chimera Vocal-Engine ist nicht geladen.");
+        return;
+    }
+
     window.isAiComposing = true;
     let originalText = btnAi.innerHTML;
     let originalStyle = btnAi.getAttribute('style') || '';
     btnAi.disabled = true;
 
-    // Blinking effect
     let blinkState = false;
     let blinkInterval = setInterval(() => {
         blinkState = !blinkState;
         btnAi.innerHTML = blinkState ? "[ * PROCESSING... ]" : "[ PROCESSING... ]";
         btnAi.style.background = blinkState ? "#FF6600" : "#1a1a1a";
         btnAi.style.color = blinkState ? "#1a1a1a" : "#FF6600";
-    }, 500);
+    }, 300);
 
     try {
-        if (!window.music_rnn) {
-            window.music_rnn = new mm.MusicRNN('https://storage.googleapis.com/magentadata/js/checkpoints/music_rnn/basic_rnn');
-            await window.music_rnn.initialize();
-        }
-
-        // 1. Get seed data (first 16 points)
-        let seedPoints = window.vinylArray.slice(0, 16);
-
-        // 2. Find min/max for mapping
-        let minVal = Math.min(...seedPoints);
-        let maxVal = Math.max(...seedPoints);
-        let range = maxVal - minVal;
-        if (range === 0) range = 1;
-
-        // Magenta strictly requires notes between 48 and 83. We generate safely in this range.
-        const SAFE_MIN = 48;
-        const SAFE_MAX = 83;
-
-        let seedSequence = {
-            notes: [],
-            totalTime: 0,
-            quantizationInfo: { stepsPerQuarter: 4 } // 1 step = 1/16th note
+        const synthSettings = {
+            mode: 'lr',
+            scale: document.getElementById('sel_vinyl_scale')?.value || 'pentatonic',
+            oktaven: parseInt(document.getElementById('sel_vinyl_octaves')?.value, 10) || 4,
+            mutation: parseFloat(document.getElementById('range_vinyl_mutation')?.value || 1.0)
         };
 
-        const stepDuration = 0.25; // 0.25 seconds per note
-
-        for (let i = 0; i < seedPoints.length; i++) {
-            let normalized = (seedPoints[i] - minVal) / range;
-            let rawMidi = SAFE_MIN + (normalized * (SAFE_MAX - SAFE_MIN));
-            seedSequence.notes.push({
-                pitch: Math.round(rawMidi),
-                quantizedStartStep: i,
-                quantizedEndStep: i + 1,
-                startTime: i * stepDuration,
-                endTime: (i + 1) * stepDuration,
-                velocity: 80
-            });
-        }
-        seedSequence.totalQuantizedSteps = seedPoints.length;
-
-        // 4. Generate melody (64 steps) via Magenta
-        let mutationVal = document.getElementById('range_vinyl_mutation') ? parseFloat(document.getElementById('range_vinyl_mutation').value) : 1.0;
-        let generatedSequence = await window.music_rnn.continueSequence(seedSequence, 64, mutationVal);
-
-        // Now map the final combined sequence back to the user's requested scale/octaves
-        let scaleName = document.getElementById('sel_vinyl_scale')?.value || 'pentatonic';
-        let octaves = parseInt(document.getElementById('sel_vinyl_octaves')?.value) || 4;
-        let intervals = window.scales && window.scales[scaleName] ? window.scales[scaleName] : [2, 2, 1, 2, 2, 2, 1];
-
-        let allowedNotes = [];
-        let baseNote = 48;
-        let currentNote = baseNote;
-
-        allowedNotes.push(currentNote);
-        for (let o = 0; o < octaves; o++) {
-            for (let i = 0; i < intervals.length; i++) {
-                currentNote += intervals[i];
-                allowedNotes.push(currentNote);
-            }
-        }
-
-        function snapToScale(midiNote) {
-            if (allowedNotes.length === 0) return midiNote;
-            return allowedNotes.reduce((prev, curr) =>
-                Math.abs(curr - midiNote) < Math.abs(prev - midiNote) ? curr : prev
-            );
-        }
-
-        let mergedNotes = [];
-        let allRawNotes = seedSequence.notes.concat(generatedSequence.notes);
-
-        for (let i = 0; i < allRawNotes.length; i++) {
-            let note = allRawNotes[i];
-            let normalized = (note.pitch - SAFE_MIN) / (SAFE_MAX - SAFE_MIN);
-            normalized = Math.max(0, Math.min(1, normalized));
-            let targetRawMidi = allowedNotes[0] + (normalized * (allowedNotes[allowedNotes.length-1] - allowedNotes[0]));
-
-            let isGenerated = i >= seedSequence.notes.length;
-            let startStep = isGenerated ? seedSequence.totalQuantizedSteps + note.quantizedStartStep : note.quantizedStartStep;
-            let endStep = isGenerated ? seedSequence.totalQuantizedSteps + note.quantizedEndStep : note.quantizedEndStep;
-
-            let velocity = 80;
-            if (i > 0) {
-                let prevRawPoint = null;
-                let currRawPoint = null;
-
-                if (!isGenerated) {
-                   prevRawPoint = seedPoints[i-1];
-                   currRawPoint = seedPoints[i];
-                } else {
-                   let prevPitch = allRawNotes[i-1].pitch;
-                   let diff = Math.abs(note.pitch - prevPitch);
-                   let diffNorm = diff / (SAFE_MAX - SAFE_MIN);
-                   velocity = Math.min(127, Math.max(40, 40 + Math.round(diffNorm * 400)));
-                   if (diffNorm < 0.02) continue;
-                }
-
-                if (prevRawPoint !== null && currRawPoint !== null) {
-                    let diff = Math.abs(currRawPoint - prevRawPoint);
-                    let diffNorm = diff / (range || 1);
-                    velocity = Math.min(127, Math.max(40, 40 + Math.round(diffNorm * 400)));
-                    if (diffNorm < 0.02) continue;
-                }
-            }
-
-            mergedNotes.push({
-                pitch: snapToScale(Math.round(targetRawMidi)),
-                startTime: startStep * stepDuration,
-                endTime: endStep * stepDuration,
-                velocity: velocity
-            });
-        }
-
-        window.vinylAiSequence = {
-            notes: mergedNotes,
-            totalTime: (seedSequence.totalQuantizedSteps + 64) * stepDuration,
-            stepDuration: stepDuration
-        };
-
+        window.vinylAiSequence = await window.ChimeraJodelBridge.planFromContour(window.vinylArray, synthSettings, {
+            title: 'Vinyl'
+        });
     } catch (e) {
-        console.error("Fehler bei AI Generierung:", e);
-        alert(t.alert_ai_error || "Fehler bei der AI Generierung.");
+        console.error("Fehler bei Chimera Vinyl AI Generierung:", e);
+        alert((t.alert_ai_error || "Fehler bei der AI Generierung: ") + e.message);
     } finally {
         clearInterval(blinkInterval);
         if (window.vinylAiSequence) {
@@ -1200,7 +1123,7 @@ window.aiComposeVinyl = async function() {
         btnAi.disabled = false;
         window.isAiComposing = false;
     }
-}
+};
 
 window.drawVinylCanvas = function() {
     let canvas = document.getElementById('vinyl-canvas');
@@ -1501,11 +1424,17 @@ window.stopVinylRotation = function() {
 
 
 
-window.playAiVinyl = function() {
+window.playAiVinyl = async function() {
     const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
 
-    if (!window.vinylAiSequence) {
+    if (!window.vinylAiSequence || window.vinylAiSequence.engine !== 'chimera') {
+        window.vinylAiSequence = null;
         alert(t.alert_gen_ai_seq_first || "Bitte generiere zuerst eine AI Sequenz!");
+        return;
+    }
+
+    if (!window.ChimeraJodelBridge || typeof window.ChimeraJodelBridge.playPlan !== 'function') {
+        alert("Chimera Vocal-Engine ist nicht geladen.");
         return;
     }
 
@@ -1517,6 +1446,7 @@ window.playAiVinyl = function() {
             window.stopAllAudio();
         }
         window.vinylIsPlaying = false;
+        window.isPlayingAiVinyl = false;
         if (btnAiPlay) {
             btnAiPlay.style.background = '';
             btnAiPlay.style.color = '';
@@ -1524,12 +1454,20 @@ window.playAiVinyl = function() {
         return;
     }
 
-    if (typeof window.playVinylAudio === 'function') {
-        window.playVinylAudio(window.vinylArray);
+    if (typeof window.stopAllAudio === 'function') {
+        window.stopAllAudio();
     }
 
+    let rpm = parseFloat(document.getElementById('range_vinyl_speed')?.value || 33);
+    let seqTotalTime = window.vinylAiSequence.totalTime || 12;
+
+    window.vinylAudioState = {
+        isAi: true,
+        getVinylDuration: (currentRpm) => seqTotalTime / ((currentRpm || 33) / 33.0)
+    };
+
     window.vinylIsPlaying = true;
-    window.isPlayingAiVinyl = true; // Flag for audio.js
+    window.isPlayingAiVinyl = true;
     if (btnAiPlay) {
         btnAiPlay.style.background = '#FF6600';
         btnAiPlay.style.color = '#1a1a1a';
@@ -1542,11 +1480,11 @@ window.playAiVinyl = function() {
         if (window.vinylRotationInterval) clearInterval(window.vinylRotationInterval);
         window.vinylRotationLastTime = performance.now();
         window.vinylRotationInterval = setInterval(() => {
-            let rpm = parseFloat(document.getElementById('range_vinyl_speed')?.value || 33);
+            let currentRpm = parseFloat(document.getElementById('range_vinyl_speed')?.value || 33);
             let now = performance.now();
             let delta = now - window.vinylRotationLastTime;
             window.vinylRotationLastTime = now;
-            let degPerMs = (rpm * 360) / 60000;
+            let degPerMs = (currentRpm * 360) / 60000;
             angle += degPerMs * delta;
             window.vinylRotationAngle = angle;
             canvas.style.transform = `rotate(${angle}deg)`;
@@ -1554,6 +1492,36 @@ window.playAiVinyl = function() {
     }
 
     window.startVinylDotAnimation();
+    if (typeof window.startVinylAnatomyView === 'function') {
+        await window.startVinylAnatomyView();
+    }
+
+    try {
+        await window.ChimeraJodelBridge.playPlan(window.vinylAiSequence, { speedMultiplier: rpm / 33.0 }, {
+            onComplete: () => {
+                if (typeof window.stopVinylRotation === 'function') {
+                    window.stopVinylRotation();
+                }
+                if (typeof window.stopAllAnatomyViews === 'function') {
+                    window.stopAllAnatomyViews();
+                }
+                window.vinylIsPlaying = false;
+                window.isPlayingAiVinyl = false;
+                if (btnAiPlay) {
+                    btnAiPlay.style.background = '';
+                    btnAiPlay.style.color = '';
+                }
+            }
+        });
+    } catch (e) {
+        console.error("Chimera Vinyl Playback Fehler:", e);
+        if (typeof window.stopAllAudio === 'function') {
+            window.stopAllAudio();
+        }
+        window.vinylIsPlaying = false;
+        window.isPlayingAiVinyl = false;
+        alert((t.alert_audio_error || "Audio-Fehler: ") + e.message);
+    }
 };
 
 window.playVinyl = function() {

@@ -194,30 +194,27 @@ window.loadSelectedPreset = function(panoId) {
             }
         });
 
-        // Load AI state
+        // Load AI state (Chimera only; legacy Magenta presets are ignored)
         let btnAi = document.getElementById(`btn-ai-compose-${panoId}`);
-        if (p.is_ai === true || p.is_ai === 'true' || p.is_ai === 'TRUE') {
-            if (p.ai_sound) {
-                try {
-                    window.panoAiSequences = window.panoAiSequences || {};
-                    window.panoAiSequences[panoId] = JSON.parse(p.ai_sound);
-                    if (btnAi) {
-                        btnAi.style.background = "#FF6600";
-                        btnAi.style.color = "#1a1a1a";
-                        btnAi.innerHTML = "[ AI COMPOSE ]";
-                    }
-                } catch(e) {
-                    console.error("Error parsing ai_sound", e);
-                    window.panoAiSequences[panoId] = null;
-                    if (btnAi) {
-                        btnAi.style.background = "";
-                        btnAi.style.color = "";
-                    }
+        window.panoAiSequences = window.panoAiSequences || {};
+        let loadedChimeraSeq = null;
+        if ((p.is_ai === true || p.is_ai === 'true' || p.is_ai === 'TRUE') && p.ai_sound) {
+            try {
+                const parsedAi = typeof p.ai_sound === 'string' ? JSON.parse(p.ai_sound) : p.ai_sound;
+                if (parsedAi && parsedAi.engine === 'chimera') {
+                    loadedChimeraSeq = parsedAi;
                 }
+            } catch(e) {
+                console.error("Error parsing ai_sound", e);
             }
-        } else {
-            if (window.panoAiSequences) window.panoAiSequences[panoId] = null;
-            if (btnAi) {
+        }
+        window.panoAiSequences[panoId] = loadedChimeraSeq;
+        if (btnAi) {
+            if (loadedChimeraSeq) {
+                btnAi.style.background = "#FF6600";
+                btnAi.style.color = "#1a1a1a";
+                btnAi.innerHTML = "[ AI COMPOSE ]";
+            } else {
                 btnAi.style.background = "";
                 btnAi.style.color = "";
             }
@@ -661,20 +658,31 @@ window.loadVinyl = function() {
 
             window.vinylArray = expandedArray;
 
-            // Check if is_ai and ai_sound are present at the top level
-            if (p.is_ai === true || p.is_ai === 'true' || p.is_ai === 'TRUE') {
-                if (p.ai_sound) {
-                    try {
-                        window.vinylAiSequence = JSON.parse(p.ai_sound);
-                    } catch(e) {
-                        console.error("Error parsing ai_sound", e);
-                        window.vinylAiSequence = aiSeq || null;
+            // Check if is_ai and ai_sound are present at the top level (Chimera only; legacy Magenta presets ignored)
+            let loadedVinylAi = null;
+            if ((p.is_ai === true || p.is_ai === 'true' || p.is_ai === 'TRUE') && p.ai_sound) {
+                try {
+                    const parsedVinylAi = typeof p.ai_sound === 'string' ? JSON.parse(p.ai_sound) : p.ai_sound;
+                    if (parsedVinylAi && parsedVinylAi.engine === 'chimera') {
+                        loadedVinylAi = parsedVinylAi;
                     }
-                } else {
-                    window.vinylAiSequence = aiSeq || null;
+                } catch(e) {
+                    console.error("Error parsing ai_sound", e);
                 }
-            } else {
-                window.vinylAiSequence = aiSeq || null;
+            } else if (aiSeq && aiSeq.engine === 'chimera') {
+                loadedVinylAi = aiSeq;
+            }
+            window.vinylAiSequence = loadedVinylAi;
+            let btnVinylAi = document.getElementById('btn-ai-compose');
+            if (btnVinylAi) {
+                if (loadedVinylAi) {
+                    btnVinylAi.style.background = "#FF6600";
+                    btnVinylAi.style.color = "#1a1a1a";
+                    btnVinylAi.innerHTML = "[ AI COMPOSE ]";
+                } else {
+                    btnVinylAi.style.background = "";
+                    btnVinylAi.style.color = "";
+                }
             }
 
             if (window.drawVinylCanvas) { window.drawVinylCanvas(); }
