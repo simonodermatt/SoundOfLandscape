@@ -362,7 +362,9 @@
             throw new Error("Keine gültigen Reliefdaten (kurve_y) vorhanden.");
         }
 
-        const ctx = getAudioContext();
+        const ctx = typeof root.unlockAudioSynchronously === 'function'
+            ? root.unlockAudioSynchronously(synthSettings ? synthSettings.volume : undefined)
+            : getAudioContext();
         if (ctx.state === 'suspended') {
             await ctx.resume();
         }
@@ -508,7 +510,9 @@
 
         if (!Array.isArray(vinylArray) || vinylArray.length === 0) return;
 
-        const ctx = getAudioContext();
+        const ctx = typeof root.unlockAudioSynchronously === 'function'
+            ? root.unlockAudioSynchronously(synthSettings ? synthSettings.volume : undefined)
+            : getAudioContext();
         if (ctx.state === 'suspended') {
             await ctx.resume();
         }

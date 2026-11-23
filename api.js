@@ -89,8 +89,12 @@ window.loadPresets = async function(panoId) {
             .filter(p => String(p.pano_id) === String(panoId)); 
         
         if (window.currentPresets.length === 0) {
+            if (typeof window.syncMasterGain === 'function') window.syncMasterGain();
             container.innerHTML = "<div style='font-size:11px; color:#888;'>Noch keine Presets vorhanden.</div>";
             return;
+        }
+        if (typeof window.syncMasterGain === 'function') {
+            window.syncMasterGain(window.activeSynth[panoId] ? window.activeSynth[panoId].volume : window.currentPresets[0].volume);
         }
 
         let html = "";
@@ -111,8 +115,10 @@ window.loadPresets = async function(panoId) {
                 }
             }
 
+            const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
+            const jodelBadgeText = t.jodel_badge_label || '⛰ Jodel';
             let aiBadge = (p.is_ai === true || p.is_ai === 'true' || p.is_ai === 'TRUE')
-                ? '<span style="font-size:10px; margin-left:4px; padding:1px 3px; border:1px solid #aaa; border-radius:3px; color:#aaa; filter: grayscale(100%);" title="AI Generated">🤖 AI</span>'
+                ? `<span style="font-size:10px; margin-left:4px; padding:1px 3px; border:1px solid #aaa; border-radius:3px; color:#aaa; filter: grayscale(100%);" title="${escapeHTML(jodelBadgeText)}">${escapeHTML(jodelBadgeText)}</span>`
                 : '';
 
             html += `
@@ -160,12 +166,15 @@ window.loadSelectedPreset = function(panoId) {
             oktaven: parseInt(p.oktaven !== undefined ? p.oktaven : p.octaves) || 3, 
             range: parseInt(p.range) || 100, 
             wave: p.wave ? String(p.wave).trim().toLowerCase() : 'darkpad',
-            volume: parseFloat(p.volume) || 0.2, 
+            volume: (Number.isFinite(parseFloat(p.volume)) && parseFloat(p.volume) > 0) ? parseFloat(p.volume) : 0.7, 
             duration: parseFloat(p.duration) || 5.0, 
             attack: parseFloat(p.attack) || 1.0, 
             release: parseFloat(p.release) || 2.0, 
             echo: parseFloat(p.echo) || 0.3
         };
+        if (typeof window.syncMasterGain === 'function') {
+            window.syncMasterGain(window.activeSynth[panoId].volume);
+        }
         
         let modeSel = document.getElementById(`sel_mode_${panoId}`);
         if (modeSel) { 
@@ -581,8 +590,10 @@ window.loadVinylPresets = async function() {
                 }
             }
 
+            const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
+            const jodelBadgeText = t.jodel_badge_label || '⛰ Jodel';
             let aiBadge = (p.is_ai === true || p.is_ai === 'true' || p.is_ai === 'TRUE')
-                ? '<span style="font-size:10px; margin-left:4px; padding:1px 3px; border:1px solid #aaa; border-radius:3px; color:#aaa; filter: grayscale(100%);" title="AI Generated">🤖 AI</span>'
+                ? `<span style="font-size:10px; margin-left:4px; padding:1px 3px; border:1px solid #aaa; border-radius:3px; color:#aaa; filter: grayscale(100%);" title="${escapeHTML(jodelBadgeText)}">${escapeHTML(jodelBadgeText)}</span>`
                 : '';
 
             html += `

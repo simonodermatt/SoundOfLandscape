@@ -103,9 +103,43 @@ window.findePunkte = function(kurve, maxAnzahl, minAbstand, sensibilitaet, typ) 
     return filtered;
 };
 
+window.getSafeMasterVolume = function(candidate) {
+    const tryValid = (v) => {
+        if (v === null || v === undefined || v === '') return NaN;
+        const n = Number(v);
+        return (Number.isFinite(n) && n > 0) ? n : NaN;
+    };
+    let vol = tryValid(candidate);
+    if (Number.isNaN(vol) && typeof document !== 'undefined' && window.currentOpenPano && window.currentOpenPano.id) {
+        const slider = document.getElementById(`range_volume_${window.currentOpenPano.id}`);
+        if (slider) vol = tryValid(slider.value);
+    }
+    if (Number.isNaN(vol) && window.activeSynth && window.currentOpenPano && window.activeSynth[window.currentOpenPano.id]) {
+        vol = tryValid(window.activeSynth[window.currentOpenPano.id].volume);
+    }
+    if (Number.isNaN(vol)) {
+        vol = tryValid(window._lastMasterVolume);
+    }
+    return Number.isNaN(vol) ? 0.7 : Math.min(1.0, Math.max(0.05, vol));
+};
+
+window.syncMasterGain = function(explicitVolume) {
+    const vol = window.getSafeMasterVolume(explicitVolume);
+    window._lastMasterVolume = vol;
+    if (window.audioCtx && window.masterGain) {
+        try {
+            window.masterGain.gain.cancelScheduledValues(window.audioCtx.currentTime);
+            window.masterGain.gain.setValueAtTime(vol, window.audioCtx.currentTime);
+            window.masterGain.gain.value = vol;
+        } catch (e) {}
+    }
+    return vol;
+};
+
 window.getAudioCtx = function() {
     if (!window.audioCtx) {
-        window.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        window.audioCtx = new AudioCtx();
 
         window.masterCompressor = window.audioCtx.createDynamicsCompressor();
         window.masterCompressor.threshold.setValueAtTime(-24, window.audioCtx.currentTime);
@@ -114,10 +148,35 @@ window.getAudioCtx = function() {
         window.masterCompressor.attack.setValueAtTime(0.003, window.audioCtx.currentTime);
         window.masterCompressor.release.setValueAtTime(0.25, window.audioCtx.currentTime);
 
-        window.masterCompressor.connect(window.audioCtx.destination);
+        window.masterGain = window.audioCtx.createGain();
+        const initVol = window.getSafeMasterVolume();
+        window.masterGain.gain.setValueAtTime(initVol, window.audioCtx.currentTime);
+        window.masterGain.gain.value = initVol;
+
+        window.masterCompressor.connect(window.masterGain);
+        window.masterGain.connect(window.audioCtx.destination);
     }
     return window.audioCtx;
 };
+
+window.unlockAudioSynchronously = function(explicitVolume) {
+    const actx = window.getAudioCtx();
+    if (actx && actx.state === 'suspended') {
+        void actx.resume();
+    }
+    window.syncMasterGain(explicitVolume);
+    return actx;
+};
+
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    const onFirstPointerDown = () => {
+        const actx = window.unlockAudioSynchronously();
+        if (actx && actx.state === 'suspended') {
+            void actx.resume();
+        }
+    };
+    document.addEventListener('pointerdown', onFirstPointerDown, { once: true, capture: true });
+}
 
 window.stopAllAudio = function() {
     if (window.activeOscillators) {
@@ -190,8 +249,9 @@ window.stopAllAudio = function() {
 };
 
 window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets) {
+    const actx = window.unlockAudioSynchronously();
+    console.log('[Audio] State:', actx.state, 'MasterGain:', window.masterGain ? window.masterGain.gain.value : null);
     window.stopAllAudio();
-    const actx = window.getAudioCtx();
     if (actx.state === 'suspended') await actx.resume();
     const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
 
@@ -266,6 +326,11 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
         const now = actx.currentTime;
         let playedCount = 0;
 
+        const activeMasterVol = window.syncMasterGain(
+            synthsToPlay[0] ? synthsToPlay[0].volume : undefined
+        );
+        const widthRef = playDaten.bild_breite || (playDaten.kurve_y ? playDaten.kurve_y.length : 1000) || 1000;
+
         for (const s of synthsToPlay) {
             if (!s) continue;
             if (s.wave === 'warm_paper' && window.WarmSynthEngine && typeof window.WarmSynthEngine.play === 'function') {
@@ -285,6 +350,12 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
             if (s.mode === 'lr') allePunkte.sort((a, b) => a.x - b.x);
             else if (s.mode === 'rl') allePunkte.sort((a, b) => b.x - a.x);
 
+            const parsedVoiceVol = parseFloat(s.volume);
+            const rawVoiceVol = (Number.isFinite(parsedVoiceVol) && parsedVoiceVol > 0) ? parsedVoiceVol : activeMasterVol;
+            const voiceGainPeak = synthsToPlay.length > 1
+                ? Math.min(1.0, Math.max(0.15, rawVoiceVol / activeMasterVol))
+                : 0.9;
+
             allePunkte.forEach((punkt, indexPos) => {
                 let yProzent = (punkt.hoehe / 100) * (s.range / 100);
                 const freqIndex = Math.floor(yProzent * (tonleiter.length - 1));
@@ -292,11 +363,11 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
                 
                 const masterGain = actx.createGain();
                 let panner = actx.createStereoPanner ? actx.createStereoPanner() : actx.createGain();
-                if(panner.pan) panner.pan.value = (punkt.x / daten.bild_breite) * 2 - 1;
+                if(panner.pan) panner.pan.value = Math.max(-1, Math.min(1, (punkt.x / widthRef) * 2 - 1));
 
                 let startDelay = 0;
-                if (s.mode === 'lr') startDelay = (punkt.x / daten.bild_breite) * s.duration;
-                else if (s.mode === 'rl') startDelay = (1 - (punkt.x / daten.bild_breite)) * s.duration;
+                if (s.mode === 'lr') startDelay = (punkt.x / widthRef) * s.duration;
+                else if (s.mode === 'rl') startDelay = (1 - (punkt.x / widthRef)) * s.duration;
                 const t0 = now + startDelay + 0.1; 
                 const t1 = t0 + Math.max(0.01, s.attack);
                 const t2 = t1 + Math.max(0.01, s.duration); 
@@ -304,8 +375,8 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
 
                 masterGain.gain.value = 0; 
                 masterGain.gain.setValueAtTime(0, t0); 
-                masterGain.gain.linearRampToValueAtTime(s.volume, t1); 
-                masterGain.gain.setValueAtTime(s.volume, t2); 
+                masterGain.gain.linearRampToValueAtTime(voiceGainPeak, t1); 
+                masterGain.gain.setValueAtTime(voiceGainPeak, t2); 
                 masterGain.gain.linearRampToValueAtTime(0.0001, t3); 
 
                 masterGain.connect(panner);
@@ -391,6 +462,11 @@ window.playAiPanoAudio = async function(panoId) {
         return;
     }
 
+    const actx = window.unlockAudioSynchronously(
+        window.activeSynth && window.activeSynth[panoId] ? window.activeSynth[panoId].volume : undefined
+    );
+    console.log('[Audio] State:', actx.state, 'MasterGain:', window.masterGain ? window.masterGain.gain.value : null);
+
     window.stopAllAudio();
     if (window.ChimeraJodelBridge && typeof window.ChimeraJodelBridge.unlockAudio === 'function') {
         window.ChimeraJodelBridge.unlockAudio();
@@ -432,10 +508,11 @@ window.playAiPanoAudio = async function(panoId) {
 };
 
 window.playVinylAudio = async function(vinylArray) {
+    const actx = window.unlockAudioSynchronously();
+    console.log('[Audio] State:', actx.state, 'MasterGain:', window.masterGain ? window.masterGain.gain.value : null);
     if (typeof window.stopAllAudio === 'function') {
         window.stopAllAudio();
     }
-    const actx = window.getAudioCtx();
 
     let synthSettings = {
         mode: 'lr',

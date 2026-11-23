@@ -116,11 +116,11 @@
                 <option value="warm_paper">Warm Paper</option>
             </select>
             <label style="display:flex; flex-direction:column; gap:2px; background:#111; border:1px solid #333; padding:3px 5px; font-size:10px; color:#aaa; text-transform:uppercase;">
-                <span>Stimme (M↔F): <strong id="lbl_vinyl_voice_val" style="color:#00BFFF;">25%</strong></span>
+                <span><span id="lbl_vinyl_voice_text">Stimme (M↔F)</span>: <strong id="lbl_vinyl_voice_val" style="color:#00BFFF;">25%</strong></span>
                 <input type="range" id="range_vinyl_voice" min="0" max="1" step="0.05" value="0.25" style="width:100%; accent-color:#FF6600; cursor:pointer;" oninput="document.getElementById('lbl_vinyl_voice_val').innerText = Math.round(this.value*100)+'%'; if(window.ChimeraJodelBridge){ window.ChimeraJodelBridge.setVoiceCharacter(parseFloat(this.value)); }">
             </label>
             <label style="display:flex; flex-direction:column; gap:2px; background:#111; border:1px solid #333; padding:3px 5px; font-size:10px; color:#aaa; text-transform:uppercase;">
-                <span>Jodelsprung: <strong id="lbl_vinyl_jump_val" style="color:#00BFFF;">70%</strong></span>
+                <span><span id="lbl_vinyl_jump_text">Jodelsprung</span>: <strong id="lbl_vinyl_jump_val" style="color:#00BFFF;">70%</strong></span>
                 <input type="range" id="range_vinyl_yodel_jump" min="0" max="1" step="0.05" value="0.70" style="width:100%; accent-color:#FF6600; cursor:pointer;" oninput="document.getElementById('lbl_vinyl_jump_val').innerText = Math.round(this.value*100)+'%'; if(window.vinylAiSequence) { window.vinylAiSequence = null; let btn = document.getElementById('btn-ai-compose'); if(btn){ btn.style.background=''; btn.style.color=''; } }">
             </label>
         </div>
@@ -182,18 +182,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <!-- Audio Engines & Chimera Vocal Synth + Anatomy -->
-<script src="warmSynthEngine.js?v=3"></script>
+<script src="warmSynthEngine.js?v=4"></script>
 <script src="experimental/chimera-jodel/dist/chimera-anatomy.js?v=2"></script>
-<script src="experimental/chimera-jodel/chimera-jodel-bridge.js?v=4"></script>
+<script src="experimental/chimera-jodel/chimera-jodel-bridge.js?v=5"></script>
 
 <!-- Logik v=3 -->
 <script src="config.js?v=7"></script>
 <script src="lang.js?v=11"></script>
-<script src="api.js?v=11"></script>
-<script src="audio.js?v=7"></script>
+<script src="api.js?v=12"></script>
+<script src="audio.js?v=8"></script>
 <script src="relief.js"></script>
 <script src="midi.js"></script>
-<script src="ui.js?v=16"></script>
+<script src="ui.js?v=17"></script>
 
 <!-- Admin Shortcut (Schloss unten rechts) -->
 <a href="admin.html" id="admin-lock-btn" title="Admin Dashboard" aria-label="Admin Dashboard">

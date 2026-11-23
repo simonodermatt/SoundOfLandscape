@@ -188,6 +188,14 @@ window.changeLanguage = function(lang) {
     if (btnLoad) btnLoad.title = text[lang].vinyl_load || "Load";
     let lblMutation = document.getElementById('lbl_mutation');
     if (lblMutation) lblMutation.innerText = (text[lang].vinyl_mutation || "Mutation") + ": ";
+    let btnJodelGenVinyl = document.getElementById('btn-ai-compose');
+    if (btnJodelGenVinyl) btnJodelGenVinyl.title = text[lang].hint_jodel_gen || "Schritt 1: Jodel-Sequenz berechnen";
+    let btnJodelPlayVinyl = document.getElementById('btn-ai-play');
+    if (btnJodelPlayVinyl) btnJodelPlayVinyl.title = text[lang].hint_jodel_play || "Schritt 2: Jodel-Stimme abspielen";
+    let lblVinylVoice = document.getElementById('lbl_vinyl_voice_text');
+    if (lblVinylVoice) lblVinylVoice.innerText = text[lang].jodel_voice_label || "Stimme (M↔F)";
+    let lblVinylJump = document.getElementById('lbl_vinyl_jump_text');
+    if (lblVinylJump) lblVinylJump.innerText = text[lang].jodel_jump_label || "Jodelsprung";
     // Update Vinyl Dropdowns
     let selVinylOctaves = document.getElementById('sel_vinyl_octaves');
     if (selVinylOctaves) {
@@ -548,6 +556,7 @@ window.buildKnob = function(panoId, key, label, min, max, step, isInt, displayMu
 
     let jsAction = `
         window.activeSynth['${panoId}'].${key} = ${isInt ? 'parseInt' : 'parseFloat'}(this.value);
+        ${key === 'volume' ? "if (typeof window.syncMasterGain === 'function') window.syncMasterGain(parseFloat(this.value));" : ''}
         let dVal = ${key === 'mutation' ? 'parseFloat(this.value).toFixed(1)' : (displayMult ? 'Math.round(this.value * '+displayMult+')' : 'this.value')};
         let tooltip = document.getElementById('tt_val_${key}_${panoId}'); if(tooltip) { tooltip.innerText = dVal; }
         if (window.panoAiSequences && window.panoAiSequences['${panoId}']) {
@@ -881,8 +890,8 @@ window.getPopupHTML = function(pano) {
             </div>
 
             <div class="action-btn-row">
-                <button class="icon-btn" id="btn-ai-compose-${pano.id}" onclick="window.aiComposePano('${pano.id}')" title="Schritt 1: Jodel-Stimme aus Kontur berechnen">${window.JODEL_ICONS.gen}</button>
-                <button class="icon-btn" id="btn-ai-play-${pano.id}" onclick="window.playAiPanoAudio('${pano.id}')" title="Schritt 2: Jodel-Stimme abspielen">${window.JODEL_ICONS.play}</button>
+                <button class="icon-btn" id="btn-ai-compose-${pano.id}" onclick="window.aiComposePano('${pano.id}')" title="${t.hint_jodel_gen || 'Schritt 1: Jodel-Stimme aus Kontur berechnen'}">${window.JODEL_ICONS.gen}</button>
+                <button class="icon-btn" id="btn-ai-play-${pano.id}" onclick="window.playAiPanoAudio('${pano.id}')" title="${t.hint_jodel_play || 'Schritt 2: Jodel-Stimme abspielen'}">${window.JODEL_ICONS.play}</button>
                 <button class="icon-btn" title="${t.hint_play_current || 'Play'}" onclick="window.playMultiPanorama('${pano.id}', null, false)">▶</button>
                 <button class="icon-btn" title="${t.hint_play_sel || 'Play Selection'}" onclick="window.playMultiPanorama('${pano.id}', null, true)">♫</button>
                 <button class="icon-btn" title="${t.hint_load_sel || 'Load Preset'}" onclick="window.loadSelectedPreset('${pano.id}')">⇪</button>
@@ -891,11 +900,11 @@ window.getPopupHTML = function(pano) {
 
             <div class="chimera-voice-bar" style="display:flex; gap:10px; align-items:center; margin:6px 0 8px 0; padding:6px 8px; background:#141414; border:1px solid #333; font-size:10px; text-transform:uppercase; color:#ccc;">
                 <label style="flex:1; display:flex; flex-direction:column; gap:2px;">
-                    <span>Stimme (M↔F): <strong id="lbl-voice-${pano.id}" style="color:#00BFFF;">${Math.round(((s.voiceCharacter !== undefined ? s.voiceCharacter : 0.25)) * 100)}%</strong></span>
+                    <span>${t.jodel_voice_label || 'Stimme (M↔F)'}: <strong id="lbl-voice-${pano.id}" style="color:#00BFFF;">${Math.round(((s.voiceCharacter !== undefined ? s.voiceCharacter : 0.25)) * 100)}%</strong></span>
                     <input type="range" id="range_voice_${pano.id}" min="0" max="1" step="0.05" value="${s.voiceCharacter !== undefined ? s.voiceCharacter : 0.25}" style="width:100%; accent-color:#FF6600; cursor:pointer;" oninput="window.activeSynth['${pano.id}'].voiceCharacter = parseFloat(this.value); document.getElementById('lbl-voice-${pano.id}').innerText = Math.round(this.value*100)+'%'; if(window.ChimeraJodelBridge){ window.ChimeraJodelBridge.setVoiceCharacter(parseFloat(this.value)); }">
                 </label>
                 <label style="flex:1; display:flex; flex-direction:column; gap:2px;">
-                    <span>Jodelsprung: <strong id="lbl-jump-${pano.id}" style="color:#00BFFF;">${Math.round(((s.jumpIntensity !== undefined ? s.jumpIntensity : 0.70)) * 100)}%</strong></span>
+                    <span>${t.jodel_jump_label || 'Jodelsprung'}: <strong id="lbl-jump-${pano.id}" style="color:#00BFFF;">${Math.round(((s.jumpIntensity !== undefined ? s.jumpIntensity : 0.70)) * 100)}%</strong></span>
                     <input type="range" id="range_jump_${pano.id}" min="0" max="1" step="0.05" value="${s.jumpIntensity !== undefined ? s.jumpIntensity : 0.70}" style="width:100%; accent-color:#FF6600; cursor:pointer;" oninput="window.activeSynth['${pano.id}'].jumpIntensity = parseFloat(this.value); document.getElementById('lbl-jump-${pano.id}').innerText = Math.round(this.value*100)+'%'; if(window.panoAiSequences && window.panoAiSequences['${pano.id}']) { window.panoAiSequences['${pano.id}'] = null; let btn = document.getElementById('btn-ai-compose-${pano.id}'); if(btn){ btn.style.background=''; btn.style.color=''; } }">
                 </label>
             </div>
@@ -1503,6 +1512,10 @@ window.playAiVinyl = async function() {
         return;
     }
 
+    if (typeof window.unlockAudioSynchronously === 'function') {
+        const actx = window.unlockAudioSynchronously();
+        console.log('[Audio] State:', actx.state, 'MasterGain:', window.masterGain ? window.masterGain.gain.value : null);
+    }
     if (typeof window.stopAllAudio === 'function') {
         window.stopAllAudio();
     }
