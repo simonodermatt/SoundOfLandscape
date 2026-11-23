@@ -387,6 +387,9 @@ window.playAiPanoAudio = async function(panoId) {
     }
 
     window.stopAllAudio();
+    if (window.ChimeraJodelBridge && typeof window.ChimeraJodelBridge.unlockAudio === 'function') {
+        window.ChimeraJodelBridge.unlockAudio();
+    }
 
     const btnPlay = document.getElementById(`btn-ai-play-${panoId}`);
     if (btnPlay) {

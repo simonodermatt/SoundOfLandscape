@@ -635,11 +635,22 @@ window.vinylAnatomyController = window.vinylAnatomyController || null;
 
 window._getChimeraAnatomyState = function() {
     if (!window.ChimeraJodelBridge) return null;
+    const status = typeof window.ChimeraJodelBridge.getStatus === 'function'
+        ? window.ChimeraJodelBridge.getStatus()
+        : null;
     return {
-        telemetry: window.ChimeraJodelBridge.getRawTelemetry(),
-        body: window.ChimeraJodelBridge.getCurrentBody(),
-        sampleRate: window.ChimeraJodelBridge.getSampleRate(),
-        syllableLabel: window.ChimeraJodelBridge.getCurrentSyllableLabel()
+        telemetry: typeof window.ChimeraJodelBridge.getRawTelemetry === 'function'
+            ? window.ChimeraJodelBridge.getRawTelemetry()
+            : null,
+        body: typeof window.ChimeraJodelBridge.getCurrentBody === 'function'
+            ? window.ChimeraJodelBridge.getCurrentBody()
+            : { female: 0.25, child: 0 },
+        sampleRate: typeof window.ChimeraJodelBridge.getSampleRate === 'function'
+            ? window.ChimeraJodelBridge.getSampleRate()
+            : ((status && status.sampleRate) || 48000),
+        syllableLabel: typeof window.ChimeraJodelBridge.getCurrentSyllableLabel === 'function'
+            ? window.ChimeraJodelBridge.getCurrentSyllableLabel()
+            : ''
     };
 };
 
@@ -1456,6 +1467,9 @@ window.playAiVinyl = async function() {
 
     if (typeof window.stopAllAudio === 'function') {
         window.stopAllAudio();
+    }
+    if (typeof window.ChimeraJodelBridge.unlockAudio === 'function') {
+        window.ChimeraJodelBridge.unlockAudio();
     }
 
     let rpm = parseFloat(document.getElementById('range_vinyl_speed')?.value || 33);

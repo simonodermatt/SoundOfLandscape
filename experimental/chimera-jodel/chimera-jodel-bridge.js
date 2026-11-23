@@ -43,6 +43,7 @@
     let workletNode = null;
     let masterGain = null;
     let workletReady = false;
+    let workletInitPromise = null;
     let currentSampleRate = FULL_RATE;
     let triedLighterRate = false;
     let builtAtMs = 0;
@@ -128,14 +129,52 @@
     }
 
     /**
+     * Erstellt/resumt den AudioContext synchron aus einer User-Interaktion heraus,
+     * damit strikte Browser (z.B. Edge auf Geschäfts-Notebooks) das Gesture-Token behalten.
+     */
+    function unlockAudio() {
+        try {
+            const AudioCtx = checkEnvironment();
+            if (!audioCtx || audioCtx.state === 'closed') {
+                audioCtx = new AudioCtx({ latencyHint: 'interactive' });
+                currentSampleRate = audioCtx.sampleRate || FULL_RATE;
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume().catch(() => {});
+            }
+        } catch (err) {
+            console.warn('[Chimera] Audio-Unlock Warnung:', err);
+        }
+    }
+
+    /**
      * Startet oder baut den AudioContext + AudioWorklet bei der gewünschten Rate auf.
      */
-    async function buildAudioWorklet(rate) {
+    async function buildAudioWorklet(requestedRate) {
         const AudioCtx = checkEnvironment();
-        await ensureWasmCompiled();
 
-        const ctx = new AudioCtx({ latencyHint: 'interactive', sampleRate: rate });
-        const resumePromise = ctx.resume().catch(() => {});
+        // Synchron ein bereits entsperrtes Device-Native-AudioCtx nutzen (oder anlegen)
+        let ctx = null;
+        const needNewCtx = Boolean(requestedRate && audioCtx && audioCtx.sampleRate !== requestedRate);
+        if (!audioCtx || audioCtx.state === 'closed' || needNewCtx) {
+            if (requestedRate) {
+                try {
+                    ctx = new AudioCtx({ latencyHint: 'interactive', sampleRate: requestedRate });
+                } catch (_) {
+                    ctx = new AudioCtx({ latencyHint: 'interactive' });
+                }
+            } else {
+                ctx = new AudioCtx({ latencyHint: 'interactive' });
+            }
+        } else {
+            ctx = audioCtx;
+        }
+
+        const resumePromise = ctx.state === 'suspended'
+            ? ctx.resume().catch(() => {})
+            : Promise.resolve();
+
+        await ensureWasmCompiled();
 
         let node;
         try {
@@ -147,14 +186,19 @@
                 processorOptions: { module: wasmModule }
             });
         } catch (err) {
-            try { await ctx.close(); } catch (_) {}
+            if (ctx !== audioCtx) {
+                try { await ctx.close(); } catch (_) {}
+            }
             throw err;
         }
 
-        const oldCtx = audioCtx;
+        const oldCtx = (ctx !== audioCtx) ? audioCtx : null;
         if (workletNode) {
             workletNode.port.onmessage = null;
             try { workletNode.disconnect(); } catch (_) {}
+        }
+        if (masterGain) {
+            try { masterGain.disconnect(); } catch (_) {}
         }
 
         const gain = ctx.createGain();
@@ -165,7 +209,7 @@
         audioCtx = ctx;
         workletNode = node;
         masterGain = gain;
-        currentSampleRate = ctx.sampleRate;
+        currentSampleRate = ctx.sampleRate || FULL_RATE;
         builtAtMs = loadAtMs = performance.now();
         slowLoad = 0;
         workletReady = false;
@@ -197,9 +241,13 @@
         });
 
         await Promise.race([
-            resumePromise.then(() => ctx.resume()),
+            resumePromise.then(() => ctx.state === 'suspended' ? ctx.resume() : undefined),
             new Promise(r => setTimeout(r, 1500))
         ]);
+
+        if (ctx.state !== 'running') {
+            console.warn('[Chimera Audio] AudioContext nicht aktiv:', ctx.state, 'sampleRate=', ctx.sampleRate);
+        }
 
         // Aktuellen Stimmcharakter sofort setzen
         setVoiceCharacter(currentVoiceMorph);
@@ -258,13 +306,19 @@
      * Initialisiert WASM + AudioWorklet (muss aus User-Interaktion aufgerufen werden).
      */
     async function init() {
+        unlockAudio();
         if (audioCtx && workletNode && workletReady) {
             if (audioCtx.state === 'suspended') {
                 await audioCtx.resume();
             }
             return getStatus();
         }
-        await buildAudioWorklet(FULL_RATE);
+        if (!workletInitPromise) {
+            workletInitPromise = buildAudioWorklet(null).finally(() => {
+                workletInitPromise = null;
+            });
+        }
+        await workletInitPromise;
         return getStatus();
     }
 
@@ -934,6 +988,7 @@
 
     root.ChimeraJodelBridge = {
         init,
+        unlockAudio,
         stop,
         dispose,
         setVoiceCharacter,
@@ -945,6 +1000,7 @@
         playPlan,
         onTelemetry,
         getStatus,
+        getSampleRate: () => currentSampleRate,
         getRawTelemetry: () => lastRawTelemetry,
         getCurrentBody: () => ({ female: currentVoiceMorph, child: 0 }),
         getCurrentSyllableLabel: () => currentSyllableLabel,
