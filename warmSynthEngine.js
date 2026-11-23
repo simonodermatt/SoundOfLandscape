@@ -215,6 +215,55 @@
     }
 
     /**
+     * Erzeugt den Master-Bus und den optionalen warmen Feedback-Delay-Zweig.
+     */
+    function createSessionBuses(ctx, echo, cfg) {
+        const now = ctx.currentTime;
+        const destination = root.masterCompressor || ctx.destination;
+        const masterBus = ctx.createGain();
+        masterBus.gain.setValueAtTime(1.0, now);
+        masterBus.connect(destination);
+
+        const sessionNodes = [masterBus];
+        let delaySend = null;
+
+        if (echo > 0 || cfg.delayFeedback > 0) {
+            const delayNode = ctx.createDelay(1.0);
+            delayNode.delayTime.setValueAtTime(cfg.delayTimeSec, now);
+
+            const delayFilter = ctx.createBiquadFilter();
+            delayFilter.type = 'lowpass';
+            delayFilter.frequency.setValueAtTime(cfg.delayLowpassHz, now);
+
+            const feedbackGain = ctx.createGain();
+            const feedbackAmt = Math.min(0.65, cfg.delayFeedback + echo * 0.15);
+            feedbackGain.gain.setValueAtTime(feedbackAmt, now);
+
+            delaySend = ctx.createGain();
+            delaySend.gain.setValueAtTime(Math.max(0.08, echo * 0.55), now);
+
+            const delayWetGain = ctx.createGain();
+            delayWetGain.gain.setValueAtTime(0.65, now);
+
+            delaySend.connect(delayNode);
+            delayNode.connect(delayFilter);
+            delayFilter.connect(feedbackGain);
+            feedbackGain.connect(delayNode);
+            delayFilter.connect(delayWetGain);
+            delayWetGain.connect(masterBus);
+
+            sessionNodes.push(delaySend, delayNode, delayFilter, feedbackGain, delayWetGain);
+        }
+
+        const bus = { ctx, masterBus, delaySend, nodes: sessionNodes };
+        currentSessionBuses = bus;
+        return bus;
+    }
+
+    let vinylSchedulerTimer = null;
+    let vinylSession = null;
+
+    /**
      * Bereinigt die globalen Delay-/Master-Busse einer Wiedergabe-Session.
      */
     function cleanupSessionBuses() {
@@ -236,6 +285,11 @@
      */
     function stop() {
         isPlayingState = false;
+        if (vinylSchedulerTimer) {
+            clearInterval(vinylSchedulerTimer);
+            vinylSchedulerTimer = null;
+        }
+        vinylSession = null;
 
         activeTimers.forEach(timerId => {
             clearTimeout(timerId);
@@ -300,7 +354,9 @@
      * @returns {Promise<{playedCount: number}>}
      */
     async function play(daten, synthSettings, callbacks = {}, overrideConfig = null) {
-        stop();
+        if (!callbacks.skipStop) {
+            stop();
+        }
 
         if (!daten || !Array.isArray(daten.kurve_y) || daten.kurve_y.length === 0) {
             throw new Error("Keine gültigen Reliefdaten (kurve_y) vorhanden.");
@@ -362,48 +418,10 @@
         const bildBreite = daten.bild_breite || daten.kurve_y.length || 2500;
         const now = ctx.currentTime;
 
-        // Master-Bus & subtiler Stereo-/Feedback-Delay-Zweig
-        const destination = root.masterCompressor || ctx.destination;
-        const masterBus = ctx.createGain();
-        masterBus.gain.setValueAtTime(1.0, now);
-        masterBus.connect(destination);
-
-        const sessionNodes = [masterBus];
-        let delaySend = null;
-
-        if (echo > 0 || cfg.delayFeedback > 0) {
-            const delayNode = ctx.createDelay(1.0);
-            delayNode.delayTime.setValueAtTime(cfg.delayTimeSec, now);
-
-            const delayFilter = ctx.createBiquadFilter();
-            delayFilter.type = 'lowpass';
-            delayFilter.frequency.setValueAtTime(cfg.delayLowpassHz, now);
-
-            const feedbackGain = ctx.createGain();
-            const feedbackAmt = Math.min(0.65, cfg.delayFeedback + echo * 0.15);
-            feedbackGain.gain.setValueAtTime(feedbackAmt, now);
-
-            delaySend = ctx.createGain();
-            delaySend.gain.setValueAtTime(Math.max(0.08, echo * 0.55), now);
-
-            const delayWetGain = ctx.createGain();
-            delayWetGain.gain.setValueAtTime(0.65, now);
-
-            delaySend.connect(delayNode);
-            delayNode.connect(delayFilter);
-            delayFilter.connect(feedbackGain);
-            feedbackGain.connect(delayNode);
-            delayFilter.connect(delayWetGain);
-            delayWetGain.connect(masterBus);
-
-            sessionNodes.push(delaySend, delayNode, delayFilter, feedbackGain, delayWetGain);
-        }
-
-        currentSessionBuses = {
-            ctx,
-            masterBus,
-            nodes: sessionNodes
-        };
+        const bus = (callbacks.skipStop && currentSessionBuses)
+            ? currentSessionBuses
+            : createSessionBuses(ctx, echo, cfg);
+        const { masterBus, delaySend } = bus;
 
         isPlayingState = true;
         let maxStopTime = now;
@@ -480,6 +498,146 @@
         return { playedCount: allePunkte.length };
     }
 
+    /**
+     * Spielt das Vinyl-Super-Array perkussiv im "Warm Paper"-Charakter ab.
+     * Nutzt einen Lookahead-Scheduler für minimalen Speicherverbrauch bei langen Loops
+     * und unterstützt dynamische RPM-Tempowechsel.
+     */
+    async function playVinyl(vinylArray, synthSettings = {}, options = {}) {
+        stop();
+
+        if (!Array.isArray(vinylArray) || vinylArray.length === 0) return;
+
+        const ctx = getAudioContext();
+        if (ctx.state === 'suspended') {
+            await ctx.resume();
+        }
+
+        const cfg = { ...CONFIG };
+        const stepSize = 30;
+        const smoothArray = [];
+        for (let i = 0; i < vinylArray.length; i += stepSize) {
+            smoothArray.push(vinylArray[i]);
+        }
+        if (smoothArray.length === 0) return;
+
+        const maxY = Math.max(...smoothArray);
+        const minY = Math.min(...smoothArray);
+        const span = (maxY - minY) || 1;
+        const points = smoothArray.map((y, idx) => ({
+            relativeHoehe: 1.0 - ((y - minY) / span),
+            x: idx
+        }));
+
+        const baseFreqs = generateScaleFrequencies(synthSettings.scale || 'pentatonic', synthSettings.oktaven || 4);
+        const rangePct = (parseInt(synthSettings.range, 10) || 100) / 100;
+        const volume = Math.max(0.02, Math.min(0.6, parseFloat(synthSettings.volume) || 0.2));
+        const echo = Math.max(0, Math.min(1.0, parseFloat(synthSettings.echo) || 0.35));
+
+        const rpm = parseFloat(options.rpm) || 33;
+        const getVinylDuration = typeof options.getVinylDuration === 'function'
+            ? options.getVinylDuration
+            : (r) => (20 / r) * 60;
+
+        const progress = Math.max(0, Math.min(0.99, Number(root.vinylProgress) || 0));
+        const startIdx = Math.floor(progress * points.length);
+
+        const { masterBus, delaySend } = createSessionBuses(ctx, echo, cfg);
+        isPlayingState = true;
+
+        const totalTime = getVinylDuration(rpm);
+        const stepIntervalSec = totalTime / Math.max(1, points.length);
+        // Für Vinyl sanftere Note-Density (~max 8-12 Anschläge/Sek.) durch Sub-Sampling falls extrem dicht
+        const stride = Math.max(1, Math.round(0.11 / Math.max(0.005, stepIntervalSec)));
+
+        vinylSession = {
+            ctx,
+            cfg,
+            masterBus,
+            delaySend,
+            points,
+            baseFreqs,
+            rangePct,
+            volume,
+            getVinylDuration,
+            rpm,
+            stride,
+            nextIndex: startIdx,
+            nextNoteTime: ctx.currentTime + 0.04,
+            noteCounter: 0,
+            onComplete: options.onComplete
+        };
+
+        const lookaheadSec = 0.25;
+
+        function tickVinylScheduler() {
+            if (!isPlayingState || !vinylSession) return;
+            const vs = vinylSession;
+            const now = vs.ctx.currentTime;
+            const totalDurationSec = vs.getVinylDuration(vs.rpm);
+            const dtPerIndex = totalDurationSec / Math.max(1, vs.points.length);
+            const noteStepSec = dtPerIndex * vs.stride;
+
+            while (vs.nextIndex < vs.points.length && vs.nextNoteTime < now + lookaheadSec) {
+                const p = vs.points[vs.nextIndex];
+                const idx = Math.max(
+                    0,
+                    Math.min(vs.baseFreqs.length - 1, Math.floor(p.relativeHoehe * vs.rangePct * (vs.baseFreqs.length - 1)))
+                );
+                const freq = vs.baseFreqs[idx] || 440;
+                const panValue = -0.5 + (vs.nextIndex / vs.points.length);
+
+                const swingSec = (vs.cfg.swingEnabled && (vs.noteCounter % 2 === 1))
+                    ? (vs.cfg.swingOffsetMs / 1000)
+                    : 0;
+
+                const t0 = Math.max(now + 0.005, vs.nextNoteTime + swingSec);
+                const attackSec = vs.cfg.minAttackSec;
+                const decaySec = Math.max(0.22, Math.min(1.1, noteStepSec * 2.8));
+
+                scheduleVoice(vs.ctx, vs.masterBus, vs.delaySend, {
+                    freq,
+                    panValue,
+                    t0,
+                    attackSec,
+                    decaySec,
+                    peakGain: vs.volume,
+                    cfg: vs.cfg
+                });
+
+                vs.nextIndex += vs.stride;
+                vs.nextNoteTime += noteStepSec;
+                vs.noteCounter++;
+            }
+
+            if (vs.nextIndex >= vs.points.length) {
+                clearInterval(vinylSchedulerTimer);
+                vinylSchedulerTimer = null;
+                const remainingMs = Math.max(200, (vs.nextNoteTime - now + 0.8) * 1000);
+                const endTimer = setTimeout(() => {
+                    activeTimers.delete(endTimer);
+                    if (!isPlayingState) return;
+                    const cb = vs.onComplete;
+                    stop();
+                    if (typeof cb === 'function') cb();
+                }, remainingMs);
+                activeTimers.add(endTimer);
+            }
+        }
+
+        tickVinylScheduler();
+        vinylSchedulerTimer = setInterval(tickVinylScheduler, 75);
+    }
+
+    function updateVinylSpeed(newRPM) {
+        if (vinylSession && isPlayingState) {
+            const parsed = parseFloat(newRPM);
+            if (!isNaN(parsed) && parsed > 0) {
+                vinylSession.rpm = parsed;
+            }
+        }
+    }
+
     function setConfig(partial) {
         if (partial && typeof partial === 'object') {
             Object.assign(CONFIG, partial);
@@ -494,6 +652,8 @@
     root.WarmSynthEngine = {
         CONFIG,
         play,
+        playVinyl,
+        updateVinylSpeed,
         stop,
         isPlaying: () => isPlayingState,
         setConfig,

@@ -160,6 +160,25 @@ window.stopAllAudio = function() {
         window.audioIntervals = [];
     }
 
+    if (window.WarmSynthEngine && typeof window.WarmSynthEngine.stop === 'function') {
+        try { window.WarmSynthEngine.stop(); } catch (e) {}
+    }
+
+    if (window.ChimeraJodelBridge && typeof window.ChimeraJodelBridge.stop === 'function') {
+        try { window.ChimeraJodelBridge.stop(); } catch (e) {}
+    }
+
+    if (typeof window.stopAllAnatomyViews === 'function') {
+        try { window.stopAllAnatomyViews(); } catch (e) {}
+    }
+
+    document.querySelectorAll('[id^="btn-ai-play-"]').forEach(btn => {
+        btn.style.background = '';
+        btn.style.color = '';
+    });
+
+    window.vinylAudioState = null;
+
     if (typeof window.stopVinylRotation === 'function') {
         window.stopVinylRotation();
     }
@@ -187,6 +206,23 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
             }
         }
         const daten = window.panoDataCache[panoId];
+        if (!daten) {
+            alert(t.alert_data_not_found || "Daten nicht gefunden.");
+            return;
+        }
+
+        const playDaten = (!daten.kurve_y && daten.kurve_y_array)
+            ? (() => {
+                const parsed = typeof daten.kurve_y_array === 'string'
+                    ? JSON.parse(daten.kurve_y_array)
+                    : daten.kurve_y_array;
+                const ys = parsed.map(pt => (typeof pt === 'number'
+                    ? pt
+                    : (Number.isFinite(pt && pt.rawY) ? pt.rawY : Number((pt && pt.y) || 0))));
+                return { bild_breite: ys.length, bild_hoehe: Math.max(...ys, 1), kurve_y: ys };
+            })()
+            : daten;
+
         let synthsToPlay = [];
 
         if (playSelectedPresets) {
@@ -225,13 +261,20 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
         const now = actx.currentTime;
         let playedCount = 0;
 
-        synthsToPlay.forEach((s) => {
+        for (const s of synthsToPlay) {
+            if (!s) continue;
+            if (s.wave === 'warm_paper' && window.WarmSynthEngine && typeof window.WarmSynthEngine.play === 'function') {
+                await window.WarmSynthEngine.play(playDaten, s, { skipStop: true });
+                playedCount++;
+                continue;
+            }
+
             const tonleiter = generateScale(s.scale, s.oktaven);
-            const topGipfel = window.findePunkte(daten.kurve_y, s.peaks, s.spacing, s.sensibilitaet, 'gipfel');
-            const tiefeTaeler = window.findePunkte(daten.kurve_y, s.valleys, s.spacing, s.sensibilitaet, 'tal');
+            const topGipfel = window.findePunkte(playDaten.kurve_y, s.peaks, s.spacing, s.sensibilitaet, 'gipfel');
+            const tiefeTaeler = window.findePunkte(playDaten.kurve_y, s.valleys, s.spacing, s.sensibilitaet, 'tal');
             let allePunkte = topGipfel.concat(tiefeTaeler);
 
-            if (allePunkte.length === 0) return; 
+            if (allePunkte.length === 0) continue; 
             playedCount++;
 
             if (s.mode === 'lr') allePunkte.sort((a, b) => a.x - b.x);
@@ -321,7 +364,7 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
                     window.activeOscillators.push(o);
                 });
             });
-        });
+        }
 
         if (playedCount === 0) alert(t.alert_no_points || "Mit diesen Einstellungen wurden keine Punkte gefunden!");
 
@@ -330,128 +373,48 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
 
 
 window.playAiPanoAudio = async function(panoId) {
-    if (!window.panoAiSequences || !window.panoAiSequences[panoId]) {
+    const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
+    const sequence = window.panoAiSequences ? window.panoAiSequences[panoId] : null;
+    if (!sequence || sequence.engine !== 'chimera') {
+        if (window.panoAiSequences) window.panoAiSequences[panoId] = null;
         alert(t.alert_gen_ai_comp_first || "Bitte generiere zuerst eine AI Komposition.");
         return;
     }
 
-    window.stopAllAudio();
-    const actx = window.getAudioCtx();
-    if (actx.state === 'suspended') await actx.resume();
-
-    const sequence = window.panoAiSequences[panoId];
-    const synthSettings = window.activeSynth[panoId];
-
-    let startTime = actx.currentTime;
-
-    const globalGain = actx.createGain();
-    globalGain.gain.value = synthSettings.volume;
-    globalGain.connect(window.masterCompressor);
-
-    // Apply delay based on settings
-    let maxEcho = synthSettings.echo || 0;
-    const delayNode = actx.createDelay();
-    delayNode.delayTime.value = 0.4;
-    const feedbackGain = actx.createGain();
-    feedbackGain.gain.value = Math.min(maxEcho, 0.85);
-    if (maxEcho > 0) {
-        delayNode.connect(feedbackGain);
-        feedbackGain.connect(delayNode);
-        delayNode.connect(window.masterCompressor);
-        globalGain.connect(delayNode);
+    if (!window.ChimeraJodelBridge) {
+        alert("Chimera Vocal-Engine ist nicht geladen.");
+        return;
     }
 
-    sequence.notes.forEach(note => {
-        const osc = actx.createOscillator();
-        const freq = 440 * Math.pow(2, (note.pitch - 69) / 12);
-        osc.frequency.value = freq;
+    window.stopAllAudio();
 
-        let filter = null;
-        let osc2 = null;
-        let noise = null;
+    const btnPlay = document.getElementById(`btn-ai-play-${panoId}`);
+    if (btnPlay) {
+        btnPlay.style.background = '#FF6600';
+        btnPlay.style.color = '#1a1a1a';
+    }
 
-        if (synthSettings.wave === 'darkpad') {
-            osc.type = 'sawtooth';
-        } else if (synthSettings.wave === 'chime') {
-            osc.type = 'sine';
-            osc2 = actx.createOscillator();
-            osc2.type = 'triangle';
-            osc2.frequency.value = freq * 2;
-        } else if (synthSettings.wave === 'noise') {
-            const bufferSize = actx.sampleRate * 2.0;
-            const buffer = actx.createBuffer(1, bufferSize, actx.sampleRate);
-            const data = buffer.getChannelData(0);
-            for (let j = 0; j < bufferSize; j++) { data[j] = Math.random() * 2 - 1; }
-            noise = actx.createBufferSource();
-            noise.buffer = buffer;
-            noise.loop = true;
-            filter = actx.createBiquadFilter();
-            filter.type = 'bandpass';
-            filter.Q.value = 10;
-            filter.frequency.value = freq;
-            noise.connect(filter);
-        } else if (synthSettings.wave === 'detuned_saw') {
-            osc.type = 'sawtooth';
-            osc2 = actx.createOscillator();
-            osc2.type = 'sawtooth';
-            osc2.frequency.value = freq * 1.01;
-        } else {
-            osc.type = synthSettings.wave;
+    if (typeof window.startPanoAnatomyView === 'function') {
+        await window.startPanoAnatomyView(panoId);
+    }
+
+    try {
+        await window.ChimeraJodelBridge.playPlan(sequence, {}, {
+            onComplete: () => {
+                if (btnPlay) {
+                    btnPlay.style.background = '';
+                    btnPlay.style.color = '';
+                }
+            }
+        });
+    } catch (e) {
+        console.error("Chimera AI Pano Playback Fehler:", e);
+        if (btnPlay) {
+            btnPlay.style.background = '';
+            btnPlay.style.color = '';
         }
-
-        const noteGain = actx.createGain();
-        let noteStartTime = startTime + note.startTime;
-        let noteEndTime = startTime + note.endTime;
-
-        let attack = synthSettings.attack || 0.1;
-        let release = synthSettings.release || 0.1;
-
-        // Ensure attack and release are reasonable for the note length to avoid popping
-        let maxAttack = (noteEndTime - noteStartTime) / 2;
-        attack = Math.min(attack, maxAttack);
-
-        noteGain.gain.setValueAtTime(0, noteStartTime);
-        noteGain.gain.linearRampToValueAtTime(1.0, noteStartTime + attack);
-        noteGain.gain.setValueAtTime(1.0, noteEndTime);
-        noteGain.gain.exponentialRampToValueAtTime(0.01, noteEndTime + release);
-
-        if (noise) {
-            filter.connect(noteGain);
-            window.activeOscillators.push(noise);
-        } else {
-            osc.connect(noteGain);
-        }
-        if (osc2) {
-            osc2.connect(noteGain);
-            window.activeOscillators.push(osc2);
-        }
-
-        noteGain.connect(globalGain);
-
-        if (noise) {
-            noise.start(noteStartTime);
-            noise.stop(noteEndTime + release + 0.1);
-            window.activeOscillators.push(noise);
-        } else {
-            osc.start(noteStartTime);
-            osc.stop(noteEndTime + release + 0.1);
-            window.activeOscillators.push(osc);
-        }
-
-        // MIDI Send Logic
-        if (window.midiOutput && typeof window.sendMidiNote === 'function') {
-            let midiPitch = note.pitch;
-            let midiVelocity = note.velocity || 100;
-
-            let delayMs = (noteStartTime - startTime) * 1000;
-            let durationMs = (noteEndTime - noteStartTime + release) * 1000;
-
-            let chInput = document.getElementById('num_midi_channel');
-            let channel = chInput ? parseInt(chInput.value) : 1;
-
-            window.sendMidiNote(midiPitch, midiVelocity, durationMs, delayMs, channel);
-        }
-    });
+        alert((t.alert_audio_error || "Audio-Fehler: ") + e.message);
+    }
 };
 
 window.playVinylAudio = async function(vinylArray) {
@@ -475,17 +438,31 @@ window.playVinylAudio = async function(vinylArray) {
 
     if(actx.state === 'suspended') await actx.resume();
 
-    // Check if we have an AI generated sequence AND we are playing it via playAiVinyl
-    if (window.vinylAiSequence && window.isPlayingAiVinyl) {
+    let rpm = parseFloat(document.getElementById('range_vinyl_speed')?.value || 33);
+    let getVinylDuration = (currentRpm) => {
+        let totalRotations = (typeof window.vinylTotalRotations !== 'undefined') ? window.vinylTotalRotations : 20;
+        return (totalRotations / currentRpm) * 60;
+    };
+
+    if (synthSettings.wave === 'warm_paper' && window.WarmSynthEngine && typeof window.WarmSynthEngine.playVinyl === 'function') {
         window.vinylAudioState = {
-            isAi: true,
+            isWarmPaper: true,
             actx: actx,
             synthSettings: synthSettings,
-            getVinylDuration: (currentRpm) => { return window.vinylAiSequence.totalTime / (currentRpm / 33.0); },
-            stopTimeoutId: null
+            getVinylDuration: getVinylDuration
         };
-        let rpm = parseFloat(document.getElementById('range_vinyl_speed')?.value || 33);
-        window.scheduleAiVinylAudioEvents(rpm, actx.currentTime);
+        await window.WarmSynthEngine.playVinyl(vinylArray, synthSettings, {
+            rpm: rpm,
+            getVinylDuration: getVinylDuration,
+            onComplete: () => {
+                if (typeof window.stopAllAudio === 'function') {
+                    window.stopAllAudio();
+                }
+                window.vinylIsPlaying = false;
+                let btnPlay = document.getElementById('btn-vinyl-play');
+                if (btnPlay) { btnPlay.style.background = ''; btnPlay.style.color = ''; }
+            }
+        });
         return;
     }
 
@@ -510,11 +487,6 @@ window.playVinylAudio = async function(vinylArray) {
     });
 
     // Total playback time based on current RPM and 20 rotations
-    let rpm = parseFloat(document.getElementById('range_vinyl_speed')?.value || 33);
-    let getVinylDuration = (currentRpm) => {
-        let totalRotations = (typeof window.vinylTotalRotations !== 'undefined') ? window.vinylTotalRotations : 20;
-        return (totalRotations / currentRpm) * 60;
-    };
     let totalTime = getVinylDuration(rpm);
 
     const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
@@ -722,153 +694,10 @@ window.scheduleVinylAudioEvents = function(rpm, scheduleFromTime) {
 
 window.updateVinylAudioSpeed = function(newRPM) {
     if (window.vinylAudioState) {
-        if (window.vinylAudioState.isAi) {
-            window.scheduleAiVinylAudioEvents(newRPM, window.vinylAudioState.actx.currentTime);
-        } else {
+        if (window.vinylAudioState.isWarmPaper && window.WarmSynthEngine && typeof window.WarmSynthEngine.updateVinylSpeed === 'function') {
+            window.WarmSynthEngine.updateVinylSpeed(newRPM);
+        } else if (!window.vinylAudioState.isAi) {
             window.scheduleVinylAudioEvents(newRPM, window.vinylAudioState.actx.currentTime);
         }
     }
-};
-
-window.scheduleAiVinylAudioEvents = function(rpm, startTime) {
-    let state = window.vinylAudioState;
-    if (!state || !state.isAi || !window.vinylAiSequence) return;
-
-    let actx = state.actx;
-    let speedMultiplier = rpm / 33.0; // 33 RPM is standard speed 1.0
-
-    // Total original time
-    let totalOriginalTime = window.vinylAiSequence.totalTime;
-    let totalAdjustedTime = totalOriginalTime / speedMultiplier;
-
-    // Stop previous scheduled notes if we are rescheduling (e.g. speed change)
-    if (state.stopTimeoutId) {
-        clearTimeout(state.stopTimeoutId);
-    }
-
-    // Since we create NEW oscillators for AI sequence notes every time, we need to clear old ones
-    // if we are updating speed on the fly.
-    // We will do a mini stopAllAudio just for AI notes.
-    if (window.activeAiOscillators) {
-        window.activeAiOscillators.forEach(osc => {
-            try { osc.stop(); osc.disconnect(); } catch (e) {}
-        });
-    }
-    window.activeAiOscillators = [];
-
-    // Calculate current progress
-    let progress = (typeof window.vinylProgress !== 'undefined') ? window.vinylProgress : 0;
-
-    // Time passed in the ORIGINAL timeline
-    let originalTimePassed = progress * totalOriginalTime;
-
-    let remainderAdjustedTime = (totalOriginalTime - originalTimePassed) / speedMultiplier;
-
-    // We recreate global gain for the remaining sequence
-    if (state.globalGain) {
-        try { state.globalGain.disconnect(); } catch(e){}
-    }
-    state.globalGain = actx.createGain();
-    state.globalGain.gain.value = state.synthSettings.volume;
-    state.globalGain.connect(window.masterCompressor);
-
-    window.vinylAiSequence.notes.forEach(note => {
-        // Skip notes that have already ENDED in the original timeline
-        if (note.endTime <= originalTimePassed) return;
-
-        // If a note has started but not ended, we adjust its start time to NOW.
-        let isPlayingNow = note.startTime <= originalTimePassed && note.endTime > originalTimePassed;
-
-        // Original time remaining for this note to start
-        let originalDelay = isPlayingNow ? 0 : (note.startTime - originalTimePassed);
-        let adjustedDelay = originalDelay / speedMultiplier;
-
-        let adjustedStartTime = startTime + adjustedDelay;
-
-        // Duration of the note remaining
-        let originalNoteDuration = note.endTime - (isPlayingNow ? originalTimePassed : note.startTime);
-        let adjustedNoteDuration = originalNoteDuration / speedMultiplier;
-        let adjustedEndTime = adjustedStartTime + adjustedNoteDuration;
-
-        const osc = actx.createOscillator();
-        const freq = 440 * Math.pow(2, (note.pitch - 69) / 12);
-        osc.frequency.value = freq;
-
-        let filter = null;
-        let osc2 = null;
-        let noise = null;
-
-        // Force a distinct AI Arp sound so it does not sound like regular vinyl playback
-        osc.type = 'square';
-        osc2 = actx.createOscillator();
-        osc2.type = 'sawtooth';
-        osc2.frequency.value = freq * 1.005; // slight detune
-
-        filter = actx.createBiquadFilter();
-        filter.type = 'lowpass';
-        filter.Q.value = 5;
-        // Envelope for filter to make it plucky
-        filter.frequency.setValueAtTime(4000, adjustedStartTime);
-        filter.frequency.exponentialRampToValueAtTime(300, adjustedEndTime);
-
-        const noteGain = actx.createGain();
-
-        noteGain.gain.setValueAtTime(0, adjustedStartTime);
-        noteGain.gain.linearRampToValueAtTime(1.0, adjustedStartTime + 0.02);
-        noteGain.gain.exponentialRampToValueAtTime(0.01, adjustedEndTime);
-
-        if (noise) {
-            filter.connect(noteGain);
-            window.activeAiOscillators.push(noise);
-            window.activeOscillators.push(noise); // keep in global for hard stop
-        } else {
-            osc.connect(noteGain);
-        }
-        if (osc2) {
-            osc2.connect(noteGain);
-            window.activeAiOscillators.push(osc2);
-            window.activeOscillators.push(osc2);
-        }
-
-        noteGain.connect(state.globalGain);
-
-        if (noise) {
-            noise.start(adjustedStartTime);
-            noise.stop(adjustedEndTime + 0.1);
-        } else {
-            osc.start(adjustedStartTime);
-            osc.stop(adjustedEndTime + 0.1);
-            window.activeAiOscillators.push(osc);
-            window.activeOscillators.push(osc);
-        }
-
-        // MIDI Send Logic
-        if (window.midiOutput && typeof window.sendMidiNote === 'function') {
-            let midiPitch = note.pitch;
-            let midiVelocity = note.velocity || 100;
-
-            let delayMs = adjustedDelay * 1000;
-            let durationMs = adjustedNoteDuration * 1000;
-
-            let chInput = document.getElementById('num_midi_channel');
-            let channel = chInput ? parseInt(chInput.value) : 1;
-
-            window.sendMidiNote(midiPitch, midiVelocity, durationMs, delayMs, channel);
-        }
-    });
-
-    console.log(`scheduleVinylAudioEvents: totalTime=${totalTime}, progress=${progress}, remainderTime=${remainderTime}, rpm=${rpm}`);
-    state.stopTimeoutId = setTimeout(() => {
-        console.log("TIMEOUT FIRED! time elapsed: ", performance.now() - now);
-        if (typeof window.stopAllAudio === 'function') {
-            window.stopAllAudio();
-        }
-        if (typeof window.stopVinylRotation === 'function') {
-            window.stopVinylRotation();
-        }
-        window.vinylIsPlaying = false;
-        let btnAiPlay = document.getElementById('btn-ai-play');
-        if (btnAiPlay) { btnAiPlay.style.background = ''; btnAiPlay.style.color = ''; }
-    }, remainderAdjustedTime * 1000);
-    window.audioTimeouts.push(state.stopTimeoutId);
 };
