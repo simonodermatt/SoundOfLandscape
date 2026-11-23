@@ -1199,6 +1199,28 @@
                     lead: 0.03
                 });
                 durationSec = plan.end;
+
+                // Silent-Worklet Watchdog für restriktive Browser (z.B. Firmen-Edge):
+                // Falls AudioWorklet zwar 'ready' meldete, aber nach 450ms 0 Telemetrie/RMS liefert,
+                // schaltet er nahtlos auf den Web-Audio-3-Formant-Synth um.
+                lastRawTelemetry = null;
+                const watchdogId = setTimeout(() => {
+                    if (!isPlayingState || usingFallbackEngine) return;
+                    const noAudio = !lastRawTelemetry || !lastRawTelemetry.t || (Number(lastRawTelemetry.t.outRms) === 0 && Number(lastRawTelemetry.t.f0) === 0);
+                    if (noAudio) {
+                        console.warn('[Chimera] AudioWorklet liefert keine Ausgabe -> schalte auf WebAudio-Formant-Fallback um.');
+                        usingFallbackEngine = true;
+                        lastErrorMessage = 'AudioWorklet silent watchdog triggered';
+                        if (workletNode) {
+                            try {
+                                workletNode.port.postMessage({ type: 'stopSpeech' });
+                                workletNode.port.postMessage({ type: 'gate', level: 0 });
+                            } catch (_) {}
+                        }
+                        playFallbackFormantNotes(activeNotes, effectiveBpm, body, Math.min(0.45, durationSec * 0.5));
+                    }
+                }, 450);
+                activeUiTimers.push(watchdogId);
             } catch (err) {
                 console.warn('[Chimera] Worklet schedule fehlgeschlagen, wechsle auf Formant-Fallback:', err);
                 usingFallbackEngine = true;

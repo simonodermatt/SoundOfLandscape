@@ -382,7 +382,7 @@ window.playAiPanoAudio = async function(panoId) {
     const sequence = window.panoAiSequences ? window.panoAiSequences[panoId] : null;
     if (!sequence || sequence.engine !== 'chimera') {
         if (window.panoAiSequences) window.panoAiSequences[panoId] = null;
-        alert(t.alert_gen_ai_comp_first || "Bitte klicke zuerst auf [ 1. JODEL GEN. ], um die Jodel-Stimme zu berechnen.");
+        alert(t.alert_gen_ai_comp_first || "Bitte klicke zuerst auf das Berg-Symbol (Jodel generieren), um die Jodel-Stimme zu berechnen.");
         return;
     }
 
@@ -403,7 +403,7 @@ window.playAiPanoAudio = async function(panoId) {
     }
 
     if (typeof window.startPanoAnatomyView === 'function') {
-        await window.startPanoAnatomyView(panoId);
+        void window.startPanoAnatomyView(panoId);
     }
 
     const activeVoice = (window.activeSynth && window.activeSynth[panoId] && window.activeSynth[panoId].voiceCharacter !== undefined)

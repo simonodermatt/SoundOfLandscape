@@ -152,24 +152,44 @@ html, body {
     right: 10px;
     z-index: 1000;
     background: #1e1e1e;
-    padding: 12px;
+    padding: 10px;
     border-radius: 6px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.5);
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    font-size: 13px;
+    align-items: stretch;
+    gap: 8px;
+    font-size: 12px;
     border: 1px solid #333;
     width: fit-content;
+    max-width: calc(100vw - 20px);
+    max-height: calc(100vh - 65px);
+    overflow-y: auto;
+    box-sizing: border-box;
 }
 
 #vinyl-presets-list {
     width: 100%;
 }
 
-#vinyl-canvas-container {
+.vinyl-top-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
     width: 100%;
+}
+
+.vinyl-top-row .fader-box {
+    height: 150px !important;
+    min-width: 36px;
+}
+
+#vinyl-canvas-container {
+    width: 150px;
+    height: 150px;
+    flex: 0 0 150px;
     aspect-ratio: 1/1;
     background: #111;
     border-radius: 50%;
@@ -182,6 +202,14 @@ html, body {
     box-shadow: 0 0 10px rgba(0,0,0,0.8);
 }
 
+.vinyl-side-params {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 145px;
+    flex: 1;
+}
+
 #vinyl-canvas {
     width: 100%;
     height: 100%;
@@ -190,9 +218,25 @@ html, body {
 
 #vinyl-controls {
     display: flex;
-    gap: 8px;
+    gap: 4px;
     width: 100%;
     justify-content: center;
+}
+
+#vinyl-controls .icon-btn {
+    flex: 1;
+    width: auto;
+    min-width: 34px;
+    height: 44px;
+    font-size: 20px;
+    padding: 0 4px;
+}
+
+.icon-btn svg {
+    width: 22px;
+    height: 22px;
+    display: block;
+    pointer-events: none;
 }
 #ui-menu label { font-size: 11px; color: #bbb; margin: 0; text-transform: uppercase; }
 #ui-menu select { 
