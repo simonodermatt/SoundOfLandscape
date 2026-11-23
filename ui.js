@@ -556,6 +556,7 @@ window.buildKnob = function(panoId, key, label, min, max, step, isInt, displayMu
 
     let jsAction = `
         window.activeSynth['${panoId}'].${key} = ${isInt ? 'parseInt' : 'parseFloat'}(this.value);
+        ${key === 'volume' ? "if (typeof window.syncMasterGain === 'function') window.syncMasterGain(parseFloat(this.value));" : ''}
         let dVal = ${key === 'mutation' ? 'parseFloat(this.value).toFixed(1)' : (displayMult ? 'Math.round(this.value * '+displayMult+')' : 'this.value')};
         let tooltip = document.getElementById('tt_val_${key}_${panoId}'); if(tooltip) { tooltip.innerText = dVal; }
         if (window.panoAiSequences && window.panoAiSequences['${panoId}']) {
@@ -1511,6 +1512,10 @@ window.playAiVinyl = async function() {
         return;
     }
 
+    if (typeof window.unlockAudioSynchronously === 'function') {
+        const actx = window.unlockAudioSynchronously();
+        console.log('[Audio] State:', actx.state, 'MasterGain:', window.masterGain ? window.masterGain.gain.value : null);
+    }
     if (typeof window.stopAllAudio === 'function') {
         window.stopAllAudio();
     }
