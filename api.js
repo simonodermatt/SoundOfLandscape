@@ -111,8 +111,10 @@ window.loadPresets = async function(panoId) {
                 }
             }
 
+            const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
+            const jodelBadgeText = t.jodel_badge_label || '⛰ Jodel';
             let aiBadge = (p.is_ai === true || p.is_ai === 'true' || p.is_ai === 'TRUE')
-                ? '<span style="font-size:10px; margin-left:4px; padding:1px 3px; border:1px solid #aaa; border-radius:3px; color:#aaa; filter: grayscale(100%);" title="AI Generated">🤖 AI</span>'
+                ? `<span style="font-size:10px; margin-left:4px; padding:1px 3px; border:1px solid #aaa; border-radius:3px; color:#aaa; filter: grayscale(100%);" title="${escapeHTML(jodelBadgeText)}">${escapeHTML(jodelBadgeText)}</span>`
                 : '';
 
             html += `
@@ -581,8 +583,10 @@ window.loadVinylPresets = async function() {
                 }
             }
 
+            const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
+            const jodelBadgeText = t.jodel_badge_label || '⛰ Jodel';
             let aiBadge = (p.is_ai === true || p.is_ai === 'true' || p.is_ai === 'TRUE')
-                ? '<span style="font-size:10px; margin-left:4px; padding:1px 3px; border:1px solid #aaa; border-radius:3px; color:#aaa; filter: grayscale(100%);" title="AI Generated">🤖 AI</span>'
+                ? `<span style="font-size:10px; margin-left:4px; padding:1px 3px; border:1px solid #aaa; border-radius:3px; color:#aaa; filter: grayscale(100%);" title="${escapeHTML(jodelBadgeText)}">${escapeHTML(jodelBadgeText)}</span>`
                 : '';
 
             html += `

@@ -113,7 +113,7 @@ ON CONFLICT (key_name) DO UPDATE SET
     es = EXCLUDED.es;
 
 INSERT INTO translations (key_name, de, fr, it, en, uk, ru, es)
-VALUES ('alert_ai_error', 'Fehler bei der AI Generierung.', 'Erreur lors de la génération IA.', 'Errore durante la generazione IA.', 'Error during AI generation.', 'Помилка під час генерації ШІ.', 'Ошибка при генерации ИИ.', 'Error en la generación por IA.')
+VALUES ('alert_ai_error', 'Fehler bei der Jodel-Generierung.', 'Erreur lors de la génération du jodel.', 'Errore durante la generazione dello jodel.', 'Error during yodel generation.', 'Помилка під час генерації йодлю.', 'Ошибка при генерации йодля.', 'Error en la generación del jodel.')
 ON CONFLICT (key_name) DO UPDATE SET
     de = EXCLUDED.de,
     fr = EXCLUDED.fr,
@@ -146,7 +146,7 @@ ON CONFLICT (key_name) DO UPDATE SET
     es = EXCLUDED.es;
 
 INSERT INTO translations (key_name, de, fr, it, en, uk, ru, es)
-VALUES ('alert_gen_ai_seq_first', 'Bitte generiere zuerst eine AI Sequenz!', 'Veuillez d''abord générer une séquence IA !', 'Genera prima una sequenza IA!', 'Please generate an AI sequence first!', 'Будь ласка, спершу згенеруйте послідовність ШІ!', 'Пожалуйста, сначала сгенерируйте ИИ-последовательность!', '¡Por favor, genera primero una secuencia de IA!')
+VALUES ('alert_gen_ai_seq_first', 'Bitte generiere zuerst eine Jodel-Sequenz (Berg-Symbol)!', 'Veuillez d''abord générer une séquence de jodel (icône montagne) !', 'Genera prima una sequenza jodel (icona montagna)!', 'Please generate a yodel sequence first (mountain icon)!', 'Будь ласка, спершу згенеруйте послідовність йодлю (іконка гори)!', 'Пожалуйста, сначала сгенерируйте последовательность йодля (иконка горы)!', '¡Por favor, genera primero una secuencia de jodel (icono de montaña)!')
 ON CONFLICT (key_name) DO UPDATE SET
     de = EXCLUDED.de,
     fr = EXCLUDED.fr,
@@ -168,7 +168,7 @@ ON CONFLICT (key_name) DO UPDATE SET
     es = EXCLUDED.es;
 
 INSERT INTO translations (key_name, de, fr, it, en, uk, ru, es)
-VALUES ('alert_gen_ai_comp_first', 'Bitte generiere zuerst eine AI Komposition.', 'Veuillez générer d''abord une composition IA.', 'Si prega di generare prima una composizione IA.', 'Please generate an AI composition first.', 'Будь ласка, спочатку згенеруйте ШІ композицію.', 'Пожалуйста, сначала сгенерируйте ИИ композицию.', 'Por favor, genera primero una composición de IA.')
+VALUES ('alert_gen_ai_comp_first', 'Bitte klicke zuerst auf das Berg-Symbol, um die Jodel-Stimme zu generieren.', 'Veuillez d''abord cliquer sur l''icône montagne pour générer la voix jodel.', 'Clicca prima sull''icona della montagna per generare la voce jodel.', 'Please click the mountain icon first to generate the yodel voice.', 'Будь ласка, спершу натисніть на іконку гори, щоб згенерувати голос йодлю.', 'Пожалуйста, сначала нажмите на иконку горы, чтобы сгенерировать голос йодля.', 'Por favor, haz clic primero en el icono de la montaña para generar la voz de jodel.')
 ON CONFLICT (key_name) DO UPDATE SET
     de = EXCLUDED.de,
     fr = EXCLUDED.fr,
