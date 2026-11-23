@@ -213,7 +213,7 @@ window.loadSelectedPreset = function(panoId) {
             if (loadedChimeraSeq) {
                 btnAi.style.background = "#FF6600";
                 btnAi.style.color = "#1a1a1a";
-                btnAi.innerHTML = "[ AI COMPOSE ]";
+                btnAi.innerHTML = "[ 1. JODEL GEN. ]";
             } else {
                 btnAi.style.background = "";
                 btnAi.style.color = "";
@@ -678,7 +678,7 @@ window.loadVinyl = function() {
                 if (loadedVinylAi) {
                     btnVinylAi.style.background = "#FF6600";
                     btnVinylAi.style.color = "#1a1a1a";
-                    btnVinylAi.innerHTML = "[ AI COMPOSE ]";
+                    btnVinylAi.innerHTML = "[ 1. JODEL GEN. ]";
                 } else {
                     btnVinylAi.style.background = "";
                     btnVinylAi.style.color = "";

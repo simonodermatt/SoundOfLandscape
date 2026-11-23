@@ -876,12 +876,23 @@ window.getPopupHTML = function(pano) {
             </div>
 
             <div class="action-btn-row">
-                <button class="icon-btn" id="btn-ai-compose-${pano.id}" onclick="window.aiComposePano('${pano.id}')" title="AI Compose" style="font-size: 11px; padding: 0 5px;">[ AI COMPOSE ]</button>
-                <button class="icon-btn" id="btn-ai-play-${pano.id}" onclick="window.playAiPanoAudio('${pano.id}')" title="AI Play" style="font-size: 11px; padding: 0 5px;">[ AI PLAY ]</button>
+                <button class="icon-btn" id="btn-ai-compose-${pano.id}" onclick="window.aiComposePano('${pano.id}')" title="Schritt 1: Jodel-Stimme aus Kontur berechnen" style="font-size: 10px; padding: 0 5px;">[ 1. JODEL GEN. ]</button>
+                <button class="icon-btn" id="btn-ai-play-${pano.id}" onclick="window.playAiPanoAudio('${pano.id}')" title="Schritt 2: Jodel-Stimme abspielen" style="font-size: 10px; padding: 0 5px;">[ 2. JODEL PLAY ]</button>
                 <button class="icon-btn" title="${t.hint_play_current || 'Play'}" onclick="window.playMultiPanorama('${pano.id}', null, false)">▶</button>
                 <button class="icon-btn" title="${t.hint_play_sel || 'Play Selection'}" onclick="window.playMultiPanorama('${pano.id}', null, true)">♫</button>
                 <button class="icon-btn" title="${t.hint_load_sel || 'Load Preset'}" onclick="window.loadSelectedPreset('${pano.id}')">⇪</button>
                 <button class="icon-btn" id="save-btn-${pano.id}" title="${t.hint_save || 'Save'}" onclick="window.savePreset('${pano.id}')">⚑</button>
+            </div>
+
+            <div class="chimera-voice-bar" style="display:flex; gap:10px; align-items:center; margin:6px 0 8px 0; padding:6px 8px; background:#141414; border:1px solid #333; font-size:10px; text-transform:uppercase; color:#ccc;">
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">
+                    <span>Stimme (M↔F): <strong id="lbl-voice-${pano.id}" style="color:#00BFFF;">${Math.round(((s.voiceCharacter !== undefined ? s.voiceCharacter : 0.25)) * 100)}%</strong></span>
+                    <input type="range" id="range_voice_${pano.id}" min="0" max="1" step="0.05" value="${s.voiceCharacter !== undefined ? s.voiceCharacter : 0.25}" style="width:100%; accent-color:#FF6600; cursor:pointer;" oninput="window.activeSynth['${pano.id}'].voiceCharacter = parseFloat(this.value); document.getElementById('lbl-voice-${pano.id}').innerText = Math.round(this.value*100)+'%'; if(window.ChimeraJodelBridge){ window.ChimeraJodelBridge.setVoiceCharacter(parseFloat(this.value)); }">
+                </label>
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">
+                    <span>Jodelsprung: <strong id="lbl-jump-${pano.id}" style="color:#00BFFF;">${Math.round(((s.jumpIntensity !== undefined ? s.jumpIntensity : 0.70)) * 100)}%</strong></span>
+                    <input type="range" id="range_jump_${pano.id}" min="0" max="1" step="0.05" value="${s.jumpIntensity !== undefined ? s.jumpIntensity : 0.70}" style="width:100%; accent-color:#FF6600; cursor:pointer;" oninput="window.activeSynth['${pano.id}'].jumpIntensity = parseFloat(this.value); document.getElementById('lbl-jump-${pano.id}').innerText = Math.round(this.value*100)+'%'; if(window.panoAiSequences && window.panoAiSequences['${pano.id}']) { window.panoAiSequences['${pano.id}'] = null; let btn = document.getElementById('btn-ai-compose-${pano.id}'); if(btn){ btn.style.background=''; btn.style.color=''; } }">
+                </label>
             </div>
 
             <div class="presets-section">
@@ -1052,7 +1063,18 @@ window.aiComposePano = async function(panoId) {
     }, 300);
 
     try {
+        const voiceVal = document.getElementById(`range_voice_${panoId}`)
+            ? parseFloat(document.getElementById(`range_voice_${panoId}`).value)
+            : (s.voiceCharacter !== undefined ? s.voiceCharacter : 0.25);
+        const jumpVal = document.getElementById(`range_jump_${panoId}`)
+            ? parseFloat(document.getElementById(`range_jump_${panoId}`).value)
+            : (s.jumpIntensity !== undefined ? s.jumpIntensity : 0.7);
+        s.voiceCharacter = voiceVal;
+        s.jumpIntensity = jumpVal;
+
         const plan = await window.ChimeraJodelBridge.planFromContour(daten, s, {
+            voiceCharacter: voiceVal,
+            jumpIntensity: jumpVal,
             title: (window.currentOpenPano && window.currentOpenPano.titel) || `Panorama ${panoId}`
         });
         window.panoAiSequences[panoId] = plan;
@@ -1060,7 +1082,7 @@ window.aiComposePano = async function(panoId) {
         // Success state
         btnAi.style.background = "#FF6600";
         btnAi.style.color = "#1a1a1a";
-        btnAi.innerHTML = "[ AI COMPOSE ]";
+        btnAi.innerHTML = "[ 1. JODEL GEN. ]";
         btnAi.disabled = false;
     } catch (e) {
         console.error("Fehler bei Chimera AI Generierung:", e);
@@ -1108,14 +1130,25 @@ window.aiComposeVinyl = async function() {
     }, 300);
 
     try {
+        const totalRotations = (typeof window.vinylTotalRotations !== 'undefined') ? window.vinylTotalRotations : 20;
+        const baseDurationAt33 = (totalRotations / 33) * 60;
+        const voiceVal = parseFloat(document.getElementById('range_vinyl_voice')?.value ?? 0.25);
+        const jumpVal = parseFloat(document.getElementById('range_vinyl_yodel_jump')?.value ?? 0.70);
+
         const synthSettings = {
             mode: 'lr',
             scale: document.getElementById('sel_vinyl_scale')?.value || 'pentatonic',
             oktaven: parseInt(document.getElementById('sel_vinyl_octaves')?.value, 10) || 4,
-            mutation: parseFloat(document.getElementById('range_vinyl_mutation')?.value || 1.0)
+            mutation: parseFloat(document.getElementById('range_vinyl_mutation')?.value || 1.0),
+            voiceCharacter: voiceVal,
+            jumpIntensity: jumpVal
         };
 
         window.vinylAiSequence = await window.ChimeraJodelBridge.planFromContour(window.vinylArray, synthSettings, {
+            isVinyl: true,
+            targetDurationSec: baseDurationAt33,
+            voiceCharacter: voiceVal,
+            jumpIntensity: jumpVal,
             title: 'Vinyl'
         });
     } catch (e) {
@@ -1126,7 +1159,7 @@ window.aiComposeVinyl = async function() {
         if (window.vinylAiSequence) {
             btnAi.style.background = "#FF6600";
             btnAi.style.color = "#1a1a1a";
-            btnAi.innerHTML = "[ AI COMPOSE ]";
+            btnAi.innerHTML = "[ 1. JODEL GEN. ]";
         } else {
             btnAi.innerHTML = originalText;
             btnAi.setAttribute('style', originalStyle);
@@ -1440,7 +1473,7 @@ window.playAiVinyl = async function() {
 
     if (!window.vinylAiSequence || window.vinylAiSequence.engine !== 'chimera') {
         window.vinylAiSequence = null;
-        alert(t.alert_gen_ai_seq_first || "Bitte generiere zuerst eine AI Sequenz!");
+        alert(t.alert_gen_ai_seq_first || "Bitte klicke zuerst auf [ 1. JODEL GEN. ], um die Jodel-Sequenz für diese Vinyl-Platte zu berechnen!");
         return;
     }
 
@@ -1472,11 +1505,15 @@ window.playAiVinyl = async function() {
         window.ChimeraJodelBridge.unlockAudio();
     }
 
-    let rpm = parseFloat(document.getElementById('range_vinyl_speed')?.value || 33);
-    let seqTotalTime = window.vinylAiSequence.totalTime || 12;
+    let rpm = Math.max(1, parseFloat(document.getElementById('range_vinyl_speed')?.value || 33));
+    let totalRotations = (typeof window.vinylTotalRotations !== 'undefined') ? window.vinylTotalRotations : 20;
+    let seqTotalTime = window.vinylAiSequence.totalTime || ((totalRotations / 33) * 60);
+    let voiceVal = parseFloat(document.getElementById('range_vinyl_voice')?.value ?? 0.25);
 
+    window.vinylProgress = 0;
     window.vinylAudioState = {
         isAi: true,
+        totalOriginalTime: seqTotalTime,
         getVinylDuration: (currentRpm) => seqTotalTime / ((currentRpm || 33) / 33.0)
     };
 
@@ -1511,7 +1548,10 @@ window.playAiVinyl = async function() {
     }
 
     try {
-        await window.ChimeraJodelBridge.playPlan(window.vinylAiSequence, { speedMultiplier: rpm / 33.0 }, {
+        await window.ChimeraJodelBridge.playPlan(window.vinylAiSequence, {
+            speedMultiplier: rpm / 33.0,
+            body: { female: voiceVal, child: 0 }
+        }, {
             onComplete: () => {
                 if (typeof window.stopVinylRotation === 'function') {
                     window.stopVinylRotation();

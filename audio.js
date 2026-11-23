@@ -160,6 +160,11 @@ window.stopAllAudio = function() {
         window.audioIntervals = [];
     }
 
+    if (window._vinylAiSpeedTimer) {
+        clearTimeout(window._vinylAiSpeedTimer);
+        window._vinylAiSpeedTimer = null;
+    }
+
     if (window.WarmSynthEngine && typeof window.WarmSynthEngine.stop === 'function') {
         try { window.WarmSynthEngine.stop(); } catch (e) {}
     }
@@ -377,7 +382,7 @@ window.playAiPanoAudio = async function(panoId) {
     const sequence = window.panoAiSequences ? window.panoAiSequences[panoId] : null;
     if (!sequence || sequence.engine !== 'chimera') {
         if (window.panoAiSequences) window.panoAiSequences[panoId] = null;
-        alert(t.alert_gen_ai_comp_first || "Bitte generiere zuerst eine AI Komposition.");
+        alert(t.alert_gen_ai_comp_first || "Bitte klicke zuerst auf [ 1. JODEL GEN. ], um die Jodel-Stimme zu berechnen.");
         return;
     }
 
@@ -401,8 +406,14 @@ window.playAiPanoAudio = async function(panoId) {
         await window.startPanoAnatomyView(panoId);
     }
 
+    const activeVoice = (window.activeSynth && window.activeSynth[panoId] && window.activeSynth[panoId].voiceCharacter !== undefined)
+        ? window.activeSynth[panoId].voiceCharacter
+        : (sequence.body ? sequence.body.female : 0.25);
+
     try {
-        await window.ChimeraJodelBridge.playPlan(sequence, {}, {
+        await window.ChimeraJodelBridge.playPlan(sequence, {
+            body: { female: activeVoice, child: 0 }
+        }, {
             onComplete: () => {
                 if (btnPlay) {
                     btnPlay.style.background = '';
@@ -696,11 +707,31 @@ window.scheduleVinylAudioEvents = function(rpm, scheduleFromTime) {
 };
 
 window.updateVinylAudioSpeed = function(newRPM) {
-    if (window.vinylAudioState) {
-        if (window.vinylAudioState.isWarmPaper && window.WarmSynthEngine && typeof window.WarmSynthEngine.updateVinylSpeed === 'function') {
-            window.WarmSynthEngine.updateVinylSpeed(newRPM);
-        } else if (!window.vinylAudioState.isAi) {
-            window.scheduleVinylAudioEvents(newRPM, window.vinylAudioState.actx.currentTime);
-        }
+    if (!window.vinylAudioState) return;
+    if (window.vinylAudioState.isWarmPaper && window.WarmSynthEngine && typeof window.WarmSynthEngine.updateVinylSpeed === 'function') {
+        window.WarmSynthEngine.updateVinylSpeed(newRPM);
+    } else if (window.vinylAudioState.isAi && window.vinylAiSequence && window.ChimeraJodelBridge) {
+        clearTimeout(window._vinylAiSpeedTimer);
+        window._vinylAiSpeedTimer = setTimeout(() => {
+            if (!window.vinylIsPlaying || !window.vinylAudioState || !window.vinylAudioState.isAi || !window.vinylAiSequence) return;
+            const rpm = Math.max(1, parseFloat(newRPM) || 33);
+            const progress = (typeof window.vinylProgress !== 'undefined') ? window.vinylProgress : 0;
+            const startOffsetSec = progress * (window.vinylAiSequence.totalTime || 36);
+            const voiceVal = parseFloat(document.getElementById('range_vinyl_voice')?.value ?? 0.25);
+            window.ChimeraJodelBridge.playPlan(window.vinylAiSequence, {
+                speedMultiplier: rpm / 33.0,
+                startOffsetSec,
+                body: { female: voiceVal, child: 0 }
+            }, {
+                onComplete: () => {
+                    if (typeof window.stopVinylRotation === 'function') window.stopVinylRotation();
+                    if (typeof window.stopAllAnatomyViews === 'function') window.stopAllAnatomyViews();
+                    window.vinylIsPlaying = false;
+                    window.isPlayingAiVinyl = false;
+                }
+            }).catch(e => console.warn('Vinyl AI RPM update error:', e));
+        }, 90);
+    } else if (!window.vinylAudioState.isAi) {
+        window.scheduleVinylAudioEvents(newRPM, window.vinylAudioState.actx.currentTime);
     }
 };
