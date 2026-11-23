@@ -67,7 +67,7 @@
             <div class="te-tooltip" id="tt_vinyl_speed"><span class="tt-label">Speed: </span><span id="tt_val_vinyl_speed">33</span><span class="tt-unit"> RPM</span></div>
             <div class="fader-icon-container" style="color: #1a1a1a;">◷</div>
             <div class="fader-container" id="vinyl-fader-container">
-                <input type="range" id="range_vinyl_speed" class="te-fader" min="1" max="78" step="1" value="33" oninput="document.getElementById('tt_val_vinyl_speed').innerText = this.value; if(window.updateVinylSpeed) window.updateVinylSpeed(this.value); if(window.vinylAiSequence) { window.vinylAiSequence = null; let btn = document.getElementById('btn-ai-compose'); if(btn){ btn.style.background=''; btn.style.color=''; } }">
+                <input type="range" id="range_vinyl_speed" class="te-fader" min="1" max="78" step="1" value="33" oninput="document.getElementById('tt_val_vinyl_speed').innerText = this.value; if(window.updateVinylSpeed) window.updateVinylSpeed(this.value);">
             </div>
         </div>
 
@@ -118,11 +118,22 @@
         </select>
     </div>
 
+    <div style="display: flex; width: 100%; gap: 8px; border: 1px solid #1a1a1a; margin-top: 5px; background: #111; padding: 4px 6px; box-sizing: border-box; align-items: center; font-size: 10px; color: #aaa; text-transform: uppercase;">
+        <label style="flex: 1; display: flex; flex-direction: column; gap: 2px;">
+            <span>Stimme (M↔F): <strong id="lbl_vinyl_voice_val" style="color:#00BFFF;">25%</strong></span>
+            <input type="range" id="range_vinyl_voice" min="0" max="1" step="0.05" value="0.25" style="width:100%; accent-color:#FF6600; cursor:pointer;" oninput="document.getElementById('lbl_vinyl_voice_val').innerText = Math.round(this.value*100)+'%'; if(window.ChimeraJodelBridge){ window.ChimeraJodelBridge.setVoiceCharacter(parseFloat(this.value)); }">
+        </label>
+        <label style="flex: 1; display: flex; flex-direction: column; gap: 2px;">
+            <span>Jodelsprung: <strong id="lbl_vinyl_jump_val" style="color:#00BFFF;">70%</strong></span>
+            <input type="range" id="range_vinyl_yodel_jump" min="0" max="1" step="0.05" value="0.70" style="width:100%; accent-color:#FF6600; cursor:pointer;" oninput="document.getElementById('lbl_vinyl_jump_val').innerText = Math.round(this.value*100)+'%'; if(window.vinylAiSequence) { window.vinylAiSequence = null; let btn = document.getElementById('btn-ai-compose'); if(btn){ btn.style.background=''; btn.style.color=''; } }">
+        </label>
+    </div>
+
     <div id="vinyl-controls">
-        <button class="icon-btn" id="btn-vinyl-generate" onclick="generateVinyl()" title="Generieren">⚄</button>
-        <button class="icon-btn" id="btn-ai-compose" onclick="aiComposeVinyl()" title="AI Compose" style="font-size: 11px; padding: 0 5px;">[ AI COMPOSE ]</button>
-        <button class="icon-btn" id="btn-ai-play" onclick="playAiVinyl()" title="AI Play" style="font-size: 11px; padding: 0 5px;">[ AI PLAY ]</button>
-        <button class="icon-btn" id="btn-vinyl-play" onclick="playVinyl()" title="Abspielen">▶</button>
+        <button class="icon-btn" id="btn-vinyl-generate" onclick="generateVinyl()" title="Vinyl aus allen Panoramen generieren">⚄</button>
+        <button class="icon-btn" id="btn-ai-compose" onclick="aiComposeVinyl()" title="Schritt 1: Jodel-Sequenz aus Vinyl berechnen" style="font-size: 10px; padding: 0 5px;">[ 1. JODEL GEN. ]</button>
+        <button class="icon-btn" id="btn-ai-play" onclick="playAiVinyl()" title="Schritt 2: Jodel-Stimme über volle Vinyl-Dauer abspielen" style="font-size: 10px; padding: 0 5px;">[ 2. JODEL PLAY ]</button>
+        <button class="icon-btn" id="btn-vinyl-play" onclick="playVinyl()" title="Regulären Vinyl-Synth abspielen">▶</button>
         <button class="icon-btn" id="btn-vinyl-load" onclick="loadVinyl()" title="Laden">⇪</button>
         <button class="icon-btn" id="btn-vinyl-save" onclick="saveVinyl()" title="Speichern">⚑</button>
     </div>
@@ -176,16 +187,16 @@
 <!-- Audio Engines & Chimera Vocal Synth + Anatomy -->
 <script src="warmSynthEngine.js?v=2"></script>
 <script src="experimental/chimera-jodel/dist/chimera-anatomy.js?v=2"></script>
-<script src="experimental/chimera-jodel/chimera-jodel-bridge.js?v=2"></script>
+<script src="experimental/chimera-jodel/chimera-jodel-bridge.js?v=3"></script>
 
 <!-- Logik v=3 -->
 <script src="config.js?v=7"></script>
 <script src="lang.js?v=11"></script>
-<script src="api.js?v=9"></script>
-<script src="audio.js?v=5"></script>
+<script src="api.js?v=10"></script>
+<script src="audio.js?v=6"></script>
 <script src="relief.js"></script>
 <script src="midi.js"></script>
-<script src="ui.js?v=14"></script>
+<script src="ui.js?v=15"></script>
 
 <!-- Admin Shortcut (Schloss unten rechts) -->
 <a href="admin.html" id="admin-lock-btn" title="Admin Dashboard" aria-label="Admin Dashboard">

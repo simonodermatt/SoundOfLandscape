@@ -40,16 +40,30 @@
     let initWasmPromise = null;
 
     let audioCtx = null;
+    let usesSharedAudioCtx = false;
     let workletNode = null;
     let masterGain = null;
     let workletReady = false;
     let workletInitPromise = null;
+    let usingFallbackEngine = false;
+    let wasmFailed = false;
+    let lastErrorMessage = null;
     let currentSampleRate = FULL_RATE;
     let triedLighterRate = false;
     let builtAtMs = 0;
     let loadAtMs = 0;
     let slowLoad = 0;
     let rebuilding = false;
+
+    const FALLBACK_VOWEL_FORMANTS = {
+        o: [450, 800, 2500],
+        u: [320, 680, 2400],
+        i: [290, 2200, 3050],
+        e: [420, 1950, 2750],
+        ə: [500, 1500, 2550],
+        a: [730, 1180, 2550]
+    };
+    let activeFallbackNodes = [];
 
     let currentVoiceMorph = 0.25; // 0 = männlich (tief), 1 = weiblich (hell)
     let isPlayingState = false;
@@ -81,10 +95,14 @@
      * Lädt und kompiliert `chimera.wasm` einmalig für Main-Thread-Planer & Worklet.
      */
     async function ensureWasmCompiled() {
-        if (wasmModule && mainExports) return;
+        if (wasmModule && mainExports) return true;
+        if (wasmFailed) return false;
         if (initWasmPromise) return initWasmPromise;
 
         initWasmPromise = (async () => {
+            if (typeof WebAssembly === 'undefined') {
+                throw new Error("WebAssembly ist in diesem Browser deaktiviert.");
+            }
             const res = await fetch(WASM_URL);
             if (!res.ok) {
                 throw new Error(`Konnte Chimera WASM nicht laden (${WASM_URL}: HTTP ${res.status})`);
@@ -98,12 +116,20 @@
             wasmBytesCache = bytes;
             wasmModule = mod;
             mainExports = inst.exports;
+            return true;
         })();
 
-        initWasmPromise.catch(() => {
+        initWasmPromise.catch((err) => {
             initWasmPromise = null;
+            wasmFailed = true;
+            lastErrorMessage = err && err.message ? err.message : String(err);
+            console.warn('[Chimera] WASM Main-Thread Init fehlgeschlagen, aktiviere JS-Fallback:', lastErrorMessage);
         });
-        return initWasmPromise;
+        try {
+            return await initWasmPromise;
+        } catch (_) {
+            return false;
+        }
     }
 
     /**
@@ -128,53 +154,73 @@
         return result;
     }
 
+    function getOrCreateAudioContext(requestedRate) {
+        if (typeof root.getAudioCtx === 'function') {
+            const shared = root.getAudioCtx();
+            if (shared && shared.state !== 'closed') {
+                usesSharedAudioCtx = true;
+                return shared;
+            }
+        }
+        const AudioCtx = checkEnvironment();
+        usesSharedAudioCtx = false;
+        if (!audioCtx || audioCtx.state === 'closed') {
+            if (requestedRate) {
+                try {
+                    audioCtx = new AudioCtx({ latencyHint: 'interactive', sampleRate: requestedRate });
+                } catch (_) {
+                    audioCtx = new AudioCtx({ latencyHint: 'interactive' });
+                }
+            } else {
+                audioCtx = new AudioCtx({ latencyHint: 'interactive' });
+            }
+        }
+        return audioCtx;
+    }
+
     /**
      * Erstellt/resumt den AudioContext synchron aus einer User-Interaktion heraus,
      * damit strikte Browser (z.B. Edge auf Geschäfts-Notebooks) das Gesture-Token behalten.
      */
     function unlockAudio() {
         try {
-            const AudioCtx = checkEnvironment();
-            if (!audioCtx || audioCtx.state === 'closed') {
-                audioCtx = new AudioCtx({ latencyHint: 'interactive' });
-                currentSampleRate = audioCtx.sampleRate || FULL_RATE;
-            }
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume().catch(() => {});
+            const ctx = getOrCreateAudioContext(null);
+            audioCtx = ctx;
+            currentSampleRate = ctx.sampleRate || FULL_RATE;
+            if (ctx.state === 'suspended') {
+                ctx.resume().catch(() => {});
             }
         } catch (err) {
+            lastErrorMessage = err && err.message ? err.message : String(err);
             console.warn('[Chimera] Audio-Unlock Warnung:', err);
         }
     }
 
     /**
-     * Startet oder baut den AudioContext + AudioWorklet bei der gewünschten Rate auf.
+     * Startet oder baut den AudioContext + AudioWorklet auf.
+     * Fällt bei restriktiven Edge-/GPO-Umgebungen sauber auf den Web-Audio-Formant-Fallback zurück.
      */
     async function buildAudioWorklet(requestedRate) {
         const AudioCtx = checkEnvironment();
-
-        // Synchron ein bereits entsperrtes Device-Native-AudioCtx nutzen (oder anlegen)
-        let ctx = null;
-        const needNewCtx = Boolean(requestedRate && audioCtx && audioCtx.sampleRate !== requestedRate);
-        if (!audioCtx || audioCtx.state === 'closed' || needNewCtx) {
-            if (requestedRate) {
-                try {
-                    ctx = new AudioCtx({ latencyHint: 'interactive', sampleRate: requestedRate });
-                } catch (_) {
-                    ctx = new AudioCtx({ latencyHint: 'interactive' });
-                }
-            } else {
-                ctx = new AudioCtx({ latencyHint: 'interactive' });
-            }
-        } else {
-            ctx = audioCtx;
-        }
+        const ctx = (!usesSharedAudioCtx && requestedRate && (!audioCtx || audioCtx.sampleRate !== requestedRate))
+            ? (() => {
+                try { return new AudioCtx({ latencyHint: 'interactive', sampleRate: requestedRate }); }
+                catch (_) { return getOrCreateAudioContext(null); }
+            })()
+            : getOrCreateAudioContext(null);
 
         const resumePromise = ctx.state === 'suspended'
             ? ctx.resume().catch(() => {})
             : Promise.resolve();
 
-        await ensureWasmCompiled();
+        const wasmOk = await ensureWasmCompiled();
+        if (!wasmOk || !wasmModule) {
+            audioCtx = ctx;
+            currentSampleRate = ctx.sampleRate || FULL_RATE;
+            usingFallbackEngine = true;
+            workletReady = true;
+            return;
+        }
 
         let node;
         try {
@@ -186,13 +232,19 @@
                 processorOptions: { module: wasmModule }
             });
         } catch (err) {
-            if (ctx !== audioCtx) {
+            lastErrorMessage = err && err.message ? err.message : String(err);
+            console.warn('[Chimera] AudioWorklet init fehlgeschlagen, nutze WebAudio-Formant-Fallback:', lastErrorMessage);
+            if (!usesSharedAudioCtx && ctx !== audioCtx) {
                 try { await ctx.close(); } catch (_) {}
             }
-            throw err;
+            audioCtx = ctx;
+            currentSampleRate = ctx.sampleRate || FULL_RATE;
+            usingFallbackEngine = true;
+            workletReady = true;
+            return;
         }
 
-        const oldCtx = (ctx !== audioCtx) ? audioCtx : null;
+        const oldCtx = (!usesSharedAudioCtx && ctx !== audioCtx) ? audioCtx : null;
         if (workletNode) {
             workletNode.port.onmessage = null;
             try { workletNode.disconnect(); } catch (_) {}
@@ -204,7 +256,7 @@
         const gain = ctx.createGain();
         gain.gain.value = 0.85;
         node.connect(gain);
-        gain.connect(ctx.destination);
+        gain.connect((usesSharedAudioCtx && root.masterCompressor) ? root.masterCompressor : ctx.destination);
 
         audioCtx = ctx;
         workletNode = node;
@@ -213,40 +265,65 @@
         builtAtMs = loadAtMs = performance.now();
         slowLoad = 0;
         workletReady = false;
+        usingFallbackEngine = false;
 
         if (oldCtx) {
             try { void oldCtx.close(); } catch (_) {}
         }
 
-        await new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => {
-                reject(new Error("Chimera AudioWorklet hat nicht rechtzeitig 'ready' gemeldet."));
-            }, 5000);
+        node.onprocessorerror = (err) => {
+            lastErrorMessage = 'AudioWorklet processorerror';
+            console.error('[Chimera Processor Error -> Fallback aktiviert]', err);
+            usingFallbackEngine = true;
+            workletReady = true;
+        };
 
-            node.port.onmessage = (ev) => {
-                const msg = ev.data;
-                if (!msg) return;
+        try {
+            await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    reject(new Error("Chimera AudioWorklet hat nicht rechtzeitig 'ready' gemeldet."));
+                }, 4000);
 
-                if (msg.type === 'ready') {
-                    clearTimeout(timeout);
-                    workletReady = true;
-                    resolve();
-                } else if (msg.type === 'telemetry') {
-                    handleWorkletTelemetry(msg);
-                } else if (msg.type === 'error') {
-                    console.error('[Chimera Worklet Error]', msg.message);
-                    notifyTelemetry({ error: msg.message });
+                node.port.onmessage = (ev) => {
+                    const msg = ev.data;
+                    if (!msg) return;
+
+                    if (msg.type === 'ready') {
+                        clearTimeout(timeout);
+                        workletReady = true;
+                        resolve();
+                    } else if (msg.type === 'telemetry') {
+                        handleWorkletTelemetry(msg);
+                    } else if (msg.type === 'error') {
+                        console.error('[Chimera Worklet Error]', msg.message);
+                        lastErrorMessage = msg.message;
+                        notifyTelemetry({ error: msg.message });
+                        if (!workletReady) {
+                            clearTimeout(timeout);
+                            reject(new Error(msg.message));
+                        }
+                    }
+                };
+                if (typeof node.port.start === 'function') {
+                    node.port.start();
                 }
-            };
-        });
+            });
+        } catch (err) {
+            lastErrorMessage = err && err.message ? err.message : String(err);
+            console.warn('[Chimera] Worklet ready fehlgeschlagen, aktiviere Formant-Fallback:', lastErrorMessage);
+            try { node.disconnect(); } catch (_) {}
+            workletNode = null;
+            usingFallbackEngine = true;
+            workletReady = true;
+        }
 
         await Promise.race([
-            resumePromise.then(() => ctx.state === 'suspended' ? ctx.resume() : undefined),
-            new Promise(r => setTimeout(r, 1500))
+            resumePromise.then(() => ctx.state === 'suspended' ? ctx.resume().catch(() => {}) : undefined),
+            new Promise(r => setTimeout(r, 1200))
         ]);
 
         if (ctx.state !== 'running') {
-            console.warn('[Chimera Audio] AudioContext nicht aktiv:', ctx.state, 'sampleRate=', ctx.sampleRate);
+            console.warn('[Chimera Audio] AudioContext nach resume noch nicht running:', ctx.state, 'sampleRate=', ctx.sampleRate);
         }
 
         // Aktuellen Stimmcharakter sofort setzen
@@ -341,13 +418,22 @@
         activeUiTimers = [];
     }
 
+    function stopFallbackNodes() {
+        activeFallbackNodes.forEach(n => {
+            try { if (typeof n.stop === 'function') n.stop(); } catch (_) {}
+            try { if (typeof n.disconnect === 'function') n.disconnect(); } catch (_) {}
+        });
+        activeFallbackNodes = [];
+    }
+
     /**
-     * Stoppt sofort jede laufende AudioWorklet-Sprach-/Gesangsausgabe.
+     * Stoppt sofort jede laufende AudioWorklet- oder Fallback-Sprach-/Gesangsausgabe.
      */
     function stop() {
         clearUiTimers();
         isPlayingState = false;
         currentSyllableLabel = '';
+        stopFallbackNodes();
         if (workletNode) {
             try {
                 workletNode.port.postMessage({ type: 'stopSpeech' });
@@ -363,6 +449,7 @@
         stop();
         if (workletNode) {
             workletNode.port.onmessage = null;
+            workletNode.onprocessorerror = null;
             try { workletNode.disconnect(); } catch (_) {}
             workletNode = null;
         }
@@ -370,11 +457,93 @@
             try { masterGain.disconnect(); } catch (_) {}
             masterGain = null;
         }
-        if (audioCtx) {
+        if (audioCtx && !usesSharedAudioCtx) {
             try { await audioCtx.close(); } catch (_) {}
+        }
+        if (!usesSharedAudioCtx) {
             audioCtx = null;
         }
         workletReady = false;
+    }
+
+    /**
+     * Reiner Web-Audio-Formant-Synthesizer als automatischer Fallback für Edge-/GPO-Systeme,
+     * falls WASM im AudioWorklet blockiert wird.
+     */
+    function playFallbackFormantNotes(notesList, bpm, body, startOffsetSec = 0) {
+        const ctx = getOrCreateAudioContext(null);
+        const dest = (usesSharedAudioCtx && root.masterCompressor) ? root.masterCompressor : ctx.destination;
+        const beatSec = 60 / bpm;
+        const femaleShift = 1.0 + ((body && body.female ? body.female : currentVoiceMorph) * 0.22);
+
+        const osc = ctx.createOscillator();
+        osc.type = 'sawtooth';
+        const lfo = ctx.createOscillator();
+        lfo.frequency.value = 5.4;
+        const lfoGain = ctx.createGain();
+        lfoGain.gain.value = 10; // Vibrato cents
+        lfo.connect(lfoGain);
+        lfoGain.connect(osc.detune);
+
+        const f1 = ctx.createBiquadFilter(); f1.type = 'bandpass'; f1.Q.value = 6;
+        const f2 = ctx.createBiquadFilter(); f2.type = 'bandpass'; f2.Q.value = 8;
+        const f3 = ctx.createBiquadFilter(); f3.type = 'bandpass'; f3.Q.value = 11;
+        const formSum = ctx.createGain(); formSum.gain.value = 1.8;
+        const env = ctx.createGain();
+
+        osc.connect(f1); osc.connect(f2); osc.connect(f3);
+        f1.connect(formSum); f2.connect(formSum); f3.connect(formSum);
+        formSum.connect(env);
+        env.connect(dest);
+
+        const now = ctx.currentTime + 0.03;
+        env.gain.setValueAtTime(0.0001, now);
+
+        let cur = 0;
+        let firstSet = false;
+        let totalDur = 0;
+
+        notesList.forEach((step) => {
+            const noteDur = step.beats * beatSec;
+            const noteStart = cur;
+            const noteEnd = cur + noteDur;
+            cur = noteEnd;
+            if (noteEnd <= startOffsetSec) return;
+
+            const adjStart = now + Math.max(0, noteStart - startOffsetSec);
+            const adjEnd = now + (noteEnd - startOffsetSec);
+            totalDur = Math.max(totalDur, adjEnd - now);
+
+            const freq = 440 * Math.pow(2, (step.midi - 69) / 12);
+            const glide = Math.max(0.012, Math.min(0.16, step.rampIn ?? 0.04));
+            const vowelKey = step.vowel || (step.syl && step.syl.nucleus && step.syl.nucleus.ipa) || 'o';
+            const formants = FALLBACK_VOWEL_FORMANTS[vowelKey] || FALLBACK_VOWEL_FORMANTS.o;
+
+            if (!firstSet) {
+                osc.frequency.setValueAtTime(freq, adjStart);
+                f1.frequency.setValueAtTime(formants[0] * femaleShift, adjStart);
+                f2.frequency.setValueAtTime(formants[1] * femaleShift, adjStart);
+                f3.frequency.setValueAtTime(formants[2] * femaleShift, adjStart);
+                env.gain.linearRampToValueAtTime(0.32, adjStart + 0.03);
+                firstSet = true;
+            } else {
+                osc.frequency.linearRampToValueAtTime(freq, adjStart + glide);
+                f1.frequency.linearRampToValueAtTime(formants[0] * femaleShift, adjStart + glide);
+                f2.frequency.linearRampToValueAtTime(formants[1] * femaleShift, adjStart + glide);
+                f3.frequency.linearRampToValueAtTime(formants[2] * femaleShift, adjStart + glide);
+                env.gain.setValueAtTime(step.isFalsetto ? 0.36 : 0.30, adjStart + 0.01);
+            }
+        });
+
+        const endAt = now + totalDur + 0.08;
+        env.gain.exponentialRampToValueAtTime(0.0001, Math.max(now + 0.05, endAt));
+        osc.start(now);
+        lfo.start(now);
+        osc.stop(endAt + 0.02);
+        lfo.stop(endAt + 0.02);
+
+        activeFallbackNodes.push(osc, lfo, lfoGain, f1, f2, f3, formSum, env);
+        return totalDur;
     }
 
     /**
@@ -577,49 +746,89 @@
             throw new Error("Keine gültigen Skyline-Konturdaten (kurve_y) geladen.");
         }
 
+        const isVinyl = Boolean(options.isVinyl || daten.is_vinyl);
         const bildBreite = daten.bild_breite || kurve.length || 2500;
         const peaksCount = isNaN(parseInt(synthSettings.peaks, 10)) ? 4 : parseInt(synthSettings.peaks, 10);
         const valleysCount = isNaN(parseInt(synthSettings.valleys, 10)) ? 3 : parseInt(synthSettings.valleys, 10);
         const spacing = parseInt(synthSettings.spacing, 10) || 35;
         const sens = parseInt(synthSettings.sensibilitaet ?? synthSettings.sensibility, 10) || 0;
         const scaleName = (synthSettings.scale || 'pentatonic').toLowerCase();
-        const octaves = Math.max(1, Math.min(3, parseInt(synthSettings.oktaven ?? synthSettings.octaves, 10) || 2));
+        const octaves = Math.max(1, Math.min(6, parseInt(synthSettings.oktaven ?? synthSettings.octaves, 10) || 3));
         const mode = (synthSettings.mode || 'lr').toLowerCase();
-        const totalDurationSec = Math.max(2.0, Math.min(12.0, parseFloat(synthSettings.duration) || 5.0));
+        const defaultVinylDur = ((root.vinylTotalRotations || 20) / 33) * 60;
+        const totalDurationSec = isVinyl
+            ? Math.max(8.0, Number(options.targetDurationSec) || defaultVinylDur)
+            : Math.max(2.0, Math.min(18.0, parseFloat(synthSettings.duration) || 5.0));
 
         const voiceChar = options.voiceCharacter !== undefined ? options.voiceCharacter : currentVoiceMorph;
         const jumpIntensity = options.jumpIntensity !== undefined ? options.jumpIntensity : 0.7;
-
-        const gipfel = extractContourPoints(kurve, peaksCount, spacing, sens, 'gipfel').map(p => ({ ...p, kind: 'peak' }));
-        const taeler = extractContourPoints(kurve, valleysCount, spacing, sens, 'tal').map(p => ({ ...p, kind: 'valley' }));
-        let points = gipfel.concat(taeler);
-
-        if (points.length === 0) {
-            throw new Error("Keine Gipfel- oder Talpunkte mit den aktuellen Einstellungen gefunden.");
-        }
-
-        if (mode === 'rl') {
-            points.sort((a, b) => b.x - a.x);
-        } else {
-            points.sort((a, b) => a.x - b.x);
-        }
-
-        // Musikalische Skala im Brustregister-Bereich (1 Oktave Basis, damit Falsettsprung Luft nach oben hat)
-        const scaleIntervals = SCALES[scaleName] || SCALES.pentatonic;
-        const scaleNotes = [...scaleIntervals, 12];
-
-        const baseMidi = Math.round(52 + voiceChar * 10); // Männlich ab E3 (52), Weiblich ab D4 (62)
-        // Jodel-Sprung-Schwelle: hohe Intensität => schon kleine Höhendifferenz triggert Falsett
-        const deltaThreshold = 48 - jumpIntensity * 38; // ~10% bei max, ~48% bei min
-        const breakInterval = jumpIntensity >= 0.65 ? 12 : (jumpIntensity >= 0.35 ? 9 : 7);
 
         const maxY = Math.max(...kurve);
         const minY = Math.min(...kurve);
         const ySpan = (maxY - minY) || 1;
 
+        let points = [];
+        if (isVinyl) {
+            // Für Vinyl: komplette Rillen-Kontur über alle ~20 Umdrehungen musikalisch in ~56 markante Phrasenpunkte zerlegen
+            const targetSteps = Math.max(24, Math.min(64, Math.round(totalDurationSec * 1.6)));
+            const segSize = kurve.length / targetSteps;
+            for (let sIdx = 0; sIdx < targetSteps; sIdx++) {
+                const start = Math.floor(sIdx * segSize);
+                const end = Math.min(kurve.length - 1, Math.floor((sIdx + 1) * segSize));
+                let pickIdx = start;
+                let pickVal = kurve[start];
+                // Alternierend bzw. kontrastmaximiert innerhalb des Rillenabschnitts das markanteste Hoch oder Tief wählen
+                const lookForPeak = (sIdx % 2 === 0);
+                for (let k = start; k <= end; k++) {
+                    if ((lookForPeak && kurve[k] < pickVal) || (!lookForPeak && kurve[k] > pickVal)) {
+                        pickVal = kurve[k];
+                        pickIdx = k;
+                    }
+                }
+                const hoehe = ((maxY - pickVal) / ySpan) * 100;
+                points.push({
+                    x: pickIdx,
+                    y: pickVal,
+                    hoehe,
+                    kind: lookForPeak ? 'peak' : 'valley'
+                });
+            }
+        } else {
+            const gipfel = extractContourPoints(kurve, peaksCount, spacing, sens, 'gipfel').map(p => ({ ...p, kind: 'peak' }));
+            const taeler = extractContourPoints(kurve, valleysCount, spacing, sens, 'tal').map(p => ({ ...p, kind: 'valley' }));
+            points = gipfel.concat(taeler);
+
+            if (points.length === 0) {
+                throw new Error("Keine Gipfel- oder Talpunkte mit den aktuellen Einstellungen gefunden.");
+            }
+
+            if (mode === 'rl') {
+                points.sort((a, b) => b.x - a.x);
+            } else {
+                points.sort((a, b) => a.x - b.x);
+            }
+        }
+
+        // Musikalische Skala über die gewählte Oktavspanne (1..6 Oktaven auf singbaren Bereich gemappt)
+        const intervals = SCALES[scaleName] || SCALES.pentatonic;
+        const vocalSpanSemis = Math.min(28, 8 + octaves * 3);
+        const scaleNotes = [0];
+        let accSemi = 0;
+        while (accSemi < vocalSpanSemis) {
+            for (let ii = 0; ii < intervals.length && accSemi < vocalSpanSemis; ii++) {
+                accSemi += intervals[ii];
+                if (accSemi <= vocalSpanSemis) scaleNotes.push(accSemi);
+            }
+        }
+
+        const baseMidi = Math.round(51 + voiceChar * 10); // Männlich ab Eb3 (51), Weiblich ab Db4 (61)
+        // Jodel-Sprung-Schwelle: hohe Intensität => schon kleine Höhendifferenz triggert Falsett
+        const deltaThreshold = 52 - jumpIntensity * 42; // ~10% bei max, ~52% bei min
+        const breakInterval = jumpIntensity >= 0.72 ? 12 : (jumpIntensity >= 0.4 ? 9 : (jumpIntensity >= 0.15 ? 7 : 0));
+
         const bpm = 120; // 1 beat = 0.5s
         const beatSec = 60 / bpm;
-        const minNoteSec = 0.24;
+        const minNoteSec = isVinyl ? 0.32 : 0.24;
 
         const chestVowels = ['o', 'u'];
         const falsettoVowels = ['i', 'e'];
@@ -633,13 +842,10 @@
             const prev = i > 0 ? points[i - 1] : p;
             const next = i < points.length - 1 ? points[i + 1] : null;
 
-            // Skalen-Rasterung im Brust-Grundbereich
             const normH = Math.max(0, Math.min(1, p.hoehe / 100));
             const scaleIdx = Math.min(scaleNotes.length - 1, Math.floor(normH * (scaleNotes.length - 1)));
             let midi = baseMidi + scaleNotes[scaleIdx];
 
-            // Lokales Minimum (tiefste Senke) zwischen prev.x und p.x ermitteln,
-            // damit ein Tal zwischen zwei Gipfeln den echten Anstieg & die Steilheit widerspiegelt.
             let localDipH = prev.hoehe;
             let localDipX = prev.x;
             if (i > 0) {
@@ -659,7 +865,7 @@
             const steepness = Math.abs(ascentH) / (dxNorm * 100);
 
             let isFalsetto = false;
-            if (p.kind === 'peak' && (ascentH >= deltaThreshold || (i === 0 && normH > 0.72))) {
+            if (breakInterval > 0 && p.kind === 'peak' && (ascentH >= deltaThreshold || (i === 0 && normH > 0.72))) {
                 isFalsetto = true;
                 midi += breakInterval;
             }
@@ -668,16 +874,12 @@
             const maxMidi = Math.round(78 + voiceChar * 8);
             midi = Math.min(maxMidi, Math.max(baseMidi - 2, midi));
 
-            // Dauer aus horizontalem Abstand zum nächsten Punkt (oder Abschluss-Haltezeit)
             const segShare = next
-                ? Math.max(0.08, Math.abs(next.x - p.x) / bildBreite)
-                : Math.max(0.22, 1 / Math.max(2, points.length));
+                ? Math.max(1 / (points.length * 1.8), Math.abs(next.x - p.x) / bildBreite)
+                : Math.max(0.12, 1 / Math.max(2, points.length));
             const rawSec = Math.max(minNoteSec, Math.min(1.4, segShare * totalDurationSec));
             const beats = rawSec / beatSec;
 
-            // Steilheit steuert Glissando-/Portamento-Geschwindigkeit (rampIn)
-            // Steile Kante -> harter, schneller Jodel-Umbruch (~12-22ms)
-            // Sanfter Hang -> weiches Portamento (~70-140ms)
             const rampIn = Math.max(0.011, Math.min(0.15, 0.14 / (1 + steepness * 2.2)));
 
             const vowel = isFalsetto
@@ -704,6 +906,16 @@
                 steepness: Math.round(steepness * 100) / 100,
                 syl,
                 durationSec: rawSec
+            });
+        }
+
+        // Für Vinyl auf die exakte Gesamtdauer (z. B. 36.36s bei 33 RPM & 20 Umdrehungen) skalieren
+        if (isVinyl && sequence.length > 0) {
+            const currentTotal = sequence.reduce((sum, s) => sum + s.beats * beatSec, 0) || 1;
+            const timeScale = totalDurationSec / currentTotal;
+            sequence.forEach(s => {
+                s.beats = Math.max(0.25, s.beats * timeScale);
+                s.durationSec = s.beats * beatSec;
             });
         }
 
@@ -811,7 +1023,8 @@
             return {
                 bild_breite: kurve.length,
                 bild_hoehe: 400,
-                kurve_y: kurve
+                kurve_y: kurve,
+                is_vinyl: true
             };
         }
 
@@ -829,7 +1042,8 @@
             return {
                 bild_breite: kurve.length,
                 bild_hoehe: 400,
-                kurve_y: kurve
+                kurve_y: kurve,
+                is_vinyl: true
             };
         }
 
@@ -850,38 +1064,56 @@
      * ohne bereits Audio abzuspielen. Lädt chimera.wasm bei Bedarf nach.
      */
     async function planFromContour(source, synthSettings = {}, options = {}) {
-        await ensureWasmCompiled();
+        const wasmOk = await ensureWasmCompiled();
         const daten = normalizeContour(source);
 
         // Falls Mutation (0.5..1.5) aus dem UI kommt, auf Jodel-Sprung-Intensität (0.25..0.95) mappen
         let jumpInt = options.jumpIntensity;
+        if (jumpInt === undefined && synthSettings.jumpIntensity !== undefined) {
+            jumpInt = Math.max(0.0, Math.min(1.0, Number(synthSettings.jumpIntensity)));
+        }
         if (jumpInt === undefined && synthSettings.mutation !== undefined) {
             const m = Math.max(0.5, Math.min(1.5, Number(synthSettings.mutation) || 1.0));
             jumpInt = Math.max(0.25, Math.min(0.95, (m - 0.5) * 0.7 + 0.25));
         }
-        const voiceChar = options.voiceCharacter !== undefined ? options.voiceCharacter : currentVoiceMorph;
+        const voiceChar = options.voiceCharacter !== undefined
+            ? options.voiceCharacter
+            : (synthSettings.voiceCharacter !== undefined ? synthSettings.voiceCharacter : currentVoiceMorph);
 
         const { sequence, bpm, body } = buildSequenceFromSkyline(daten, synthSettings, {
             voiceCharacter: voiceChar,
-            jumpIntensity: jumpInt !== undefined ? jumpInt : 0.7
+            jumpIntensity: jumpInt !== undefined ? jumpInt : 0.7,
+            isVinyl: Boolean(options.isVinyl || daten.is_vinyl),
+            targetDurationSec: options.targetDurationSec
         });
 
-        const plan = callWasm('planSong', {
-            notes: sequence.map(s => ({ midi: s.midi, beats: s.beats, syl: s.syl })),
-            options: {
-                body,
-                bpm,
-                t0: 0,
-                vibrato: 36
+        let totalTime = sequence.reduce((sum, s) => sum + s.beats * (60 / bpm), 0);
+        if (wasmOk && mainExports) {
+            try {
+                const plan = callWasm('planSong', {
+                    notes: sequence.map(s => ({ midi: s.midi, beats: s.beats, syl: s.syl })),
+                    options: {
+                        body,
+                        bpm,
+                        t0: 0,
+                        vibrato: 36
+                    }
+                });
+                if (plan && Number.isFinite(plan.end)) {
+                    totalTime = plan.end;
+                }
+            } catch (err) {
+                console.warn('[Chimera] WASM planSong Fehler, nutze JS-Timing:', err);
             }
-        });
+        }
 
         return {
             engine: 'chimera',
             version: 2,
+            isVinyl: Boolean(options.isVinyl || daten.is_vinyl),
             bpm,
             body,
-            totalTime: plan.end,
+            totalTime,
             notes: sequence.map(s => ({
                 midi: s.midi,
                 beats: s.beats,
@@ -896,7 +1128,7 @@
 
     /**
      * Spielt ein erzeugtes oder aus Supabase geladenes Chimera-AI-Preset ab.
-     * Unterstützt dynamisches Tempo-Scaling (z.B. für Vinyl RPM).
+     * Unterstützt dynamisches Tempo-Scaling & Start-Offset (z.B. für Vinyl RPM).
      */
     async function playPlan(chimeraSeq, options = {}, callbacks = {}) {
         if (!chimeraSeq || chimeraSeq.engine !== 'chimera' || !Array.isArray(chimeraSeq.notes) || chimeraSeq.notes.length === 0) {
@@ -906,46 +1138,89 @@
         await init();
         stop();
 
-        const speedMultiplier = Math.max(0.25, Math.min(3.0, Number(options.speedMultiplier) || 1.0));
-        const effectiveBpm = (chimeraSeq.bpm || 120) * speedMultiplier;
+        const speedMultiplier = Math.max(0.05, Math.min(3.5, Number(options.speedMultiplier) || 1.0));
+        const baseBpm = chimeraSeq.bpm || 120;
+        const effectiveBpm = baseBpm * speedMultiplier;
         const body = options.body || chimeraSeq.body || { female: currentVoiceMorph, child: 0 };
+        const startOffsetOriginalSec = Math.max(0, Number(options.startOffsetSec) || 0);
 
         setVoiceCharacter(body.female);
 
-        const plan = callWasm('planSong', {
-            notes: chimeraSeq.notes.map(n => ({ midi: n.midi, beats: n.beats, syl: n.syl })),
-            options: {
-                body,
-                bpm: effectiveBpm,
-                t0: 0,
-                vibrato: 36
+        // Falls wir ab einem Fortschritt (z.B. RPM-Wechsel auf Vinyl) fortsetzen, übrige Noten zuschneiden
+        const baseBeatSec = 60 / baseBpm;
+        let origCursor = 0;
+        const activeNotes = [];
+        for (const n of chimeraSeq.notes) {
+            const nDurOrig = n.beats * baseBeatSec;
+            const nEndOrig = origCursor + nDurOrig;
+            if (nEndOrig > startOffsetOriginalSec + 0.02) {
+                const remainFrac = origCursor < startOffsetOriginalSec
+                    ? Math.max(0.1, (nEndOrig - startOffsetOriginalSec) / nDurOrig)
+                    : 1.0;
+                activeNotes.push({
+                    ...n,
+                    beats: n.beats * remainFrac
+                });
             }
-        });
+            origCursor = nEndOrig;
+        }
 
-        applyPortamentoAndYodelDynamics(plan, chimeraSeq.notes.map(n => n.rampIn ?? 0.04));
+        if (activeNotes.length === 0) {
+            if (typeof callbacks.onComplete === 'function') callbacks.onComplete(0);
+            return { plan: { end: 0 }, durationSec: 0 };
+        }
 
-        isPlayingState = true;
-        const id = ++speakIdCounter;
-        workletNode.port.postMessage({
-            type: 'schedule',
-            gestures: plan.gestures,
-            segments: plan.segments,
-            end: plan.end,
-            id,
-            replace: true,
-            lead: 0.03
-        });
+        let plan = null;
+        let durationSec = 0;
+
+        if (!usingFallbackEngine && mainExports && workletNode && workletReady) {
+            try {
+                plan = callWasm('planSong', {
+                    notes: activeNotes.map(n => ({ midi: n.midi, beats: n.beats, syl: n.syl })),
+                    options: {
+                        body,
+                        bpm: effectiveBpm,
+                        t0: 0,
+                        vibrato: 36
+                    }
+                });
+
+                applyPortamentoAndYodelDynamics(plan, activeNotes.map(n => n.rampIn ?? 0.04));
+
+                isPlayingState = true;
+                const id = ++speakIdCounter;
+                workletNode.port.postMessage({
+                    type: 'schedule',
+                    gestures: plan.gestures,
+                    segments: plan.segments,
+                    end: plan.end,
+                    id,
+                    replace: true,
+                    lead: 0.03
+                });
+                durationSec = plan.end;
+            } catch (err) {
+                console.warn('[Chimera] Worklet schedule fehlgeschlagen, wechsle auf Formant-Fallback:', err);
+                usingFallbackEngine = true;
+                lastErrorMessage = err && err.message ? err.message : String(err);
+            }
+        }
+
+        if (usingFallbackEngine || !plan) {
+            isPlayingState = true;
+            durationSec = playFallbackFormantNotes(activeNotes, effectiveBpm, body, 0);
+        }
 
         const beatSec = 60 / effectiveBpm;
         let tAcc = 0.03;
-        chimeraSeq.notes.forEach((step, idx) => {
+        activeNotes.forEach((step, idx) => {
             const timer = setTimeout(() => {
                 if (!isPlayingState) return;
                 currentSyllableLabel = `/${step.vowel || step.syl?.nucleus?.ipa || 'o'}/ ${step.isFalsetto ? 'FALSETT' : 'BRUST'}`;
                 if (typeof callbacks.onStep === 'function') {
                     callbacks.onStep({
                         stepIndex: idx,
-                        totalSteps: chimeraSeq.notes.length,
+                        totalSteps: activeNotes.length,
                         point: step.point,
                         midi: step.midi,
                         vowel: step.vowel,
@@ -957,18 +1232,18 @@
             tAcc += step.beats * beatSec;
         });
 
-        const totalMs = (plan.end + 0.25) * 1000;
+        const totalMs = (durationSec + 0.25) * 1000;
         const endTimer = setTimeout(() => {
             isPlayingState = false;
             currentSyllableLabel = '';
             clearUiTimers();
             if (typeof callbacks.onComplete === 'function') {
-                callbacks.onComplete(chimeraSeq.notes.length);
+                callbacks.onComplete(activeNotes.length);
             }
         }, totalMs);
         activeUiTimers.push(endTimer);
 
-        return { plan, durationSec: plan.end };
+        return { plan: plan || { end: durationSec }, durationSec };
     }
 
     function onTelemetry(listener) {
@@ -978,10 +1253,12 @@
 
     function getStatus() {
         return {
-            ready: Boolean(audioCtx && workletNode && workletReady),
+            ready: Boolean((audioCtx && workletNode && workletReady) || usingFallbackEngine),
             playing: isPlayingState,
             sampleRate: currentSampleRate,
             voiceCharacter: currentVoiceMorph,
+            engineMode: usingFallbackEngine ? 'web-audio-fallback' : 'chimera-wasm',
+            lastError: lastErrorMessage,
             lastTelemetry
         };
     }
