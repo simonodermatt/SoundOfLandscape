@@ -64,7 +64,6 @@
         a: [730, 1180, 2550]
     };
     let activeFallbackNodes = [];
-    const MAX_CHORD_WORKLET_VOICES = 2;
     let activeChoirVoices = [];
     let activeChoirFaces = [];
 
@@ -552,11 +551,11 @@
         lfo.connect(lfoGain);
         lfoGain.connect(osc.detune);
 
-        const f1 = ctx.createBiquadFilter(); f1.type = 'bandpass'; f1.Q.value = 6;
-        const f2 = ctx.createBiquadFilter(); f2.type = 'bandpass'; f2.Q.value = 8;
-        const f3 = ctx.createBiquadFilter(); f3.type = 'bandpass'; f3.Q.value = 11;
-        const antiBuzzLp = ctx.createBiquadFilter(); antiBuzzLp.type = 'lowpass'; antiBuzzLp.frequency.value = 1800;
-        const formSum = ctx.createGain(); formSum.gain.value = 0.55 * gainScale;
+        const f1 = ctx.createBiquadFilter(); f1.type = 'bandpass'; f1.Q.value = 5.5;
+        const f2 = ctx.createBiquadFilter(); f2.type = 'bandpass'; f2.Q.value = 7.5;
+        const f3 = ctx.createBiquadFilter(); f3.type = 'bandpass'; f3.Q.value = 10;
+        const antiBuzzLp = ctx.createBiquadFilter(); antiBuzzLp.type = 'lowpass'; antiBuzzLp.frequency.value = Number.isFinite(opts.warmthCutoffHz) ? opts.warmthCutoffHz : 1350;
+        const formSum = ctx.createGain(); formSum.gain.value = 0.50 * gainScale;
         const env = ctx.createGain();
         const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
         if (panner && panner.pan) {
@@ -574,7 +573,7 @@
             env.connect(dest);
         }
 
-        const now = ctx.currentTime + 0.03 + extraDelaySec;
+        const now = Number.isFinite(opts.startAtTime) ? opts.startAtTime : (ctx.currentTime + 0.03 + extraDelaySec);
         env.gain.setValueAtTime(0.0001, now);
 
         let cur = 0;
@@ -1012,33 +1011,48 @@
             });
         }
 
-        // Im Modus 'chord' (Akkord): Mehrstimmiger Jodel-Chor (pro Punkt eine Stimme + ein Gesicht!)
+        // Im Modus 'chord' (Akkord): Sauberer offener Alpen-Jodel-Akkord (ohne Sekunden-Reibung oder Zeitversatz)
         let chordVoices = null;
         if (!isVinyl && mode === 'chord') {
-            const choirSlice = sequence.slice(0, 6);
-            const phraseTargetSec = Math.max(2.6, Math.min(5.2, totalDurationSec * 0.72));
-            const pickUpSec = 0.20;
-            const bounceSec = 0.19;
-            const dropSec = 0.20;
-            const tailSec = 0.36;
-            const holdSec = Math.max(0.95, phraseTargetSec - (pickUpSec + bounceSec + dropSec + tailSec));
+            const rawSlice = sequence.slice(0, 6);
+            // Nach Berghöhe sortieren: tiefe Täler -> Bass/Bariton (Brust), hohe Gipfel -> Sopran/Falsett
+            const sortedByHeight = rawSlice
+                .slice()
+                .sort((a, b) => (a.point.hoehe || 0) - (b.point.hoehe || 0));
 
-            chordVoices = choirSlice.map((step, idx) => {
+            const phraseTargetSec = Math.max(2.6, Math.min(4.8, totalDurationSec * 0.72));
+            const pickUpSec = 0.24;
+            const tailSec = 0.42;
+            const holdSec = Math.max(1.20, phraseTargetSec - (pickUpSec + tailSec));
+
+            const isMinorChord = (scaleName === 'minor' || scaleName === 'dorian');
+            // Konsonante offene Akkord-Intervalle (mindestens 3–5 Halbtöne Abstand pro Stimme => keine Reibung!)
+            const openChordIntervals = isMinorChord
+                ? [0, 7, 12, 15, 19, 24]
+                : [0, 7, 12, 16, 19, 24];
+
+            // Akkord-Grundton aus mittlerer Panorama-Höhe & voiceChar ableiten
+            const avgNormH = sortedByHeight.reduce((sum, s) => sum + Math.max(0, Math.min(1, s.point.hoehe / 100)), 0) / Math.max(1, sortedByHeight.length);
+            const chordRootMidi = Math.max(46, Math.min(60, Math.round(baseMidi - 2 + avgNormH * 6)));
+
+            chordVoices = sortedByHeight.map((step, idx) => {
                 const p = step.point;
-                const isPeak = (p.kind === 'peak' || step.isFalsetto);
-                const spreadOffset = (idx % 2 === 0 ? -0.06 : 0.06);
-                const rawFemale = isPeak
-                    ? Math.min(0.98, Math.max(0.45, voiceChar + 0.25 + spreadOffset))
-                    : Math.max(0.02, Math.min(0.55, voiceChar - 0.22 + spreadOffset));
-                const pan = Math.max(-0.9, Math.min(0.9, ((p.x / bildBreite) * 2 - 1) * 0.9));
+                const interval = openChordIntervals[idx % openChordIntervals.length];
+                const rawMainMidi = chordRootMidi + interval;
+                const maxChoirMidi = Math.round(79 + voiceChar * 6);
+                const mainMidi = Math.min(maxChoirMidi, Math.max(45, rawMainMidi));
 
-                const mainMidi = step.midi;
-                const introMidi = Math.max(46, mainMidi - (isPeak ? 5 : 4));
-                const bounceMidi = isPeak ? Math.min(84, mainMidi + 2) : Math.max(46, mainMidi - 2);
-                const dropMidi = Math.max(45, mainMidi - 5);
-                const endMidi = isPeak ? mainMidi - 2 : mainMidi;
+                const isPeak = (interval >= 12 || p.kind === 'peak' || step.isFalsetto);
+                const spreadOffset = (idx % 2 === 0 ? -0.05 : 0.05);
+                const rawFemale = isPeak
+                    ? Math.min(0.95, Math.max(0.48, voiceChar + 0.22 + spreadOffset))
+                    : Math.max(0.05, Math.min(0.52, voiceChar - 0.18 + spreadOffset));
+                const pan = Math.max(-0.85, Math.min(0.85, ((p.x / bildBreite) * 2 - 1) * 0.85));
+
+                // Synchroner Auftakt auf reiner Quinte/Oktave (kein Cluster), gemeinsamer Akkord-Hold, ruhiger Schluss
+                const introMidi = Math.max(45, chordRootMidi + (idx >= 3 ? 12 : 0));
+                const endMidi = Math.max(45, chordRootMidi + (idx >= 4 ? 12 : (idx >= 2 ? 7 : 0)));
                 const introVowel = isPeak ? 'o' : 'u';
-                const bounceVowel = isPeak ? 'i' : 'e';
                 const holdVowel = isPeak ? (idx % 2 === 0 ? 'i' : 'e') : (idx % 2 === 0 ? 'o' : 'u');
                 const endVowel = 'u';
 
@@ -1047,7 +1061,7 @@
                         point: p,
                         midi: introMidi,
                         beats: pickUpSec / beatSec,
-                        rampIn: 0.02,
+                        rampIn: 0.025,
                         isFalsetto: false,
                         vowel: introVowel,
                         syl: makeSyllable('jo', ['j'], introVowel, 0, false, false),
@@ -1055,30 +1069,10 @@
                     },
                     {
                         point: p,
-                        midi: bounceMidi,
-                        beats: bounceSec / beatSec,
-                        rampIn: 0.012,
-                        isFalsetto: isPeak,
-                        vowel: bounceVowel,
-                        syl: makeSyllable(isPeak ? 'hi' : 'de', [isPeak ? 'h' : 'd'], bounceVowel, 1, false, false),
-                        durationSec: bounceSec
-                    },
-                    {
-                        point: p,
-                        midi: dropMidi,
-                        beats: dropSec / beatSec,
-                        rampIn: 0.018,
-                        isFalsetto: false,
-                        vowel: 'o',
-                        syl: makeSyllable('lo', ['l'], 'o', 0, false, false),
-                        durationSec: dropSec
-                    },
-                    {
-                        point: p,
                         midi: mainMidi,
                         beats: holdSec / beatSec,
-                        rampIn: isPeak ? 0.012 : 0.032,
-                        isFalsetto: isPeak || step.isFalsetto,
+                        rampIn: isPeak ? 0.022 : 0.035,
+                        isFalsetto: isPeak,
                         vowel: holdVowel,
                         syl: makeSyllable((isPeak ? 'hi' : 'jo'), [isPeak ? 'h' : 'j'], holdVowel, 1, false, false),
                         durationSec: holdSec
@@ -1087,7 +1081,7 @@
                         point: p,
                         midi: endMidi,
                         beats: tailSec / beatSec,
-                        rampIn: 0.045,
+                        rampIn: 0.05,
                         isFalsetto: false,
                         vowel: endVowel,
                         syl: makeSyllable('du', ['d'], endVowel, 0, true, true),
@@ -1102,13 +1096,13 @@
                     midi: mainMidi,
                     f0Hz: Math.round(440 * Math.pow(2, (mainMidi - 69) / 12) * 10) / 10,
                     vowel: holdVowel,
-                    isFalsetto: isPeak || step.isFalsetto,
+                    isFalsetto: isPeak,
                     pan,
                     body: { female: Math.round(rawFemale * 100) / 100, child: 0 },
                     syllableLabel: `/${holdVowel}/ ${isPeak ? 'FALSETT' : 'BRUST'}`,
                     notes: voiceNotes
                 };
-            });
+            }).sort((a, b) => a.point.x - b.point.x);
         }
 
         return { sequence, bpm, mode, jumpIntensity, chordVoices, body: { female: voiceChar, child: 0 } };
@@ -1324,18 +1318,20 @@
     }
 
     /**
-     * Spielt einen mehrstimmigen Jodel-Chor im Akkord-Modus ab (pro Punkt eine Stimme + Gesicht).
+     * Spielt einen mehrstimmigen Jodel-Chor im Akkord-Modus ab (samplegenau synchron ohne Engine-Latenzversatz).
      */
     async function playChordPlan(chimeraSeq, options = {}, callbacks = {}) {
         await init();
         stop();
 
         const voicesSpec = chimeraSeq.chordVoices;
-        const effectiveBpm = (chimeraSeq.bpm || 120) * Math.max(0.25, Math.min(3.0, Number(options.speedMultiplier) || 1.0));
+        const effectiveBpm = (chimeraSeq.bpm || 138) * Math.max(0.25, Math.min(3.0, Number(options.speedMultiplier) || 1.0));
         const jumpInt = chimeraSeq.jumpIntensity !== undefined ? chimeraSeq.jumpIntensity : 0.7;
         const ctx = audioCtx || getOrCreateAudioContext(null);
-        const dest = (usesSharedAudioCtx && root.masterCompressor) ? root.masterCompressor : ctx.destination;
-        const gainPerVoice = Math.min(0.65, 0.95 / Math.sqrt(voicesSpec.length));
+        const gainPerVoice = Math.min(0.52, 0.90 / Math.sqrt(voicesSpec.length));
+
+        // Ein gemeinsamer Startzeitpunkt für alle Stimmen => 0 ms Überlagerungs-/Echo-Versatz
+        const chordStartAt = ctx.currentTime + 0.045;
 
         activeChoirFaces = voicesSpec.map((v, idx) => ({
             voiceIndex: idx,
@@ -1353,123 +1349,39 @@
         currentSyllableLabel = `CHOR (${voicesSpec.length} STIMMEN)`;
         let maxEndSec = 0;
 
-        // Höchstens MAX_CHORD_WORKLET_VOICES echte WASM-Ankerstimmen (tiefste Brust + höchstes Falsett)
-        const anchorIndices = new Set();
-        if (voicesSpec.length > 0) {
-            let lowIdx = 0;
-            let highIdx = 0;
-            voicesSpec.forEach((v, idx) => {
-                if ((v.midi || 60) < (voicesSpec[lowIdx].midi || 60)) lowIdx = idx;
-                if ((v.midi || 60) > (voicesSpec[highIdx].midi || 60)) highIdx = idx;
-            });
-            anchorIndices.add(lowIdx);
-            if (anchorIndices.size < MAX_CHORD_WORKLET_VOICES) anchorIndices.add(highIdx);
-            for (let idx = 0; idx < voicesSpec.length && anchorIndices.size < MAX_CHORD_WORKLET_VOICES; idx++) {
-                anchorIndices.add(idx);
-            }
-        }
-
         for (let idx = 0; idx < voicesSpec.length; idx++) {
             const v = voicesSpec[idx];
-            const faceObj = activeChoirFaces[idx];
             const voiceNotes = v.notes || [];
-            const staggerSec = idx * 0.025;
             const voiceBody = v.body || { female: currentVoiceMorph, child: 0 };
-            const useWorklet = !usingFallbackEngine && mainExports && wasmModule && workletReady && anchorIndices.has(idx);
-
-            if (useWorklet) {
-                try {
-                    const plan = callWasm('planSong', {
-                        notes: voiceNotes.map(n => ({ midi: n.midi, beats: n.beats, syl: n.syl })),
-                        options: { body: voiceBody, bpm: effectiveBpm, t0: 0, vibrato: 62 }
-                    });
-                    applyPortamentoAndYodelDynamics(plan, voiceNotes.map(n => n.rampIn ?? 0.04));
-
-                    const vNode = new AudioWorkletNode(ctx, 'chimera', {
-                        numberOfInputs: 0,
-                        numberOfOutputs: 1,
-                        outputChannelCount: [2],
-                        processorOptions: { module: wasmModule }
-                    });
-                    const vGain = ctx.createGain();
-                    vGain.gain.setValueAtTime(gainPerVoice, ctx.currentTime);
-                    const vPan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
-                    if (vPan && vPan.pan) {
-                        vPan.pan.setValueAtTime(Math.max(-0.95, Math.min(0.95, v.pan || 0)), ctx.currentTime);
-                        vNode.connect(vPan);
-                        vPan.connect(vGain);
-                    } else {
-                        vNode.connect(vGain);
-                    }
-                    vGain.connect(dest);
-
-                    let voiceScheduled = false;
-                    vNode.onprocessorerror = (err) => {
-                        console.warn('[Chimera Chor] Processor Error auf Stimme #' + idx, err);
-                    };
-                    vNode.port.onmessage = (ev) => {
-                        const msg = ev.data;
-                        if (!msg) return;
-                        if (msg.type === 'ready') {
-                            if (voiceScheduled) return;
-                            voiceScheduled = true;
-                            try {
-                                vNode.port.postMessage({ type: 'body', body: voiceBody });
-                                vNode.port.postMessage({
-                                    type: 'schedule',
-                                    gestures: plan.gestures,
-                                    segments: plan.segments,
-                                    end: plan.end,
-                                    id: ++speakIdCounter,
-                                    replace: true,
-                                    lead: 0.03 + staggerSec
-                                });
-                                scheduleVibratoYodelTimers(vNode.port, voiceNotes, effectiveBpm, jumpInt);
-                            } catch (_) {}
-                        } else if (msg.type === 'telemetry') {
-                            faceObj.telemetry = msg;
-                            if (idx === 0) lastRawTelemetry = msg;
-                        }
-                    };
-                    if (typeof vNode.port.start === 'function') vNode.port.start();
-                    activeChoirVoices.push({ node: vNode, gain: vGain, panner: vPan, isScheduled: () => voiceScheduled });
-                    maxEndSec = Math.max(maxEndSec, (plan.end || 3) + staggerSec);
-                    continue;
-                } catch (err) {
-                    console.warn('[Chimera Chor] Worklet Stimme #' + idx + ' -> Fallback:', err);
-                }
-            }
-
-            // Fallback oder Stimme > MAX_CHORD_WORKLET_VOICES
             const fDur = playFallbackFormantNotes(voiceNotes, effectiveBpm, voiceBody, 0, {
                 panValue: v.pan || 0,
                 gainScale: gainPerVoice,
                 jumpIntensity: jumpInt,
-                delaySec: staggerSec
+                startAtTime: chordStartAt,
+                warmthCutoffHz: v.isFalsetto ? 1650 : 1200
             });
             maxEndSec = Math.max(maxEndSec, fDur);
         }
 
-        // Nur falls keines der Chor-Worklets überhaupt 'ready' meldet (z. B. GPO-Blockade)
-        const hadWorklet = activeChoirVoices.length > 0;
-        if (hadWorklet) {
-            const wd = setTimeout(() => {
-                if (!isPlayingState || usingFallbackEngine) return;
-                const anyReady = activeChoirVoices.some(v => v.isScheduled && v.isScheduled());
-                if (!anyReady) {
-                    console.warn('[Chimera Chor] Worklets haben nicht rechtzeitig ready gemeldet -> Formant-Fallback.');
-                    usingFallbackEngine = true;
-                    voicesSpec.forEach((v, idx) => {
-                        playFallbackFormantNotes(v.notes || [], effectiveBpm, v.body, 0.35, {
-                            panValue: v.pan || 0,
-                            gainScale: gainPerVoice,
-                            jumpIntensity: jumpInt,
-                            delaySec: idx * 0.03
-                        });
+        // Synchronisierte Silben-/Gesichts-Updates für den Chor
+        if (voicesSpec[0] && Array.isArray(voicesSpec[0].notes)) {
+            const beatSec = 60 / effectiveBpm;
+            let tAcc = 0.045;
+            voicesSpec[0].notes.forEach((n, stepIdx) => {
+                const stTimer = setTimeout(() => {
+                    if (!isPlayingState) return;
+                    activeChoirFaces.forEach((f, vIdx) => {
+                        const vn = voicesSpec[vIdx] && voicesSpec[vIdx].notes ? voicesSpec[vIdx].notes[stepIdx] : null;
+                        if (vn) {
+                            f.vowel = vn.vowel || f.vowel;
+                            f.f0Hz = Math.round(440 * Math.pow(2, (vn.midi - 69) / 12) * 10) / 10;
+                            f.syllableLabel = `/${f.vowel}/ ${vn.isFalsetto ? 'FALSETT' : 'BRUST'}`;
+                        }
                     });
-                }
-            }, 1200);
-            activeUiTimers.push(wd);
+                }, tAcc * 1000);
+                activeUiTimers.push(stTimer);
+                tAcc += (n.beats || 0.5) * beatSec;
+            });
         }
 
         const totalMs = (Math.max(1.0, maxEndSec) + 0.35) * 1000;
