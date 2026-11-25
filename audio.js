@@ -450,13 +450,6 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
 
 window.playAiPanoAudio = async function(panoId) {
     const t = (typeof text !== 'undefined' && text[window.currentLang]) ? text[window.currentLang] : {};
-    const sequence = window.panoAiSequences ? window.panoAiSequences[panoId] : null;
-    if (!sequence || sequence.engine !== 'chimera') {
-        if (window.panoAiSequences) window.panoAiSequences[panoId] = null;
-        alert(t.alert_gen_ai_comp_first || "Bitte klicke zuerst auf das Berg-Symbol (Jodel generieren), um die Jodel-Stimme zu berechnen.");
-        return;
-    }
-
     if (!window.ChimeraJodelBridge) {
         alert("Chimera Vocal-Engine ist nicht geladen.");
         return;
@@ -466,6 +459,19 @@ window.playAiPanoAudio = async function(panoId) {
         window.activeSynth && window.activeSynth[panoId] ? window.activeSynth[panoId].volume : undefined
     );
     console.log('[Audio] State:', actx.state, 'MasterGain:', window.masterGain ? window.masterGain.gain.value : null);
+
+    let sequence = window.panoAiSequences ? window.panoAiSequences[panoId] : null;
+    if (!sequence || sequence.engine !== 'chimera') {
+        if (window.panoDataCache && window.panoDataCache[panoId] && typeof window.aiComposePano === 'function') {
+            await window.aiComposePano(panoId);
+            sequence = window.panoAiSequences ? window.panoAiSequences[panoId] : null;
+        }
+        if (!sequence || sequence.engine !== 'chimera') {
+            if (window.panoAiSequences) window.panoAiSequences[panoId] = null;
+            alert(t.alert_gen_ai_comp_first || "Bitte klicke zuerst auf das Berg-Symbol (Jodel generieren), um die Jodel-Stimme zu berechnen.");
+            return;
+        }
+    }
 
     window.stopAllAudio();
     if (window.ChimeraJodelBridge && typeof window.ChimeraJodelBridge.unlockAudio === 'function') {

@@ -74,6 +74,7 @@
     let telemetryListeners = new Set();
     let lastTelemetry = null;
     let lastRawTelemetry = null;
+    let telemetryCount = 0;
     let currentSyllableLabel = '';
 
     /**
@@ -333,6 +334,7 @@
     }
 
     function handleWorkletTelemetry(msg) {
+        telemetryCount++;
         lastRawTelemetry = msg;
         const now = performance.now();
         const dt = Math.min(0.1, (now - loadAtMs) / 1000);
@@ -529,43 +531,67 @@
     }
 
     /**
-     * Reiner Web-Audio-Formant-Synthesizer als automatischer Fallback für Edge-/GPO-Systeme
-     * sowie für zusätzliche Chor-Stimmen, inkl. Stereo-Panning und Vibrato-Jodel auf langen Tönen.
+     * Reiner Web-Audio-Vokal-Synthesizer (warmer Dreieck-Kern + gefilterte Obertöne + sanfter Vokal-EQ)
+     * für harmonische Chor-Akkorde und als sauberer Edge-/GPO-Fallback inkl. Stereo-Panning & Vibrato.
      */
     function playFallbackFormantNotes(notesList, bpm, body, startOffsetSec = 0, opts = {}) {
         const ctx = getOrCreateAudioContext(null);
         const dest = (usesSharedAudioCtx && root.masterCompressor) ? root.masterCompressor : ctx.destination;
         const beatSec = 60 / bpm;
-        const femaleShift = 1.0 + ((body && body.female !== undefined ? body.female : currentVoiceMorph) * 0.22);
+        const femaleVal = (body && body.female !== undefined) ? body.female : currentVoiceMorph;
+        const femaleShift = 1.0 + femaleVal * 0.18;
         const panValue = Number.isFinite(opts.panValue) ? Math.max(-1, Math.min(1, opts.panValue)) : 0;
         const gainScale = Number.isFinite(opts.gainScale) ? opts.gainScale : 1.0;
         const jumpInt = Number.isFinite(opts.jumpIntensity) ? opts.jumpIntensity : 0.7;
         const extraDelaySec = Math.max(0, Number(opts.delaySec) || 0);
+        const isChordVoice = Boolean(opts.isChord);
+        const voiceIdx = Number.isFinite(opts.voiceIdx) ? opts.voiceIdx : 0;
 
-        const osc = ctx.createOscillator();
-        osc.type = 'sawtooth';
+        // Zweifache warme Quelle: Dreieck (sauberer Grundton) + weiche Sägezahn-Obertöne
+        const triOsc = ctx.createOscillator();
+        triOsc.type = 'triangle';
+        const triGain = ctx.createGain();
+        triGain.gain.value = 0.68;
+
+        const sawOsc = ctx.createOscillator();
+        sawOsc.type = 'sawtooth';
+        const sawGain = ctx.createGain();
+        sawGain.gain.value = 0.24;
+
         const lfo = ctx.createOscillator();
-        lfo.frequency.value = 6.1;
+        lfo.frequency.value = isChordVoice ? (4.8 + (voiceIdx % 5) * 0.31) : 5.8;
         const lfoGain = ctx.createGain();
-        lfoGain.gain.value = 10; // Basis-Vibrato in Cents
+        const baseVibCents = isChordVoice ? 5 : 8;
+        lfoGain.gain.value = baseVibCents;
         lfo.connect(lfoGain);
-        lfoGain.connect(osc.detune);
+        lfoGain.connect(triOsc.detune);
+        lfoGain.connect(sawOsc.detune);
 
-        const f1 = ctx.createBiquadFilter(); f1.type = 'bandpass'; f1.Q.value = 5.5;
-        const f2 = ctx.createBiquadFilter(); f2.type = 'bandpass'; f2.Q.value = 7.5;
-        const f3 = ctx.createBiquadFilter(); f3.type = 'bandpass'; f3.Q.value = 10;
-        const antiBuzzLp = ctx.createBiquadFilter(); antiBuzzLp.type = 'lowpass'; antiBuzzLp.frequency.value = Number.isFinite(opts.warmthCutoffHz) ? opts.warmthCutoffHz : 1350;
-        const formSum = ctx.createGain(); formSum.gain.value = 0.50 * gainScale;
+        // Sanfter Tiefpass (folgt der Tonhöhe nach oben, schneidet keine Sopran-Grundtöne ab!)
+        const warmthLp = ctx.createBiquadFilter();
+        warmthLp.type = 'lowpass';
+        warmthLp.Q.value = 0.7;
+        warmthLp.frequency.value = 2200;
+
+        // Dezenter Vokal-Formant-EQ (Peaking statt destruktiver schmaler Bandpass-Filter)
+        const vowelEq = ctx.createBiquadFilter();
+        vowelEq.type = 'peaking';
+        vowelEq.Q.value = 1.4;
+        vowelEq.gain.value = 4.0;
+        vowelEq.frequency.value = 950;
+
         const env = ctx.createGain();
         const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
         if (panner && panner.pan) {
             panner.pan.setValueAtTime(panValue, ctx.currentTime);
         }
 
-        osc.connect(antiBuzzLp);
-        antiBuzzLp.connect(f1); antiBuzzLp.connect(f2); antiBuzzLp.connect(f3);
-        f1.connect(formSum); f2.connect(formSum); f3.connect(formSum);
-        formSum.connect(env);
+        triOsc.connect(triGain);
+        sawOsc.connect(sawGain);
+        triGain.connect(warmthLp);
+        sawGain.connect(warmthLp);
+        warmthLp.connect(vowelEq);
+        vowelEq.connect(env);
         if (panner) {
             env.connect(panner);
             panner.connect(dest);
@@ -579,6 +605,7 @@
         let cur = 0;
         let firstSet = false;
         let totalDur = 0;
+        const basePeakAmp = Math.min(0.45, 0.34 * gainScale);
 
         notesList.forEach((step) => {
             const noteDur = step.beats * beatSec;
@@ -592,46 +619,54 @@
             totalDur = Math.max(totalDur, adjEnd - now);
 
             const freq = 440 * Math.pow(2, (step.midi - 69) / 12);
-            const glide = Math.max(0.012, Math.min(0.16, step.rampIn ?? 0.04));
+            const glide = Math.max(0.015, Math.min(0.14, step.rampIn ?? 0.04));
             const vowelKey = step.vowel || (step.syl && step.syl.nucleus && step.syl.nucleus.ipa) || 'o';
             const formants = FALLBACK_VOWEL_FORMANTS[vowelKey] || FALLBACK_VOWEL_FORMANTS.o;
+            // Warmes Vokal-Zentrum: dunkel ('o'/'u') um F1/F2, hell ('i'/'e') präsenter, aber sauber gedeckelt
+            const eqFreq = Math.max(550, Math.min(2500, ((vowelKey === 'i' || vowelKey === 'e') ? formants[1] : (formants[0] + formants[1]) * 0.7) * femaleShift));
+            const lpCutoff = Math.max(1500, Math.min(3800, freq * (step.isFalsetto ? 4.2 : 3.4)));
+            const targetAmp = basePeakAmp * (step.isFalsetto ? 1.05 : 0.92);
 
             if (!firstSet) {
-                osc.frequency.setValueAtTime(freq, adjStart);
-                f1.frequency.setValueAtTime(formants[0] * femaleShift, adjStart);
-                f2.frequency.setValueAtTime(formants[1] * femaleShift, adjStart);
-                f3.frequency.setValueAtTime(formants[2] * femaleShift, adjStart);
-                env.gain.linearRampToValueAtTime(0.32, adjStart + 0.03);
+                triOsc.frequency.setValueAtTime(freq, adjStart);
+                sawOsc.frequency.setValueAtTime(freq, adjStart);
+                warmthLp.frequency.setValueAtTime(lpCutoff, adjStart);
+                vowelEq.frequency.setValueAtTime(eqFreq, adjStart);
+                env.gain.linearRampToValueAtTime(targetAmp, adjStart + (isChordVoice ? 0.055 : 0.025));
                 firstSet = true;
             } else {
-                osc.frequency.linearRampToValueAtTime(freq, adjStart + glide);
-                f1.frequency.linearRampToValueAtTime(formants[0] * femaleShift, adjStart + glide);
-                f2.frequency.linearRampToValueAtTime(formants[1] * femaleShift, adjStart + glide);
-                f3.frequency.linearRampToValueAtTime(formants[2] * femaleShift, adjStart + glide);
-                env.gain.setValueAtTime(step.isFalsetto ? 0.36 : 0.30, adjStart + 0.01);
+                triOsc.frequency.linearRampToValueAtTime(freq, adjStart + glide);
+                sawOsc.frequency.linearRampToValueAtTime(freq, adjStart + glide);
+                warmthLp.frequency.linearRampToValueAtTime(lpCutoff, adjStart + glide);
+                vowelEq.frequency.linearRampToValueAtTime(eqFreq, adjStart + glide);
+                env.gain.linearRampToValueAtTime(targetAmp, adjStart + 0.035);
             }
 
-            // Vibrato-Jodel auf längeren Tönen (>= 0.45s): nach 0.14s Haltezeit kräftig aufdrehen
+            // Sanftes Chor-Vibrato (±12..16¢) vs Solo-Jodel-Vibrato (±30..42¢) auf längeren Tönen
             const adjDur = adjEnd - adjStart;
             if (adjDur >= 0.45) {
-                const vibPeak = Math.round(48 + jumpInt * 28);
-                lfoGain.gain.setValueAtTime(10, adjStart);
-                lfoGain.gain.linearRampToValueAtTime(vibPeak, Math.min(adjEnd - 0.05, adjStart + 0.22));
-                lfoGain.gain.setValueAtTime(vibPeak, Math.max(adjStart + 0.22, adjEnd - 0.06));
-                lfoGain.gain.linearRampToValueAtTime(12, adjEnd);
+                const vibPeak = isChordVoice
+                    ? Math.round(12 + jumpInt * 5)
+                    : Math.round(28 + jumpInt * 14);
+                lfoGain.gain.setValueAtTime(baseVibCents, adjStart);
+                lfoGain.gain.linearRampToValueAtTime(vibPeak, Math.min(adjEnd - 0.05, adjStart + 0.25));
+                lfoGain.gain.setValueAtTime(vibPeak, Math.max(adjStart + 0.25, adjEnd - 0.08));
+                lfoGain.gain.linearRampToValueAtTime(baseVibCents, adjEnd);
             } else {
-                lfoGain.gain.setValueAtTime(10, adjStart);
+                lfoGain.gain.setValueAtTime(baseVibCents, adjStart);
             }
         });
 
-        const endAt = now + totalDur + 0.08;
-        env.gain.exponentialRampToValueAtTime(0.0001, Math.max(now + 0.05, endAt));
-        osc.start(now);
+        const endAt = now + totalDur + (isChordVoice ? 0.16 : 0.08);
+        env.gain.exponentialRampToValueAtTime(0.0001, Math.max(now + 0.08, endAt));
+        triOsc.start(now);
+        sawOsc.start(now);
         lfo.start(now);
-        osc.stop(endAt + 0.02);
-        lfo.stop(endAt + 0.02);
+        triOsc.stop(endAt + 0.03);
+        sawOsc.stop(endAt + 0.03);
+        lfo.stop(endAt + 0.03);
 
-        activeFallbackNodes.push(osc, lfo, lfoGain, antiBuzzLp, f1, f2, f3, formSum, env);
+        activeFallbackNodes.push(triOsc, sawOsc, triGain, sawGain, lfo, lfoGain, warmthLp, vowelEq, env);
         if (panner) activeFallbackNodes.push(panner);
         return extraDelaySec + totalDur;
     }
@@ -1328,7 +1363,7 @@
         const effectiveBpm = (chimeraSeq.bpm || 138) * Math.max(0.25, Math.min(3.0, Number(options.speedMultiplier) || 1.0));
         const jumpInt = chimeraSeq.jumpIntensity !== undefined ? chimeraSeq.jumpIntensity : 0.7;
         const ctx = audioCtx || getOrCreateAudioContext(null);
-        const gainPerVoice = Math.min(0.52, 0.90 / Math.sqrt(voicesSpec.length));
+        const gainPerVoice = Math.min(0.45, 0.78 / Math.sqrt(voicesSpec.length));
 
         // Ein gemeinsamer Startzeitpunkt für alle Stimmen => 0 ms Überlagerungs-/Echo-Versatz
         const chordStartAt = ctx.currentTime + 0.045;
@@ -1358,7 +1393,8 @@
                 gainScale: gainPerVoice,
                 jumpIntensity: jumpInt,
                 startAtTime: chordStartAt,
-                warmthCutoffHz: v.isFalsetto ? 1650 : 1200
+                isChord: true,
+                voiceIdx: idx
             });
             maxEndSec = Math.max(maxEndSec, fDur);
         }
@@ -1416,6 +1452,10 @@
         await init();
         stop();
 
+        if (audioCtx && audioCtx.state === 'suspended') {
+            try { await audioCtx.resume(); } catch (_) {}
+        }
+
         const speedMultiplier = Math.max(0.05, Math.min(3.5, Number(options.speedMultiplier) || 1.0));
         const baseBpm = chimeraSeq.bpm || 120;
         const effectiveBpm = baseBpm * speedMultiplier;
@@ -1467,6 +1507,7 @@
                 applyPortamentoAndYodelDynamics(plan, activeNotes.map(n => n.rampIn ?? 0.04));
 
                 isPlayingState = true;
+                const startTeleCount = telemetryCount;
                 const id = ++speakIdCounter;
                 workletNode.port.postMessage({
                     type: 'schedule',
@@ -1479,6 +1520,19 @@
                 });
                 scheduleVibratoYodelTimers(workletNode.port, activeNotes, effectiveBpm, jumpInt);
                 durationSec = plan.end;
+
+                // Silent-Worklet-Schutz (z.B. Firmen-Edge blockiert Audio-Thread ohne Console-Error):
+                // Nur wenn 450 ms lang kein einziger Worklet-Telemetry-Block (ca. alle 16 ms) ankam,
+                // auf den warmen WebAudio-Vokal-Fallback wechseln.
+                const silentGuardTimer = setTimeout(() => {
+                    if (!isPlayingState || usingFallbackEngine || telemetryCount > startTeleCount) return;
+                    console.warn('[Chimera] AudioWorklet liefert keine Audio-Blöcke -> starte WebAudio-Vokal-Fallback.');
+                    usingFallbackEngine = true;
+                    playFallbackFormantNotes(activeNotes, effectiveBpm, body, 0, {
+                        jumpIntensity: jumpInt
+                    });
+                }, 450);
+                activeUiTimers.push(silentGuardTimer);
             } catch (err) {
                 console.warn('[Chimera] Worklet schedule fehlgeschlagen, wechsle auf Formant-Fallback:', err);
                 usingFallbackEngine = true;
