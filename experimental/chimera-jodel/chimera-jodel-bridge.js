@@ -64,6 +64,9 @@
         a: [730, 1180, 2550]
     };
     let activeFallbackNodes = [];
+    const MAX_CHORD_WORKLET_VOICES = 6;
+    let activeChoirVoices = [];
+    let activeChoirFaces = [];
 
     let currentVoiceMorph = 0.25; // 0 = männlich (tief), 1 = weiblich (hell)
     let isPlayingState = false;
@@ -426,6 +429,24 @@
         activeFallbackNodes = [];
     }
 
+    function stopChoirVoices() {
+        activeChoirVoices.forEach(v => {
+            try {
+                if (v.node) {
+                    v.node.port.onmessage = null;
+                    v.node.onprocessorerror = null;
+                    v.node.port.postMessage({ type: 'stopSpeech' });
+                    v.node.port.postMessage({ type: 'gate', level: 0 });
+                    v.node.disconnect();
+                }
+            } catch (_) {}
+            try { if (v.panner) v.panner.disconnect(); } catch (_) {}
+            try { if (v.gain) v.gain.disconnect(); } catch (_) {}
+        });
+        activeChoirVoices = [];
+        activeChoirFaces = [];
+    }
+
     /**
      * Stoppt sofort jede laufende AudioWorklet- oder Fallback-Sprach-/Gesangsausgabe.
      */
@@ -434,6 +455,7 @@
         isPlayingState = false;
         currentSyllableLabel = '';
         stopFallbackNodes();
+        stopChoirVoices();
         if (workletNode) {
             try {
                 workletNode.port.postMessage({ type: 'stopSpeech' });
@@ -467,36 +489,90 @@
     }
 
     /**
-     * Reiner Web-Audio-Formant-Synthesizer als automatischer Fallback für Edge-/GPO-Systeme,
-     * falls WASM im AudioWorklet blockiert wird.
+     * Plant ausdrucksstarkes Vibrato-Jodel auf längeren Haltetönen (>= 0.45s) über das AudioWorklet.
      */
-    function playFallbackFormantNotes(notesList, bpm, body, startOffsetSec = 0) {
+    function scheduleVibratoYodelTimers(port, notesList, bpm, jumpInt = 0.7) {
+        if (!port || !Array.isArray(notesList)) return;
+        const beatSec = 60 / bpm;
+        let tCursor = 0.03;
+        const peakVibDepth = Math.round(72 + Math.max(0, Math.min(1, jumpInt)) * 38); // 72..110 cents
+        const peakVibRate = 6.2;
+
+        notesList.forEach((step) => {
+            const noteDur = (step.beats || 0.5) * beatSec;
+            const tStart = tCursor;
+            tCursor += noteDur;
+
+            if (noteDur >= 0.45) {
+                const startTimer = setTimeout(() => {
+                    if (!isPlayingState) return;
+                    try {
+                        port.postMessage({ type: 'source', values: { vibratoDepth: 26, vibratoRate: 5.2 } });
+                    } catch (_) {}
+                }, tStart * 1000);
+                const vibOnTimer = setTimeout(() => {
+                    if (!isPlayingState) return;
+                    try {
+                        port.postMessage({ type: 'source', values: { vibratoDepth: peakVibDepth, vibratoRate: peakVibRate } });
+                    } catch (_) {}
+                }, (tStart + 0.14) * 1000);
+                activeUiTimers.push(startTimer, vibOnTimer);
+            } else {
+                const flatTimer = setTimeout(() => {
+                    if (!isPlayingState) return;
+                    try {
+                        port.postMessage({ type: 'source', values: { vibratoDepth: 22, vibratoRate: 5.0 } });
+                    } catch (_) {}
+                }, tStart * 1000);
+                activeUiTimers.push(flatTimer);
+            }
+        });
+    }
+
+    /**
+     * Reiner Web-Audio-Formant-Synthesizer als automatischer Fallback für Edge-/GPO-Systeme
+     * sowie für zusätzliche Chor-Stimmen, inkl. Stereo-Panning und Vibrato-Jodel auf langen Tönen.
+     */
+    function playFallbackFormantNotes(notesList, bpm, body, startOffsetSec = 0, opts = {}) {
         const ctx = getOrCreateAudioContext(null);
         const dest = (usesSharedAudioCtx && root.masterCompressor) ? root.masterCompressor : ctx.destination;
         const beatSec = 60 / bpm;
-        const femaleShift = 1.0 + ((body && body.female ? body.female : currentVoiceMorph) * 0.22);
+        const femaleShift = 1.0 + ((body && body.female !== undefined ? body.female : currentVoiceMorph) * 0.22);
+        const panValue = Number.isFinite(opts.panValue) ? Math.max(-1, Math.min(1, opts.panValue)) : 0;
+        const gainScale = Number.isFinite(opts.gainScale) ? opts.gainScale : 1.0;
+        const jumpInt = Number.isFinite(opts.jumpIntensity) ? opts.jumpIntensity : 0.7;
+        const extraDelaySec = Math.max(0, Number(opts.delaySec) || 0);
 
         const osc = ctx.createOscillator();
         osc.type = 'sawtooth';
         const lfo = ctx.createOscillator();
-        lfo.frequency.value = 5.4;
+        lfo.frequency.value = 6.1;
         const lfoGain = ctx.createGain();
-        lfoGain.gain.value = 10; // Vibrato cents
+        lfoGain.gain.value = 10; // Basis-Vibrato in Cents
         lfo.connect(lfoGain);
         lfoGain.connect(osc.detune);
 
         const f1 = ctx.createBiquadFilter(); f1.type = 'bandpass'; f1.Q.value = 6;
         const f2 = ctx.createBiquadFilter(); f2.type = 'bandpass'; f2.Q.value = 8;
         const f3 = ctx.createBiquadFilter(); f3.type = 'bandpass'; f3.Q.value = 11;
-        const formSum = ctx.createGain(); formSum.gain.value = 1.8;
+        const formSum = ctx.createGain(); formSum.gain.value = 1.8 * gainScale;
         const env = ctx.createGain();
+        const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+        if (panner && panner.pan) {
+            panner.pan.setValueAtTime(panValue, ctx.currentTime);
+        }
 
         osc.connect(f1); osc.connect(f2); osc.connect(f3);
         f1.connect(formSum); f2.connect(formSum); f3.connect(formSum);
         formSum.connect(env);
-        env.connect(dest);
+        if (panner) {
+            env.connect(panner);
+            panner.connect(dest);
+        } else {
+            env.connect(dest);
+        }
 
-        const now = ctx.currentTime + 0.03;
+        const now = ctx.currentTime + 0.03 + extraDelaySec;
         env.gain.setValueAtTime(0.0001, now);
 
         let cur = 0;
@@ -533,6 +609,18 @@
                 f3.frequency.linearRampToValueAtTime(formants[2] * femaleShift, adjStart + glide);
                 env.gain.setValueAtTime(step.isFalsetto ? 0.36 : 0.30, adjStart + 0.01);
             }
+
+            // Vibrato-Jodel auf längeren Tönen (>= 0.45s): nach 0.14s Haltezeit kräftig aufdrehen
+            const adjDur = adjEnd - adjStart;
+            if (adjDur >= 0.45) {
+                const vibPeak = Math.round(48 + jumpInt * 28);
+                lfoGain.gain.setValueAtTime(10, adjStart);
+                lfoGain.gain.linearRampToValueAtTime(vibPeak, Math.min(adjEnd - 0.05, adjStart + 0.22));
+                lfoGain.gain.setValueAtTime(vibPeak, Math.max(adjStart + 0.22, adjEnd - 0.06));
+                lfoGain.gain.linearRampToValueAtTime(12, adjEnd);
+            } else {
+                lfoGain.gain.setValueAtTime(10, adjStart);
+            }
         });
 
         const endAt = now + totalDur + 0.08;
@@ -543,7 +631,8 @@
         lfo.stop(endAt + 0.02);
 
         activeFallbackNodes.push(osc, lfo, lfoGain, f1, f2, f3, formSum, env);
-        return totalDur;
+        if (panner) activeFallbackNodes.push(panner);
+        return extraDelaySec + totalDur;
     }
 
     /**
@@ -919,7 +1008,80 @@
             });
         }
 
-        return { sequence, bpm, body: { female: voiceChar, child: 0 } };
+        // Im Modus 'chord' (Akkord): Mehrstimmiger Jodel-Chor (pro Punkt eine Stimme + ein Gesicht!)
+        let chordVoices = null;
+        if (!isVinyl && mode === 'chord') {
+            const choirSlice = sequence.slice(0, 8);
+            const holdSec = Math.max(0.9, totalDurationSec - 0.55);
+            const leadInSec = 0.24;
+            const tailSec = 0.36;
+
+            chordVoices = choirSlice.map((step, idx) => {
+                const p = step.point;
+                const isPeak = (p.kind === 'peak' || step.isFalsetto);
+                const spreadOffset = (idx % 2 === 0 ? -0.06 : 0.06);
+                const rawFemale = isPeak
+                    ? Math.min(0.98, Math.max(0.45, voiceChar + 0.25 + spreadOffset))
+                    : Math.max(0.02, Math.min(0.55, voiceChar - 0.22 + spreadOffset));
+                const pan = Math.max(-0.9, Math.min(0.9, ((p.x / bildBreite) * 2 - 1) * 0.9));
+
+                const mainMidi = step.midi;
+                const introMidi = Math.max(46, mainMidi - (isPeak ? 5 : 3));
+                const endMidi = isPeak ? mainMidi - 2 : mainMidi;
+                const introVowel = isPeak ? 'o' : 'u';
+                const holdVowel = isPeak ? (idx % 2 === 0 ? 'i' : 'e') : (idx % 2 === 0 ? 'o' : 'u');
+                const endVowel = 'u';
+
+                const voiceNotes = [
+                    {
+                        point: p,
+                        midi: introMidi,
+                        beats: leadInSec / beatSec,
+                        rampIn: 0.03,
+                        isFalsetto: false,
+                        vowel: introVowel,
+                        syl: makeSyllable(isPeak ? 'ho' : 'ju', [isPeak ? 'h' : 'j'], introVowel, 0, false, false),
+                        durationSec: leadInSec
+                    },
+                    {
+                        point: p,
+                        midi: mainMidi,
+                        beats: holdSec / beatSec,
+                        rampIn: isPeak ? 0.016 : 0.055,
+                        isFalsetto: isPeak || step.isFalsetto,
+                        vowel: holdVowel,
+                        syl: makeSyllable((isPeak ? 'hi' : 'jo'), [isPeak ? 'h' : 'j'], holdVowel, 1, false, false),
+                        durationSec: holdSec
+                    },
+                    {
+                        point: p,
+                        midi: endMidi,
+                        beats: tailSec / beatSec,
+                        rampIn: 0.06,
+                        isFalsetto: false,
+                        vowel: endVowel,
+                        syl: makeSyllable('du', ['d'], endVowel, 0, true, true),
+                        durationSec: tailSec
+                    }
+                ];
+
+                return {
+                    voiceIndex: idx,
+                    point: p,
+                    kind: p.kind,
+                    midi: mainMidi,
+                    f0Hz: Math.round(440 * Math.pow(2, (mainMidi - 69) / 12) * 10) / 10,
+                    vowel: holdVowel,
+                    isFalsetto: isPeak || step.isFalsetto,
+                    pan,
+                    body: { female: Math.round(rawFemale * 100) / 100, child: 0 },
+                    syllableLabel: `/${holdVowel}/ ${isPeak ? 'FALSETT' : 'BRUST'}`,
+                    notes: voiceNotes
+                };
+            });
+        }
+
+        return { sequence, bpm, mode, jumpIntensity, chordVoices, body: { female: voiceChar, child: 0 } };
     }
 
     /**
@@ -1080,15 +1242,18 @@
             ? options.voiceCharacter
             : (synthSettings.voiceCharacter !== undefined ? synthSettings.voiceCharacter : currentVoiceMorph);
 
-        const { sequence, bpm, body } = buildSequenceFromSkyline(daten, synthSettings, {
+        const { sequence, bpm, mode, chordVoices, body } = buildSequenceFromSkyline(daten, synthSettings, {
             voiceCharacter: voiceChar,
             jumpIntensity: jumpInt !== undefined ? jumpInt : 0.7,
             isVinyl: Boolean(options.isVinyl || daten.is_vinyl),
             targetDurationSec: options.targetDurationSec
         });
 
-        let totalTime = sequence.reduce((sum, s) => sum + s.beats * (60 / bpm), 0);
-        if (wasmOk && mainExports) {
+        let totalTime = chordVoices && chordVoices.length > 0
+            ? chordVoices.reduce((mx, v) => Math.max(mx, v.notes.reduce((s, n) => s + n.beats * (60 / bpm), 0)), 0)
+            : sequence.reduce((sum, s) => sum + s.beats * (60 / bpm), 0);
+
+        if (wasmOk && mainExports && (!chordVoices || chordVoices.length === 0)) {
             try {
                 const plan = callWasm('planSong', {
                     notes: sequence.map(s => ({ midi: s.midi, beats: s.beats, syl: s.syl })),
@@ -1096,7 +1261,7 @@
                         body,
                         bpm,
                         t0: 0,
-                        vibrato: 36
+                        vibrato: 58
                     }
                 });
                 if (plan && Number.isFinite(plan.end)) {
@@ -1110,10 +1275,13 @@
         return {
             engine: 'chimera',
             version: 2,
+            mode: mode || 'lr',
+            jumpIntensity: jumpInt !== undefined ? jumpInt : 0.7,
             isVinyl: Boolean(options.isVinyl || daten.is_vinyl),
             bpm,
             body,
             totalTime,
+            chordVoices,
             notes: sequence.map(s => ({
                 midi: s.midi,
                 beats: s.beats,
@@ -1127,12 +1295,165 @@
     }
 
     /**
+     * Spielt einen mehrstimmigen Jodel-Chor im Akkord-Modus ab (pro Punkt eine Stimme + Gesicht).
+     */
+    async function playChordPlan(chimeraSeq, options = {}, callbacks = {}) {
+        await init();
+        stop();
+
+        const voicesSpec = chimeraSeq.chordVoices;
+        const effectiveBpm = (chimeraSeq.bpm || 120) * Math.max(0.25, Math.min(3.0, Number(options.speedMultiplier) || 1.0));
+        const jumpInt = chimeraSeq.jumpIntensity !== undefined ? chimeraSeq.jumpIntensity : 0.7;
+        const ctx = audioCtx || getOrCreateAudioContext(null);
+        const dest = (usesSharedAudioCtx && root.masterCompressor) ? root.masterCompressor : ctx.destination;
+        const gainPerVoice = Math.min(0.65, 0.95 / Math.sqrt(voicesSpec.length));
+
+        activeChoirFaces = voicesSpec.map((v, idx) => ({
+            voiceIndex: idx,
+            telemetry: null,
+            body: v.body || { female: currentVoiceMorph, child: 0 },
+            sampleRate: currentSampleRate,
+            syllableLabel: v.syllableLabel || `/${v.vowel || 'o'}/`,
+            vowel: v.vowel || 'o',
+            kind: v.kind || (v.isFalsetto ? 'peak' : 'valley'),
+            f0Hz: v.f0Hz || 220,
+            playing: true
+        }));
+
+        isPlayingState = true;
+        currentSyllableLabel = `CHOR (${voicesSpec.length} STIMMEN)`;
+        let maxEndSec = 0;
+
+        for (let idx = 0; idx < voicesSpec.length; idx++) {
+            const v = voicesSpec[idx];
+            const faceObj = activeChoirFaces[idx];
+            const voiceNotes = v.notes || [];
+            const staggerSec = idx * 0.035;
+            const voiceBody = v.body || { female: currentVoiceMorph, child: 0 };
+            const useWorklet = !usingFallbackEngine && mainExports && wasmModule && workletReady && idx < MAX_CHORD_WORKLET_VOICES;
+
+            if (useWorklet) {
+                try {
+                    const plan = callWasm('planSong', {
+                        notes: voiceNotes.map(n => ({ midi: n.midi, beats: n.beats, syl: n.syl })),
+                        options: { body: voiceBody, bpm: effectiveBpm, t0: 0, vibrato: 62 }
+                    });
+                    applyPortamentoAndYodelDynamics(plan, voiceNotes.map(n => n.rampIn ?? 0.04));
+
+                    const vNode = new AudioWorkletNode(ctx, 'chimera', {
+                        numberOfInputs: 0,
+                        numberOfOutputs: 1,
+                        outputChannelCount: [2],
+                        processorOptions: { module: wasmModule }
+                    });
+                    const vGain = ctx.createGain();
+                    vGain.gain.setValueAtTime(gainPerVoice, ctx.currentTime);
+                    const vPan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+                    if (vPan && vPan.pan) {
+                        vPan.pan.setValueAtTime(Math.max(-0.95, Math.min(0.95, v.pan || 0)), ctx.currentTime);
+                        vNode.connect(vPan);
+                        vPan.connect(vGain);
+                    } else {
+                        vNode.connect(vGain);
+                    }
+                    vGain.connect(dest);
+
+                    vNode.port.onmessage = (ev) => {
+                        const msg = ev.data;
+                        if (!msg) return;
+                        if (msg.type === 'ready') {
+                            try {
+                                vNode.port.postMessage({ type: 'body', body: voiceBody });
+                                vNode.port.postMessage({
+                                    type: 'schedule',
+                                    gestures: plan.gestures,
+                                    segments: plan.segments,
+                                    end: plan.end,
+                                    id: ++speakIdCounter,
+                                    replace: true,
+                                    lead: 0.03 + staggerSec
+                                });
+                                scheduleVibratoYodelTimers(vNode.port, voiceNotes, effectiveBpm, jumpInt);
+                            } catch (_) {}
+                        } else if (msg.type === 'telemetry') {
+                            faceObj.telemetry = msg;
+                            if (idx === 0) lastRawTelemetry = msg;
+                        }
+                    };
+                    if (typeof vNode.port.start === 'function') vNode.port.start();
+                    activeChoirVoices.push({ node: vNode, gain: vGain, panner: vPan });
+                    maxEndSec = Math.max(maxEndSec, (plan.end || 3) + staggerSec);
+                    continue;
+                } catch (err) {
+                    console.warn('[Chimera Chor] Worklet Stimme #' + idx + ' -> Fallback:', err);
+                }
+            }
+
+            // Fallback oder Stimme > MAX_CHORD_WORKLET_VOICES
+            const fDur = playFallbackFormantNotes(voiceNotes, effectiveBpm, voiceBody, 0, {
+                panValue: v.pan || 0,
+                gainScale: gainPerVoice,
+                jumpIntensity: jumpInt,
+                delaySec: staggerSec
+            });
+            maxEndSec = Math.max(maxEndSec, fDur);
+        }
+
+        // Silent-Worklet Watchdog für den Chor
+        const hadWorklet = activeChoirVoices.length > 0;
+        if (hadWorklet) {
+            const wd = setTimeout(() => {
+                if (!isPlayingState || usingFallbackEngine) return;
+                const anyTele = activeChoirFaces.some(f => f.telemetry && f.telemetry.t && (Number(f.telemetry.t.outRms) > 0 || Number(f.telemetry.t.f0) > 30));
+                if (!anyTele) {
+                    console.warn('[Chimera Chor] Keine Worklet-Telemetrie -> schalte gesamten Chor auf Formant-Fallback um.');
+                    usingFallbackEngine = true;
+                    voicesSpec.forEach((v, idx) => {
+                        if (idx < activeChoirVoices.length) {
+                            try {
+                                activeChoirVoices[idx].node.port.postMessage({ type: 'stopSpeech' });
+                                activeChoirVoices[idx].node.port.postMessage({ type: 'gate', level: 0 });
+                            } catch (_) {}
+                        }
+                        playFallbackFormantNotes(v.notes || [], effectiveBpm, v.body, 0.35, {
+                            panValue: v.pan || 0,
+                            gainScale: gainPerVoice,
+                            jumpIntensity: jumpInt,
+                            delaySec: idx * 0.03
+                        });
+                    });
+                }
+            }, 500);
+            activeUiTimers.push(wd);
+        }
+
+        const totalMs = (Math.max(1.0, maxEndSec) + 0.35) * 1000;
+        const endTimer = setTimeout(() => {
+            activeChoirFaces.forEach(f => { f.playing = false; });
+            isPlayingState = false;
+            currentSyllableLabel = '';
+            clearUiTimers();
+            stopChoirVoices();
+            if (typeof callbacks.onComplete === 'function') {
+                callbacks.onComplete(voicesSpec.length);
+            }
+        }, totalMs);
+        activeUiTimers.push(endTimer);
+
+        return { plan: { end: maxEndSec }, durationSec: maxEndSec };
+    }
+
+    /**
      * Spielt ein erzeugtes oder aus Supabase geladenes Chimera-AI-Preset ab.
-     * Unterstützt dynamisches Tempo-Scaling & Start-Offset (z.B. für Vinyl RPM).
+     * Unterstützt Chor ('chord'), L->R, R->L, Tempo-Scaling & Start-Offset.
      */
     async function playPlan(chimeraSeq, options = {}, callbacks = {}) {
         if (!chimeraSeq || chimeraSeq.engine !== 'chimera' || !Array.isArray(chimeraSeq.notes) || chimeraSeq.notes.length === 0) {
             throw new Error("Ungültige oder veraltete AI-Sequenz (kein Chimera-Format).");
+        }
+
+        if (chimeraSeq.mode === 'chord' && Array.isArray(chimeraSeq.chordVoices) && chimeraSeq.chordVoices.length > 1) {
+            return await playChordPlan(chimeraSeq, options, callbacks);
         }
 
         await init();
@@ -1143,6 +1464,7 @@
         const effectiveBpm = baseBpm * speedMultiplier;
         const body = options.body || chimeraSeq.body || { female: currentVoiceMorph, child: 0 };
         const startOffsetOriginalSec = Math.max(0, Number(options.startOffsetSec) || 0);
+        const jumpInt = chimeraSeq.jumpIntensity !== undefined ? chimeraSeq.jumpIntensity : 0.7;
 
         setVoiceCharacter(body.female);
 
@@ -1181,7 +1503,7 @@
                         body,
                         bpm: effectiveBpm,
                         t0: 0,
-                        vibrato: 36
+                        vibrato: 58
                     }
                 });
 
@@ -1198,11 +1520,10 @@
                     replace: true,
                     lead: 0.03
                 });
+                scheduleVibratoYodelTimers(workletNode.port, activeNotes, effectiveBpm, jumpInt);
                 durationSec = plan.end;
 
                 // Silent-Worklet Watchdog für restriktive Browser (z.B. Firmen-Edge):
-                // Falls AudioWorklet zwar 'ready' meldete, aber nach 450ms 0 Telemetrie/RMS liefert,
-                // schaltet er nahtlos auf den Web-Audio-3-Formant-Synth um.
                 lastRawTelemetry = null;
                 const watchdogId = setTimeout(() => {
                     if (!isPlayingState || usingFallbackEngine) return;
@@ -1217,7 +1538,9 @@
                                 workletNode.port.postMessage({ type: 'gate', level: 0 });
                             } catch (_) {}
                         }
-                        playFallbackFormantNotes(activeNotes, effectiveBpm, body, Math.min(0.45, durationSec * 0.5));
+                        playFallbackFormantNotes(activeNotes, effectiveBpm, body, Math.min(0.45, durationSec * 0.5), {
+                            jumpIntensity: jumpInt
+                        });
                     }
                 }, 450);
                 activeUiTimers.push(watchdogId);
@@ -1230,7 +1553,9 @@
 
         if (usingFallbackEngine || !plan) {
             isPlayingState = true;
-            durationSec = playFallbackFormantNotes(activeNotes, effectiveBpm, body, 0);
+            durationSec = playFallbackFormantNotes(activeNotes, effectiveBpm, body, 0, {
+                jumpIntensity: jumpInt
+            });
         }
 
         const beatSec = 60 / effectiveBpm;
@@ -1299,6 +1624,7 @@
         playPlan,
         onTelemetry,
         getStatus,
+        getChoirFaces: () => (activeChoirFaces.length > 0 ? activeChoirFaces : null),
         getSampleRate: () => currentSampleRate,
         getRawTelemetry: () => lastRawTelemetry,
         getCurrentBody: () => ({ female: currentVoiceMorph, child: 0 }),
