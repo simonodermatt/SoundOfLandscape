@@ -353,8 +353,8 @@ window.playMultiPanorama = async function(panoId, dateiPfad, playSelectedPresets
             const parsedVoiceVol = parseFloat(s.volume);
             const rawVoiceVol = (Number.isFinite(parsedVoiceVol) && parsedVoiceVol > 0) ? parsedVoiceVol : activeMasterVol;
             const voiceGainPeak = synthsToPlay.length > 1
-                ? Math.min(1.0, Math.max(0.15, rawVoiceVol / activeMasterVol))
-                : 0.9;
+                ? Math.min(0.65, Math.max(0.1, rawVoiceVol / activeMasterVol * 0.5))
+                : 0.45;
 
             allePunkte.forEach((punkt, indexPos) => {
                 let yProzent = (punkt.hoehe / 100) * (s.range / 100);

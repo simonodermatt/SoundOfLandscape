@@ -64,7 +64,7 @@
         a: [730, 1180, 2550]
     };
     let activeFallbackNodes = [];
-    const MAX_CHORD_WORKLET_VOICES = 6;
+    const MAX_CHORD_WORKLET_VOICES = 4;
     let activeChoirVoices = [];
     let activeChoirFaces = [];
 
@@ -555,14 +555,16 @@
         const f1 = ctx.createBiquadFilter(); f1.type = 'bandpass'; f1.Q.value = 6;
         const f2 = ctx.createBiquadFilter(); f2.type = 'bandpass'; f2.Q.value = 8;
         const f3 = ctx.createBiquadFilter(); f3.type = 'bandpass'; f3.Q.value = 11;
-        const formSum = ctx.createGain(); formSum.gain.value = 1.8 * gainScale;
+        const antiBuzzLp = ctx.createBiquadFilter(); antiBuzzLp.type = 'lowpass'; antiBuzzLp.frequency.value = 1800;
+        const formSum = ctx.createGain(); formSum.gain.value = 0.55 * gainScale;
         const env = ctx.createGain();
         const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
         if (panner && panner.pan) {
             panner.pan.setValueAtTime(panValue, ctx.currentTime);
         }
 
-        osc.connect(f1); osc.connect(f2); osc.connect(f3);
+        osc.connect(antiBuzzLp);
+        antiBuzzLp.connect(f1); antiBuzzLp.connect(f2); antiBuzzLp.connect(f3);
         f1.connect(formSum); f2.connect(formSum); f3.connect(formSum);
         formSum.connect(env);
         if (panner) {
@@ -630,7 +632,7 @@
         osc.stop(endAt + 0.02);
         lfo.stop(endAt + 0.02);
 
-        activeFallbackNodes.push(osc, lfo, lfoGain, f1, f2, f3, formSum, env);
+        activeFallbackNodes.push(osc, lfo, lfoGain, antiBuzzLp, f1, f2, f3, formSum, env);
         if (panner) activeFallbackNodes.push(panner);
         return extraDelaySec + totalDur;
     }
@@ -1204,8 +1206,7 @@
             return {
                 bild_breite: kurve.length,
                 bild_hoehe: 400,
-                kurve_y: kurve,
-                is_vinyl: true
+                kurve_y: kurve
             };
         }
 
@@ -1358,10 +1359,16 @@
                     }
                     vGain.connect(dest);
 
+                    let voiceScheduled = false;
+                    vNode.onprocessorerror = (err) => {
+                        console.warn('[Chimera Chor] Processor Error auf Stimme #' + idx, err);
+                    };
                     vNode.port.onmessage = (ev) => {
                         const msg = ev.data;
                         if (!msg) return;
                         if (msg.type === 'ready') {
+                            if (voiceScheduled) return;
+                            voiceScheduled = true;
                             try {
                                 vNode.port.postMessage({ type: 'body', body: voiceBody });
                                 vNode.port.postMessage({
@@ -1381,7 +1388,7 @@
                         }
                     };
                     if (typeof vNode.port.start === 'function') vNode.port.start();
-                    activeChoirVoices.push({ node: vNode, gain: vGain, panner: vPan });
+                    activeChoirVoices.push({ node: vNode, gain: vGain, panner: vPan, isScheduled: () => voiceScheduled });
                     maxEndSec = Math.max(maxEndSec, (plan.end || 3) + staggerSec);
                     continue;
                 } catch (err) {
@@ -1399,22 +1406,16 @@
             maxEndSec = Math.max(maxEndSec, fDur);
         }
 
-        // Silent-Worklet Watchdog für den Chor
+        // Nur falls keines der Chor-Worklets überhaupt 'ready' meldet (z. B. GPO-Blockade)
         const hadWorklet = activeChoirVoices.length > 0;
         if (hadWorklet) {
             const wd = setTimeout(() => {
                 if (!isPlayingState || usingFallbackEngine) return;
-                const anyTele = activeChoirFaces.some(f => f.telemetry && f.telemetry.t && (Number(f.telemetry.t.outRms) > 0 || Number(f.telemetry.t.f0) > 30));
-                if (!anyTele) {
-                    console.warn('[Chimera Chor] Keine Worklet-Telemetrie -> schalte gesamten Chor auf Formant-Fallback um.');
+                const anyReady = activeChoirVoices.some(v => v.isScheduled && v.isScheduled());
+                if (!anyReady) {
+                    console.warn('[Chimera Chor] Worklets haben nicht rechtzeitig ready gemeldet -> Formant-Fallback.');
                     usingFallbackEngine = true;
                     voicesSpec.forEach((v, idx) => {
-                        if (idx < activeChoirVoices.length) {
-                            try {
-                                activeChoirVoices[idx].node.port.postMessage({ type: 'stopSpeech' });
-                                activeChoirVoices[idx].node.port.postMessage({ type: 'gate', level: 0 });
-                            } catch (_) {}
-                        }
                         playFallbackFormantNotes(v.notes || [], effectiveBpm, v.body, 0.35, {
                             panValue: v.pan || 0,
                             gainScale: gainPerVoice,
@@ -1423,7 +1424,7 @@
                         });
                     });
                 }
-            }, 500);
+            }, 1200);
             activeUiTimers.push(wd);
         }
 
@@ -1522,28 +1523,6 @@
                 });
                 scheduleVibratoYodelTimers(workletNode.port, activeNotes, effectiveBpm, jumpInt);
                 durationSec = plan.end;
-
-                // Silent-Worklet Watchdog für restriktive Browser (z.B. Firmen-Edge):
-                lastRawTelemetry = null;
-                const watchdogId = setTimeout(() => {
-                    if (!isPlayingState || usingFallbackEngine) return;
-                    const noAudio = !lastRawTelemetry || !lastRawTelemetry.t || (Number(lastRawTelemetry.t.outRms) === 0 && Number(lastRawTelemetry.t.f0) === 0);
-                    if (noAudio) {
-                        console.warn('[Chimera] AudioWorklet liefert keine Ausgabe -> schalte auf WebAudio-Formant-Fallback um.');
-                        usingFallbackEngine = true;
-                        lastErrorMessage = 'AudioWorklet silent watchdog triggered';
-                        if (workletNode) {
-                            try {
-                                workletNode.port.postMessage({ type: 'stopSpeech' });
-                                workletNode.port.postMessage({ type: 'gate', level: 0 });
-                            } catch (_) {}
-                        }
-                        playFallbackFormantNotes(activeNotes, effectiveBpm, body, Math.min(0.45, durationSec * 0.5), {
-                            jumpIntensity: jumpInt
-                        });
-                    }
-                }, 450);
-                activeUiTimers.push(watchdogId);
             } catch (err) {
                 console.warn('[Chimera] Worklet schedule fehlgeschlagen, wechsle auf Formant-Fallback:', err);
                 usingFallbackEngine = true;
