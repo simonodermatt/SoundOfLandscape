@@ -64,7 +64,7 @@
         a: [730, 1180, 2550]
     };
     let activeFallbackNodes = [];
-    const MAX_CHORD_WORKLET_VOICES = 4;
+    const MAX_CHORD_WORKLET_VOICES = 2;
     let activeChoirVoices = [];
     let activeChoirFaces = [];
 
@@ -917,9 +917,9 @@
         const deltaThreshold = 52 - jumpIntensity * 42; // ~10% bei max, ~52% bei min
         const breakInterval = jumpIntensity >= 0.72 ? 12 : (jumpIntensity >= 0.4 ? 9 : (jumpIntensity >= 0.15 ? 7 : 0));
 
-        const bpm = 120; // 1 beat = 0.5s
+        const bpm = 138; // Agiles alpines Jodel-Tempo (1 beat ≈ 0.435s)
         const beatSec = 60 / bpm;
-        const minNoteSec = isVinyl ? 0.32 : 0.24;
+        const minNoteSec = isVinyl ? 0.28 : 0.19;
 
         const chestVowels = ['o', 'u'];
         const falsettoVowels = ['i', 'e'];
@@ -965,13 +965,16 @@
             const maxMidi = Math.round(78 + voiceChar * 8);
             midi = Math.min(maxMidi, Math.max(baseMidi - 2, midi));
 
+            const isLast = (i === points.length - 1);
             const segShare = next
                 ? Math.max(1 / (points.length * 1.8), Math.abs(next.x - p.x) / bildBreite)
-                : Math.max(0.12, 1 / Math.max(2, points.length));
-            const rawSec = Math.max(minNoteSec, Math.min(1.4, segShare * totalDurationSec));
+                : Math.max(0.14, 1 / Math.max(2, points.length));
+            const paceCap = isVinyl ? 1.4 : ((isFalsetto || isLast) ? 0.78 : 0.36);
+            const paceScale = isVinyl ? totalDurationSec : Math.min(totalDurationSec, 3.2);
+            const rawSec = Math.max(minNoteSec, Math.min(paceCap, segShare * paceScale));
             const beats = rawSec / beatSec;
 
-            const rampIn = Math.max(0.011, Math.min(0.15, 0.14 / (1 + steepness * 2.2)));
+            const rampIn = Math.max(0.010, Math.min(0.075, 0.08 / (1 + steepness * 2.2)));
 
             const vowel = isFalsetto
                 ? falsettoVowels[i % falsettoVowels.length]
@@ -983,7 +986,6 @@
                     ? falsettoOnsets[i % falsettoOnsets.length]
                     : chestOnsets[i % chestOnsets.length]);
 
-            const isLast = (i === points.length - 1);
             const sylText = (onset.join('') || '') + vowel;
             const syl = makeSyllable(sylText, onset, vowel, p.kind === 'peak' ? 1 : 0, isLast, isLast);
 
@@ -1013,10 +1015,13 @@
         // Im Modus 'chord' (Akkord): Mehrstimmiger Jodel-Chor (pro Punkt eine Stimme + ein Gesicht!)
         let chordVoices = null;
         if (!isVinyl && mode === 'chord') {
-            const choirSlice = sequence.slice(0, 8);
-            const holdSec = Math.max(0.9, totalDurationSec - 0.55);
-            const leadInSec = 0.24;
+            const choirSlice = sequence.slice(0, 6);
+            const phraseTargetSec = Math.max(2.6, Math.min(5.2, totalDurationSec * 0.72));
+            const pickUpSec = 0.20;
+            const bounceSec = 0.19;
+            const dropSec = 0.20;
             const tailSec = 0.36;
+            const holdSec = Math.max(0.95, phraseTargetSec - (pickUpSec + bounceSec + dropSec + tailSec));
 
             chordVoices = choirSlice.map((step, idx) => {
                 const p = step.point;
@@ -1028,9 +1033,12 @@
                 const pan = Math.max(-0.9, Math.min(0.9, ((p.x / bildBreite) * 2 - 1) * 0.9));
 
                 const mainMidi = step.midi;
-                const introMidi = Math.max(46, mainMidi - (isPeak ? 5 : 3));
+                const introMidi = Math.max(46, mainMidi - (isPeak ? 5 : 4));
+                const bounceMidi = isPeak ? Math.min(84, mainMidi + 2) : Math.max(46, mainMidi - 2);
+                const dropMidi = Math.max(45, mainMidi - 5);
                 const endMidi = isPeak ? mainMidi - 2 : mainMidi;
                 const introVowel = isPeak ? 'o' : 'u';
+                const bounceVowel = isPeak ? 'i' : 'e';
                 const holdVowel = isPeak ? (idx % 2 === 0 ? 'i' : 'e') : (idx % 2 === 0 ? 'o' : 'u');
                 const endVowel = 'u';
 
@@ -1038,18 +1046,38 @@
                     {
                         point: p,
                         midi: introMidi,
-                        beats: leadInSec / beatSec,
-                        rampIn: 0.03,
+                        beats: pickUpSec / beatSec,
+                        rampIn: 0.02,
                         isFalsetto: false,
                         vowel: introVowel,
-                        syl: makeSyllable(isPeak ? 'ho' : 'ju', [isPeak ? 'h' : 'j'], introVowel, 0, false, false),
-                        durationSec: leadInSec
+                        syl: makeSyllable('jo', ['j'], introVowel, 0, false, false),
+                        durationSec: pickUpSec
+                    },
+                    {
+                        point: p,
+                        midi: bounceMidi,
+                        beats: bounceSec / beatSec,
+                        rampIn: 0.012,
+                        isFalsetto: isPeak,
+                        vowel: bounceVowel,
+                        syl: makeSyllable(isPeak ? 'hi' : 'de', [isPeak ? 'h' : 'd'], bounceVowel, 1, false, false),
+                        durationSec: bounceSec
+                    },
+                    {
+                        point: p,
+                        midi: dropMidi,
+                        beats: dropSec / beatSec,
+                        rampIn: 0.018,
+                        isFalsetto: false,
+                        vowel: 'o',
+                        syl: makeSyllable('lo', ['l'], 'o', 0, false, false),
+                        durationSec: dropSec
                     },
                     {
                         point: p,
                         midi: mainMidi,
                         beats: holdSec / beatSec,
-                        rampIn: isPeak ? 0.016 : 0.055,
+                        rampIn: isPeak ? 0.012 : 0.032,
                         isFalsetto: isPeak || step.isFalsetto,
                         vowel: holdVowel,
                         syl: makeSyllable((isPeak ? 'hi' : 'jo'), [isPeak ? 'h' : 'j'], holdVowel, 1, false, false),
@@ -1059,7 +1087,7 @@
                         point: p,
                         midi: endMidi,
                         beats: tailSec / beatSec,
-                        rampIn: 0.06,
+                        rampIn: 0.045,
                         isFalsetto: false,
                         vowel: endVowel,
                         syl: makeSyllable('du', ['d'], endVowel, 0, true, true),
@@ -1325,13 +1353,29 @@
         currentSyllableLabel = `CHOR (${voicesSpec.length} STIMMEN)`;
         let maxEndSec = 0;
 
+        // Höchstens MAX_CHORD_WORKLET_VOICES echte WASM-Ankerstimmen (tiefste Brust + höchstes Falsett)
+        const anchorIndices = new Set();
+        if (voicesSpec.length > 0) {
+            let lowIdx = 0;
+            let highIdx = 0;
+            voicesSpec.forEach((v, idx) => {
+                if ((v.midi || 60) < (voicesSpec[lowIdx].midi || 60)) lowIdx = idx;
+                if ((v.midi || 60) > (voicesSpec[highIdx].midi || 60)) highIdx = idx;
+            });
+            anchorIndices.add(lowIdx);
+            if (anchorIndices.size < MAX_CHORD_WORKLET_VOICES) anchorIndices.add(highIdx);
+            for (let idx = 0; idx < voicesSpec.length && anchorIndices.size < MAX_CHORD_WORKLET_VOICES; idx++) {
+                anchorIndices.add(idx);
+            }
+        }
+
         for (let idx = 0; idx < voicesSpec.length; idx++) {
             const v = voicesSpec[idx];
             const faceObj = activeChoirFaces[idx];
             const voiceNotes = v.notes || [];
-            const staggerSec = idx * 0.035;
+            const staggerSec = idx * 0.025;
             const voiceBody = v.body || { female: currentVoiceMorph, child: 0 };
-            const useWorklet = !usingFallbackEngine && mainExports && wasmModule && workletReady && idx < MAX_CHORD_WORKLET_VOICES;
+            const useWorklet = !usingFallbackEngine && mainExports && wasmModule && workletReady && anchorIndices.has(idx);
 
             if (useWorklet) {
                 try {

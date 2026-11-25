@@ -702,7 +702,7 @@ window._getChimeraAnatomyState = function(panoIdOverride) {
                 .map(p => ({ ...p, kind: 'peak' }));
             const valleys = window.findePunkte(kurve, parseInt(s.valleys, 10) || 2, parseInt(s.spacing, 10) || 35, parseInt(s.sensibilitaet, 10) || 0, 'tal')
                 .map(p => ({ ...p, kind: 'valley' }));
-            const all = peaks.concat(valleys).sort((a, b) => a.x - b.x).slice(0, 8);
+            const all = peaks.concat(valleys).sort((a, b) => a.x - b.x).slice(0, 6);
             if (all.length > 1) {
                 const baseVc = s.voiceCharacter !== undefined ? s.voiceCharacter : defaultBody.female;
                 return {
