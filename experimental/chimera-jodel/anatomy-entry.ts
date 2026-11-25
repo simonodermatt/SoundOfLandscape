@@ -78,6 +78,7 @@ export async function mountAnatomyCanvas(
         sampleRate: number;
         fTick: number;
         formants: number[];
+        lastFrame: any | null;
         lastCellW: number;
         lastCellH: number;
     };
@@ -92,6 +93,7 @@ export async function mountAnatomyCanvas(
             sampleRate,
             fTick: 0,
             formants: [],
+            lastFrame: null,
             lastCellW: 0,
             lastCellH: 0,
         };
@@ -166,7 +168,7 @@ export async function mountAnatomyCanvas(
         const defaultRate = st.sampleRate || 48000;
 
         const faceList: AnatomyFaceInput[] = (Array.isArray(st.faces) && st.faces.length > 0)
-            ? st.faces.slice(0, 8)
+            ? st.faces.slice(0, 6)
             : [{
                 telemetry: st.telemetry || null,
                 body: defaultBody,
@@ -206,6 +208,7 @@ export async function mountAnatomyCanvas(
                     slot.sampleRate = sr;
                     slot.model = new VoiceModel(slot.body, slot.sampleRate);
                     slot.formants = [];
+                    slot.lastFrame = null;
                 }
 
                 if (Math.abs(slot.lastCellW - cellW) > 0.5 || Math.abs(slot.lastCellH - cellH) > 0.5) {
@@ -219,8 +222,12 @@ export async function mountAnatomyCanvas(
                 const artic = buildPoseArtic({ ...face, telemetry: rawTele }, nowSec, i);
                 slot.renderer.face.update(tele, elapsed);
 
-                const frame = slot.model.frame(artic);
-                if (++slot.fTick % 4 === 0 || slot.formants.length === 0) {
+                slot.fTick++;
+                if (!slot.lastFrame || n === 1 || (slot.fTick + i) % 2 === 0) {
+                    slot.lastFrame = slot.model.frame(artic);
+                }
+                const frame = slot.lastFrame;
+                if (slot.fTick % 4 === 0 || slot.formants.length === 0) {
                     slot.formants = slot.model.transfer(artic).formants;
                 }
 
@@ -254,7 +261,7 @@ export async function mountAnatomyCanvas(
                     tele,
                     {
                         pressure: true,
-                        particles: n <= 4,
+                        particles: n === 1,
                         grid: n <= 2,
                         calipers: false,
                     },
