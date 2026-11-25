@@ -642,21 +642,100 @@ window.closePanoModal = function() {
 window.panoAnatomyControllers = window.panoAnatomyControllers || {};
 window.vinylAnatomyController = window.vinylAnatomyController || null;
 
-window._getChimeraAnatomyState = function() {
+window._getChimeraAnatomyState = function(panoIdOverride) {
     if (!window.ChimeraJodelBridge) return null;
     const status = typeof window.ChimeraJodelBridge.getStatus === 'function'
         ? window.ChimeraJodelBridge.getStatus()
         : null;
+    const sampleRate = typeof window.ChimeraJodelBridge.getSampleRate === 'function'
+        ? window.ChimeraJodelBridge.getSampleRate()
+        : ((status && status.sampleRate) || 48000);
+    const defaultBody = typeof window.ChimeraJodelBridge.getCurrentBody === 'function'
+        ? window.ChimeraJodelBridge.getCurrentBody()
+        : { female: 0.25, child: 0 };
+
+    const activeFaces = typeof window.ChimeraJodelBridge.getChoirFaces === 'function'
+        ? window.ChimeraJodelBridge.getChoirFaces()
+        : null;
+    if (Array.isArray(activeFaces) && activeFaces.length > 1) {
+        return {
+            telemetry: null,
+            body: defaultBody,
+            sampleRate,
+            faces: activeFaces
+        };
+    }
+
+    const pid = panoIdOverride !== undefined
+        ? panoIdOverride
+        : (window.currentOpenPano ? window.currentOpenPano.id : null);
+    const s = pid && window.activeSynth ? window.activeSynth[pid] : null;
+    if (pid && s && s.mode === 'chord') {
+        const seq = window.panoAiSequences ? window.panoAiSequences[pid] : null;
+        if (seq && seq.mode === 'chord' && Array.isArray(seq.chordVoices) && seq.chordVoices.length > 1) {
+            return {
+                telemetry: null,
+                body: defaultBody,
+                sampleRate,
+                faces: seq.chordVoices.map(v => ({
+                    telemetry: null,
+                    body: v.body || defaultBody,
+                    sampleRate,
+                    syllableLabel: v.syllableLabel,
+                    vowel: v.vowel,
+                    kind: v.kind,
+                    f0Hz: v.f0Hz,
+                    playing: false
+                }))
+            };
+        }
+        const daten = window.panoDataCache ? window.panoDataCache[pid] : null;
+        let kurve = daten && daten.kurve_y;
+        if (!kurve && daten && daten.kurve_y_array) {
+            try {
+                const raw = typeof daten.kurve_y_array === 'string' ? JSON.parse(daten.kurve_y_array) : daten.kurve_y_array;
+                kurve = raw.map(pt => (typeof pt === 'object' && pt !== null) ? Number(pt.y) : Number(pt));
+            } catch (_) {}
+        }
+        if (Array.isArray(kurve) && kurve.length > 0 && typeof window.findePunkte === 'function') {
+            const peaks = window.findePunkte(kurve, parseInt(s.peaks, 10) || 4, parseInt(s.spacing, 10) || 35, parseInt(s.sensibilitaet, 10) || 0, 'gipfel')
+                .map(p => ({ ...p, kind: 'peak' }));
+            const valleys = window.findePunkte(kurve, parseInt(s.valleys, 10) || 2, parseInt(s.spacing, 10) || 35, parseInt(s.sensibilitaet, 10) || 0, 'tal')
+                .map(p => ({ ...p, kind: 'valley' }));
+            const all = peaks.concat(valleys).sort((a, b) => a.x - b.x).slice(0, 8);
+            if (all.length > 1) {
+                const baseVc = s.voiceCharacter !== undefined ? s.voiceCharacter : defaultBody.female;
+                return {
+                    telemetry: null,
+                    body: defaultBody,
+                    sampleRate,
+                    faces: all.map((p, idx) => {
+                        const isPeak = p.kind === 'peak';
+                        const fMorph = isPeak
+                            ? Math.min(0.98, Math.max(0.45, baseVc + 0.25))
+                            : Math.max(0.02, Math.min(0.55, baseVc - 0.22));
+                        const vowel = isPeak ? (idx % 2 === 0 ? 'i' : 'e') : (idx % 2 === 0 ? 'o' : 'u');
+                        return {
+                            telemetry: null,
+                            body: { female: fMorph, child: 0 },
+                            sampleRate,
+                            syllableLabel: `/${vowel}/ ${isPeak ? 'FALSETT' : 'BRUST'}`,
+                            vowel,
+                            kind: p.kind,
+                            playing: false
+                        };
+                    })
+                };
+            }
+        }
+    }
+
     return {
         telemetry: typeof window.ChimeraJodelBridge.getRawTelemetry === 'function'
             ? window.ChimeraJodelBridge.getRawTelemetry()
             : null,
-        body: typeof window.ChimeraJodelBridge.getCurrentBody === 'function'
-            ? window.ChimeraJodelBridge.getCurrentBody()
-            : { female: 0.25, child: 0 },
-        sampleRate: typeof window.ChimeraJodelBridge.getSampleRate === 'function'
-            ? window.ChimeraJodelBridge.getSampleRate()
-            : ((status && status.sampleRate) || 48000),
+        body: defaultBody,
+        sampleRate,
         syllableLabel: typeof window.ChimeraJodelBridge.getCurrentSyllableLabel === 'function'
             ? window.ChimeraJodelBridge.getCurrentSyllableLabel()
             : ''
@@ -703,7 +782,7 @@ window.startPanoAnatomyView = async function(panoId) {
         const ctrl = await window.ChimeraAnatomy.mountAnatomyCanvas(
             canvas,
             wasmSource,
-            window._getChimeraAnatomyState
+            () => window._getChimeraAnatomyState(panoId)
         );
         window.panoAnatomyControllers[panoId] = ctrl;
         return ctrl;
@@ -756,7 +835,7 @@ window.startVinylAnatomyView = async function() {
         const ctrl = await window.ChimeraAnatomy.mountAnatomyCanvas(
             canvas,
             wasmSource,
-            window._getChimeraAnatomyState
+            () => window._getChimeraAnatomyState(null)
         );
         window.vinylAnatomyController = ctrl;
         return ctrl;
